@@ -156,3 +156,30 @@ These could not be verified statically:
 - **2.3×2.4:** **fails** — see M1.
 - **Error paths (1.6/2.1/2.5/2.7):** EDGAR errors surface as `{ok:false,error}` → RedlinePanel banner; no-prior → visible `no_prior`; summary/ask errors set `status:'error'` with banners. No new silent failures found **except** M1 (20-F empty diff reads as "no changes").
 - **Manifest CWS pass:** valid MV3. Concerns: H1 (non-SEC hosts), `tabs` permission is broad (`activeTab` may suffice for most flows — worth review), L3 version mismatch.
+
+---
+
+## 8. Addendum — Phase-3 fix session (2026-06-09)
+
+Findings resolved in the post-review fix pass (one commit each on top of the
+initial baseline): **M1** (20-F focus IDs + fail-loud `unsupported_form`),
+**H1(a)** (transcript scope removed — `*.fool.com`/`*.seekingalpha.com` and
+`transcript.ts` deleted), **L3** (version synced to 0.2.0, single-sourced from
+`package.json`), **L4** (`resolvePrior` absent-`recent` continuation), **M3**
+(pooled Q&A session serialized via promise-chain mutex), and the `tabs`
+permission dropped in favor of `activeTab` + sec.gov host permissions. **H2**
+(WASM trim) and **M2** (full LM dictionary) are still open.
+
+### Known baseline issue — DO NOT enable `tsc` in CI without fixing first
+`npm run typecheck` / `npm run lint` (both `tsc --noEmit`) currently report ONE
+error, and it **predates this session** (the file is untouched by any Phase-3 fix):
+
+```
+tests/qaSynthesize.test.ts(108,12): error TS2532: Object is possibly 'undefined'.
+```
+
+It is out of scope for the approved fix list and was intentionally left alone.
+The production build (`npm run build`) and `vitest run` are both green — only the
+standalone typecheck trips on this. If a typecheck/lint gate is added to CI, this
+single pre-existing error will fail the build and surprise whoever turns it on;
+fix the test (or narrow the typecheck `include`) at that time.
