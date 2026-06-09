@@ -15,6 +15,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { createSerialQueue } from './qa/serialize';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import type { DocumentModel } from '@/types';
 import type { GenerationTier } from '@/runtime/capabilities';
@@ -80,6 +81,9 @@ export function AskPanel({ doc, tier }: AskPanelProps) {
   const acRef = useRef<AbortController | null>(null);
   // Pooled LM session: created on first Q&A call, reused within the filing, disposed on filing change.
   const qaSessionRef = useRef<LMSession | null>(null);
+  // Serializes work that touches the pooled session so overlapping asks can't
+  // interleave on the single shared LM session (M3). Stable for the panel's life.
+  const runExclusive = useMemo(() => createSerialQueue(), []);
   const builtin = tier === 'builtin';
 
   // Reset when the filing changes — dispose the pooled LM session so no context bleeds.
@@ -117,68 +121,76 @@ export function AskPanel({ doc, tier }: AskPanelProps) {
 
       setS((prev) => ({ ...prev, query: q, asking: true, answer: '', citations: [], error: '', passages: [] }));
 
-      try {
-        // 1. Ensure the vector index exists (idempotent).
-        await ensureIndex(doc);
+      // Serialize the whole ask: the abort above signals any in-flight ask, and
+      // runExclusive holds this one until that prior ask settles — so two rapid
+      // asks never interleave on the single pooled LM session (M3).
+      await runExclusive(async () => {
+        // The prior (now-aborted) ask released the queue; if a newer ask has since
+        // superseded THIS one, bail before touching the session.
         if (ac.signal.aborted) return;
+        try {
+          // 1. Ensure the vector index exists (idempotent).
+          await ensureIndex(doc);
+          if (ac.signal.aborted) return;
 
-        // 2. Retrieve top-k passages.
-        const results = await retrievePassages(doc.rawTextHash, q, TOP_K);
-        if (ac.signal.aborted) return;
-        const passages = toPassages(results, doc.sections);
-        setS((prev) => ({ ...prev, passages }));
+          // 2. Retrieve top-k passages.
+          const results = await retrievePassages(doc.rawTextHash, q, TOP_K);
+          if (ac.signal.aborted) return;
+          const passages = toPassages(results, doc.sections);
+          setS((prev) => ({ ...prev, passages }));
 
-        if (passages.length === 0) {
-          setS((prev) => ({ ...prev, asking: false, answered: true, answer: '' }));
-          return;
-        }
+          if (passages.length === 0) {
+            setS((prev) => ({ ...prev, asking: false, answered: true, answer: '' }));
+            return;
+          }
 
-        // 3a. Extractive tier: deterministic templated answer, no model call.
-        if (!builtin) {
-          const answer = templatedQaAnswer(passages);
-          setS((prev) => ({ ...prev, asking: false, answered: true, answer, citations: [] }));
-          return;
-        }
+          // 3a. Extractive tier: deterministic templated answer, no model call.
+          if (!builtin) {
+            const answer = templatedQaAnswer(passages);
+            setS((prev) => ({ ...prev, asking: false, answered: true, answer, citations: [] }));
+            return;
+          }
 
-        // 3b. Built-in tier: stream a grounded answer.
-        // Lazily create the pooled session on first ask; reuse on subsequent asks.
-        if (!qaSessionRef.current) {
-          qaSessionRef.current = await createQaSession({
+          // 3b. Built-in tier: stream a grounded answer.
+          // Lazily create the pooled session on first ask; reuse on subsequent asks.
+          if (!qaSessionRef.current) {
+            qaSessionRef.current = await createQaSession({
+              onDownloadProgress: (loaded) => setNanoProgress(loaded),
+              signal: ac.signal,
+            });
+          }
+          if (ac.signal.aborted) return;
+
+          const full = await streamAnswer(q, passages, {
+            ...(qaSessionRef.current ? { session: qaSessionRef.current } : {}),
+            onToken: (text) => {
+              if (ac.signal.aborted) return;
+              setS((prev) => ({ ...prev, answer: text }));
+            },
             onDownloadProgress: (loaded) => setNanoProgress(loaded),
             signal: ac.signal,
           });
+          if (ac.signal.aborted) return;
+          setNanoProgress(null);
+          setS((prev) => ({
+            ...prev,
+            asking: false,
+            answered: true,
+            answer: full,
+            citations: parseCitations(full, passages.length),
+          }));
+        } catch (err) {
+          if (ac.signal.aborted) return;
+          setNanoProgress(null);
+          // Discard a session that errored (e.g. context-window full) so the next
+          // ask creates a fresh one rather than re-using a broken session.
+          qaSessionRef.current?.destroy();
+          qaSessionRef.current = null;
+          setS((prev) => ({ ...prev, asking: false, error: String(err) }));
         }
-        if (ac.signal.aborted) return;
-
-        const full = await streamAnswer(q, passages, {
-          ...(qaSessionRef.current ? { session: qaSessionRef.current } : {}),
-          onToken: (text) => {
-            if (ac.signal.aborted) return;
-            setS((prev) => ({ ...prev, answer: text }));
-          },
-          onDownloadProgress: (loaded) => setNanoProgress(loaded),
-          signal: ac.signal,
-        });
-        if (ac.signal.aborted) return;
-        setNanoProgress(null);
-        setS((prev) => ({
-          ...prev,
-          asking: false,
-          answered: true,
-          answer: full,
-          citations: parseCitations(full, passages.length),
-        }));
-      } catch (err) {
-        if (ac.signal.aborted) return;
-        setNanoProgress(null);
-        // Discard a session that errored (e.g. context-window full) so the next
-        // ask creates a fresh one rather than re-using a broken session.
-        qaSessionRef.current?.destroy();
-        qaSessionRef.current = null;
-        setS((prev) => ({ ...prev, asking: false, error: String(err) }));
-      }
+      });
     },
-    [doc, builtin],
+    [doc, builtin, runExclusive],
   );
 
   const stop = useCallback(() => {
