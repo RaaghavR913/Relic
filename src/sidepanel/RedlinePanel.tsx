@@ -64,7 +64,7 @@ function magnitudeColor(m: number): string {
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
-type RunState = 'idle' | 'running' | 'done' | 'no_prior' | 'error';
+type RunState = 'idle' | 'running' | 'done' | 'no_prior' | 'unsupported_form' | 'error';
 
 interface ProgressState {
   stage: RedlineProgressMsg['stage'];
@@ -249,8 +249,8 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
     getCachedRedline(doc.rawTextHash)
       .then((cached) => {
         if (!alive || !cached) return;
-        if (cached.status === 'no_prior') {
-          setState('no_prior');
+        if (cached.status === 'no_prior' || cached.status === 'unsupported_form') {
+          setState(cached.status);
           setAlignment(cached.alignment);
           return;
         }
@@ -323,11 +323,11 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
 
       setAlignment(resp.alignment);
 
-      if (resp.status === 'no_prior') {
-        setState('no_prior');
+      if (resp.status === 'no_prior' || resp.status === 'unsupported_form') {
+        setState(resp.status);
         await putRedline({
           rawTextHash: doc.rawTextHash,
-          status: 'no_prior',
+          status: resp.status,
           diffs: [],
           alignment: resp.alignment,
           cachedAt: Date.now(),
@@ -375,7 +375,7 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
             disabled={state === 'running'}
             className="rounded-md bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500"
           >
-            {state === 'running' ? 'Comparing…' : state === 'done' || state === 'no_prior' ? 'Re-compare' : 'Compare to prior year'}
+            {state === 'running' ? 'Comparing…' : state === 'done' || state === 'no_prior' || state === 'unsupported_form' ? 'Re-compare' : 'Compare to prior year'}
           </button>
         </span>
       </div>
@@ -409,6 +409,14 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
         <p className="rounded-lg bg-zinc-900/60 px-3 py-2.5 text-xs text-zinc-400 ring-1 ring-zinc-800/60">
           No prior comparable {doc.filingType} found on EDGAR for this company. A redline needs at least two
           filings of the same type.
+        </p>
+      )}
+
+      {/* unsupported form — a prior exists but this filing type has no focus coverage (M1) */}
+      {state === 'unsupported_form' && (
+        <p className="rounded-lg bg-zinc-900/60 px-3 py-2.5 text-xs text-zinc-400 ring-1 ring-zinc-800/60">
+          Changes view isn’t available for {doc.filingType} filings yet. The comparison runs on a fixed set
+          of focus sections (Risk Factors, MD&amp;A) that aren’t mapped for this form type.
         </p>
       )}
 

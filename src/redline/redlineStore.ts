@@ -21,7 +21,7 @@ const STORE = 'redlines';
 export interface RedlineEntry {
   /** Current filing rawTextHash. */
   rawTextHash: string;
-  status: 'computed' | 'no_prior';
+  status: 'computed' | 'no_prior' | 'unsupported_form';
   diffs: SectionDiff[];
   alignment: AlignmentSummary[];
   prior?: RedlinePriorInfo;

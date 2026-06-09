@@ -272,8 +272,13 @@ export interface RedlineProgressMsg {
 
 export interface RedlineOkResponse {
   ok: true;
-  /** 'computed' when a prior filing was found and diffed; 'no_prior' otherwise. */
-  status: 'computed' | 'no_prior';
+  /**
+   * 'computed'         — a prior filing was found and the focus sections diffed.
+   * 'no_prior'         — no earlier comparable filing exists on EDGAR.
+   * 'unsupported_form' — a prior exists but this filing type has no Changes-tab
+   *                      focus coverage, so no diff was produced (M1 guard).
+   */
+  status: 'computed' | 'no_prior' | 'unsupported_form';
   /** Per-section diffs. added/removed ranges are SECTION-space (added→current, removed→prior). */
   diffs: SectionDiff[];
   /** Diff stats keyed by sectionId — drives the builtin-tier summary upgrade. */

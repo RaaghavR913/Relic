@@ -56,7 +56,7 @@ import {
   type Similarity,
   type SectionDiffCore,
 } from '@/redline/diff';
-import { alignSections, DEFAULT_FOCUS_IDS } from '@/redline/align';
+import { alignSections, focusAlignments } from '@/redline/align';
 import { parsePriorFiling } from '@/redline/parsePrior';
 import {
   isIndexed,
@@ -824,14 +824,24 @@ async function computeRedline(m: OffscreenRedlineMsg): Promise<RedlineResponse> 
   }));
 
   // 3. Diff the focus sections (matched → semantic; added/removed → whole-section).
-  const focusFilter = new Set(DEFAULT_FOCUS_IDS);
-  const focusAligns = alignment.filter(
-    (a) =>
-      focusFilter.has(a.id) ||
-      // also include alias-equivalent ids (alignSections preserves original ids)
-      (a.current && focusFilter.has(a.current.id)) ||
-      (a.prior && focusFilter.has(a.prior.id)),
-  );
+  const focusAligns = focusAlignments(alignment);
+
+  // Fail loud, not empty: if this filing type produced ZERO focus-section matches,
+  // the Changes tab has no coverage for it. Returning an empty diff here would read
+  // to the user as "no changes" — a silent no-op (M1). Surface an explicit status
+  // instead so the panel can say the form isn't supported yet. This guard protects
+  // every current and future filing type, not just 20-F.
+  if (focusAligns.length === 0) {
+    sendRedlineProgress('complete', 1);
+    return {
+      ok: true,
+      status: 'unsupported_form',
+      diffs: [],
+      stats: {},
+      prior: m.priorInfo,
+      alignment: alignmentSummary,
+    };
+  }
 
   const diffs: SectionDiff[] = [];
   const stats: Record<string, SectionDiffCore['stats']> = {};

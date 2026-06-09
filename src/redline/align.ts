@@ -36,6 +36,13 @@ export const DEFAULT_FOCUS_IDS: readonly string[] = [
   's1_risk_factors',
   's1_mdna',
   's1_business',
+  // 20-F (foreign private issuers) — parallels the 10-K/S-1 focus set:
+  //   risk factors, the operating & financial review (MD&A equivalent), and the
+  //   business description. The 20-F segmenter (segment.ts ITEMS_20F) emits these
+  //   ids; without them a 20-F redline produced an empty diff (silent no-op, M1).
+  '20f_item_3d_risk_factors',       // ↔ item_1a_risk_factors
+  '20f_item_5_operating_review',    // ↔ item_7_mdna (Operating and Financial Review)
+  '20f_item_4_company_information',  // ↔ business description (Information on the Company)
   // DEF 14A (proxy)
   'proxy_exec_compensation',
   'proxy_cd_a',
@@ -56,10 +63,11 @@ export const DEFAULT_FOCUS_IDS: readonly string[] = [
 const ALIAS_GROUPS: string[][] = [
   // "Selected Financial Data" (Item 6) was reclassified as "Reserved" in 2021.
   ['item_6_mdna_selected', 'item_6_reserved', 'item_6_selected_financial_data'],
-  // MD&A appears under different item numbers across forms.
-  ['item_7_mdna', 'item_2_mdna', 's1_mdna'],
-  // Risk Factors across forms.
-  ['item_1a_risk_factors', 'part_ii_item_1a_risk_factors', 's1_risk_factors'],
+  // MD&A appears under different item numbers across forms (20-F calls it the
+  // "Operating and Financial Review and Prospects").
+  ['item_7_mdna', 'item_2_mdna', 's1_mdna', '20f_item_5_operating_review'],
+  // Risk Factors across forms (20-F nests them under Item 3.D).
+  ['item_1a_risk_factors', 'part_ii_item_1a_risk_factors', 's1_risk_factors', '20f_item_3d_risk_factors'],
 ];
 
 const ALIAS_CANON = new Map<string, string>();
@@ -126,4 +134,24 @@ export function focusMatches(
 ): SectionAlignment[] {
   const focus = new Set(focusIds.map(canonicalId));
   return alignments.filter((a) => focus.has(canonicalId(a.id)));
+}
+
+/**
+ * Select the alignments to compute a full redline for, by RAW id (not canonical):
+ * an alignment is in focus if its own id — or its current/prior section id — is in
+ * the focus set. This is the set `computeRedline` diffs; when it is EMPTY for a
+ * filing, the form has no Changes-tab coverage and the caller must surface an
+ * explicit 'unsupported_form' status rather than an empty (misleading) diff (M1).
+ */
+export function focusAlignments(
+  alignments: SectionAlignment[],
+  focusIds: readonly string[] = DEFAULT_FOCUS_IDS,
+): SectionAlignment[] {
+  const focus = new Set(focusIds);
+  return alignments.filter(
+    (a) =>
+      focus.has(a.id) ||
+      (a.current ? focus.has(a.current.id) : false) ||
+      (a.prior ? focus.has(a.prior.id) : false),
+  );
 }
