@@ -98,3 +98,17 @@ export function detectFilingTypeWithConfidence({
 export function detectFilingType(opts: DetectFilingTypeOptions): FilingType {
   return detectFilingTypeWithConfidence(opts).type;
 }
+
+/**
+ * Confidence gate for on-demand analysis: a generic (non-EDGAR) page whose type
+ * detection fell through to UNKNOWN. On such pages the on-page flag overlay
+ * stays hidden until the user explicitly opts in, and the side panel shows a
+ * "doesn't look like a filing" warning. An IR-hosted page where the heuristics
+ * DID recognize a real filing keeps full behavior.
+ */
+export function isLowConfidenceGeneric(model: {
+  source: { host: 'edgar' | 'ir' };
+  filingType: FilingType;
+}): boolean {
+  return model.source.host === 'ir' && model.filingType === 'UNKNOWN';
+}

@@ -18,6 +18,7 @@
  */
 
 import { ingestDocument } from './ingest';
+import { isLowConfidenceGeneric } from './ingest/detect';
 import type { IngestResult, LanguageFlag, SentenceSentiment } from '@/types';
 import {
   HighlightController,
@@ -54,6 +55,21 @@ interface FilingLensDevApi {
 
 const RAG_HIGHLIGHT_LAYER = 'qa' as const;
 
+// ── Re-injection guard ────────────────────────────────────────────────────────
+// The script is delivered two ways: manifest content_scripts on EDGAR, and
+// chrome.scripting.executeScript for on-demand "Analyze this page". A second
+// injection into the same frame must not re-ingest or attach duplicate
+// listeners — it only re-broadcasts the existing results so a freshly opened
+// side panel syncs up. The flag and the rebroadcast hook live on globalThis
+// because each injection gets a fresh module scope in the same isolated world.
+interface FilingLensGlobal {
+  __filingLensInjected?: boolean;
+  __filingLensRebroadcast?: () => void;
+}
+const FL_GLOBAL = globalThis as FilingLensGlobal;
+const ALREADY_INJECTED = FL_GLOBAL.__filingLensInjected === true;
+FL_GLOBAL.__filingLensInjected = true;
+
 /** Minimum normalised-text length for a frame to be treated as the filing frame. */
 const MIN_FILING_CHARS = 500;
 
@@ -68,6 +84,9 @@ let _allFlags:          LanguageFlag[] = [];
 let _sentimentCache:    SentenceSentiment[] = [];
 let _sentimentVisible = false;
 let _flagsVisible     = true;
+// Low-confidence generic page: flag overlay stays hidden until the user
+// explicitly opts in (the panel's passive pref sync must not enable it).
+let _flagOptInRequired = false;
 
 async function run(): Promise<FilingLensDevApi> {
   const result = ingestDocument();
@@ -107,6 +126,14 @@ async function run(): Promise<FilingLensDevApi> {
     // Fresh document → drop any prior sentiment highlights/cache.
     _sentimentCache = [];
 
+    // Confidence gate: on a generic page that doesn't look like a filing, keep
+    // the on-page flag overlay hidden until the user opts in via the side panel
+    // (SET_FLAG_OVERLAY). Flags are still computed, persisted, and broadcast.
+    if (isLowConfidenceGeneric(model)) {
+      _flagsVisible = false;
+      _flagOptInRequired = true;
+    }
+
     // Paint the four typed CSS Custom Highlight layers + mount tooltip.
     const flagOverlay = new FlagOverlayManager(doc, controller);
     if (_flagsVisible) flagOverlay.activate(allFlags, positionMap);
@@ -137,6 +164,12 @@ async function run(): Promise<FilingLensDevApi> {
       flags: allFlags,
     };
     chrome.runtime.sendMessage(flagMsg).catch(() => {});
+
+    // A repeat injection re-broadcasts these results instead of re-ingesting.
+    FL_GLOBAL.__filingLensRebroadcast = () => {
+      chrome.runtime.sendMessage(readyMsg).catch(() => {});
+      chrome.runtime.sendMessage(flagMsg).catch(() => {});
+    };
   }
 
   return {
@@ -163,7 +196,7 @@ function bestDoc(result: IngestResult): Document {
 
 // ── Message handler ───────────────────────────────────────────────────────────
 
-chrome.runtime.onMessage.addListener(
+if (!ALREADY_INJECTED) chrome.runtime.onMessage.addListener(
   (rawMsg: unknown, _sender: chrome.runtime.MessageSender): boolean => {
     const msg = rawMsg as { target?: string; type?: string };
     if (msg.target !== 'content') return false;
@@ -254,6 +287,10 @@ chrome.runtime.onMessage.addListener(
     // Session 7: master flag toggle — activate/deactivate the flag overlay layer.
     if (msg.type === 'SET_FLAG_OVERLAY') {
       const m = rawMsg as ContentSetFlagOverlayMsg;
+      // Confidence gate: a passive pref sync may not enable flags on a page
+      // that doesn't look like a filing — only an explicit user gesture can.
+      if (m.enabled && _flagOptInRequired && !m.explicit) return false;
+      if (m.explicit) _flagOptInRequired = false;
       _flagsVisible = m.enabled;
       if (_flagOverlay && _positionMap) {
         if (m.enabled) _flagOverlay.activate(_allFlags, _positionMap);
@@ -317,7 +354,11 @@ function shouldIngestThisFrame(): boolean {
   }
 }
 
-if (shouldIngestThisFrame()) {
+if (ALREADY_INJECTED) {
+  // Second delivery (e.g. "Analyze this page" clicked twice, or on a page that
+  // already ran the manifest script): just resync the side panel.
+  FL_GLOBAL.__filingLensRebroadcast?.();
+} else if (shouldIngestThisFrame()) {
   run().then((api) => {
     (globalThis as unknown as { __FilingLens?: FilingLensDevApi }).__FilingLens = api;
     console.debug('[FilingLens] dev API ready: __FilingLens.demo() / .highlight(text)');

@@ -52,13 +52,14 @@ async function pushSentiment(enabled: boolean): Promise<void> {
   await chrome.tabs.sendMessage(tabId, msg).catch(() => {});
 }
 
-async function pushFlags(enabled: boolean): Promise<void> {
+async function pushFlags(enabled: boolean, explicit = false): Promise<void> {
   const tabId = await getActiveTabId();
   if (tabId === undefined) return;
   const msg: ContentSetFlagOverlayMsg = {
     target: 'content',
     type: 'SET_FLAG_OVERLAY',
     enabled,
+    explicit,
   };
   await chrome.tabs.sendMessage(tabId, msg).catch(() => {});
 }
@@ -99,7 +100,8 @@ export function setFlags(enabled: boolean): void {
   _prefs = { ..._prefs, flags: enabled };
   emit();
   chrome.storage.local.set({ [FLAGS_KEY]: enabled }).catch(() => {});
-  void pushFlags(enabled);
+  // Setter calls come from user gestures (overlay toggle / banner action).
+  void pushFlags(enabled, true);
 }
 
 /** Read the current heatmap pref synchronously (best-effort; may be pre-load default). */

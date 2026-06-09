@@ -10,12 +10,19 @@
 //   • Loading skeletons, empty states, degradation banners; WCAG AA; reduced-motion.
 // ============================================================
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCapabilities } from '../runtime/useCapabilities';
 import type { GenerationTier } from '../runtime/capabilities';
 import type { DocumentModel, LanguageFlag } from '@/types';
-import type { FilingReadyMsg, FlagResultsMsg } from '@/messages/types';
+import type {
+  FilingReadyMsg,
+  FlagResultsMsg,
+  AnalyzePageMsg,
+  AnalyzePageResponse,
+} from '@/messages/types';
+import { isLowConfidenceGeneric } from '@/content/ingest/detect';
+import { setFlags as setFlagOverlayPref } from './overlayPrefs';
 import { SummaryPanel } from './SummaryPanel';
 import { SentimentPanel } from './SentimentPanel';
 import { FlagPanel } from './FlagPanel';
@@ -55,6 +62,22 @@ function fmtDate(iso?: string): string | null {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
+function analyzeFailCopy(response: AnalyzePageResponse | undefined): string {
+  if (response && !response.ok) {
+    switch (response.reason) {
+      case 'unsupported_url':
+        return "This page can't be analyzed — browser pages, the Chrome Web Store, and local files (including PDFs) aren't supported.";
+      case 'no_permission':
+        return 'Chrome needs a fresh grant — click the FilingLens toolbar icon while on the page you want to analyze, then try again.';
+      case 'no_tab':
+        return "Couldn't find the current tab — switch to the page you want to analyze and try again.";
+      default:
+        return `Analysis failed: ${response.error ?? 'unknown error'}`;
+    }
+  }
+  return 'Analysis failed: no response from the extension background.';
 }
 
 // ── header ────────────────────────────────────────────────────────────────────
@@ -147,15 +170,48 @@ function TabBar({
 
 // ── no-filing state (capabilities + privacy) ──────────────────────────────────
 
-function NoFiling({ caps }: { caps: ReturnType<typeof useCapabilities>['caps'] }) {
+function NoFiling({
+  caps,
+  analyzing,
+  analyzeError,
+  onAnalyze,
+}: {
+  caps: ReturnType<typeof useCapabilities>['caps'];
+  analyzing: boolean;
+  analyzeError: string | null;
+  onAnalyze: () => void;
+}) {
   return (
     <div className="flex flex-col gap-4">
       <EmptyState
         title="No filing open"
         body={
-          <>Open a 10-K, 10-Q, 8-K, 20-F, S-1, or proxy on EDGAR, then reopen this panel to analyze it.</>
+          <>
+            Open a 10-K, 10-Q, 8-K, 20-F, S-1, or proxy on EDGAR — or use{' '}
+            <span className="font-medium text-zinc-400">Analyze this page</span> on a company IR
+            page or other financial document. PDF reports aren&rsquo;t supported yet.
+          </>
         }
       />
+      <button
+        onClick={onAnalyze}
+        disabled={analyzing}
+        className="flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-sky-500 disabled:cursor-default disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400"
+      >
+        {analyzing ? (
+          <>
+            <Spinner />
+            Analyzing page…
+          </>
+        ) : (
+          'Analyze this page'
+        )}
+      </button>
+      {analyzeError && (
+        <Banner tone="warn" icon="⚠">
+          {analyzeError}
+        </Banner>
+      )}
       {caps && (
         <section className="rounded-xl bg-zinc-900 p-4 ring-1 ring-zinc-800">
           <p className="mb-3 text-[10px] font-medium uppercase tracking-widest text-zinc-500">On-device capabilities</p>
@@ -204,6 +260,46 @@ export default function App() {
     chrome.storage.local.set({ [ONBOARDED_KEY]: true }).catch(() => {});
   }, []);
 
+  // On-demand "Analyze this page" (non-EDGAR pages). FILING_READY resolves the
+  // pending state; a timeout catches pages where ingestion found nothing.
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const analyzeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearAnalyzeTimer = useCallback(() => {
+    if (analyzeTimer.current !== null) {
+      clearTimeout(analyzeTimer.current);
+      analyzeTimer.current = null;
+    }
+  }, []);
+
+  const startAnalyze = useCallback(async () => {
+    setAnalyzeError(null);
+    setAnalyzing(true);
+    clearAnalyzeTimer();
+    let response: AnalyzePageResponse | undefined;
+    try {
+      const msg: AnalyzePageMsg = { target: 'sw', type: 'ANALYZE_PAGE' };
+      response = (await chrome.runtime.sendMessage(msg)) as AnalyzePageResponse | undefined;
+    } catch (err) {
+      setAnalyzing(false);
+      setAnalyzeError(`Couldn't reach the extension background: ${String(err)}`);
+      return;
+    }
+    if (!response?.ok) {
+      setAnalyzing(false);
+      setAnalyzeError(analyzeFailCopy(response));
+      return;
+    }
+    // Injected — wait for FILING_READY (handled by the message listener).
+    analyzeTimer.current = setTimeout(() => {
+      setAnalyzing(false);
+      setAnalyzeError(
+        "Couldn't extract enough readable text from this page to analyze.",
+      );
+    }, 10_000);
+  }, [clearAnalyzeTimer]);
+
   // Subscribe to FILING_READY + FLAG_RESULTS; recover from session storage on open.
   useEffect(() => {
     const listener = (rawMsg: unknown) => {
@@ -213,6 +309,10 @@ export default function App() {
         const m = msg as FilingReadyMsg;
         setCurrentDoc(m.model);
         setCurrentFlags([]);
+        // Resolve a pending "Analyze this page" request.
+        clearAnalyzeTimer();
+        setAnalyzing(false);
+        setAnalyzeError(null);
       }
       if (msg.type === 'FLAG_RESULTS') {
         setCurrentFlags((msg as FlagResultsMsg).flags);
@@ -238,7 +338,7 @@ export default function App() {
       .catch(console.warn);
 
     return () => chrome.runtime.onMessage.removeListener(listener);
-  }, []);
+  }, [clearAnalyzeTimer]);
 
   const tier = caps?.generationTier ?? null;
 
@@ -274,6 +374,38 @@ export default function App() {
                 animate={{ opacity: 1 }}
                 className="flex flex-col gap-3"
               >
+                {/* The panel can outlive the analyzed page (session-storage recovery),
+                    so the on-demand entry point must stay reachable here too. */}
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-[10px] text-zinc-600">
+                    On a different page now? Analysis below is for the last document.
+                  </p>
+                  <button
+                    onClick={() => void startAnalyze()}
+                    disabled={analyzing}
+                    className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium text-sky-400 transition hover:bg-zinc-800 hover:text-sky-300 disabled:cursor-default disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+                  >
+                    {analyzing ? 'Analyzing…' : 'Analyze this page'}
+                  </button>
+                </div>
+                {analyzeError && (
+                  <Banner tone="warn" icon="⚠">
+                    {analyzeError}
+                  </Banner>
+                )}
+                {isLowConfidenceGeneric(currentDoc) && (
+                  <Banner tone="warn" icon="⚠">
+                    <span className="font-semibold">This page doesn&rsquo;t look like an SEC filing</span>{' '}
+                    — analysis may be unreliable. On-page flag highlights are off;{' '}
+                    <button
+                      onClick={() => setFlagOverlayPref(true)}
+                      className="font-medium text-amber-200 underline decoration-amber-400/50 underline-offset-2 transition hover:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+                    >
+                      show them anyway
+                    </button>
+                    .
+                  </Banner>
+                )}
                 <SectionNavigator doc={currentDoc} />
                 <OverlayControls />
                 <TabBar active={activeTab} onSelect={setActiveTab} flagCount={currentFlags.length} />
@@ -323,7 +455,12 @@ export default function App() {
               </motion.div>
             ) : (
               <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                <NoFiling caps={caps} />
+                <NoFiling
+                  caps={caps}
+                  analyzing={analyzing}
+                  analyzeError={analyzeError}
+                  onAnalyze={() => void startAnalyze()}
+                />
               </motion.div>
             )}
           </AnimatePresence>

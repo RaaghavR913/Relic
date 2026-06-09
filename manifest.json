@@ -7,7 +7,8 @@
     "storage",
     "sidePanel",
     "activeTab",
-    "offscreen"
+    "offscreen",
+    "scripting"
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://*.sec.gov"

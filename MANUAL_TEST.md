@@ -164,3 +164,31 @@ exercising all tabs:
 - [ ] The only requests are: (a) EDGAR document/submissions fetches, (b) one-time
       Hugging Face encoder-model downloads, (c) no analysis/filing-text POSTs anywhere.
 - [ ] No request body contains filing text, questions, answers, or derived analysis.
+
+---
+
+## 8. On-demand "Analyze this page" (non-EDGAR)
+
+> EDGAR keeps auto-analyzing via manifest content scripts. Everything else is
+> user-invoked: the toolbar click grants `activeTab`, and the panel button asks the
+> service worker to inject the same content script via `chrome.scripting`.
+
+- [ ] **EDGAR regression:** open a 10-K on sec.gov → ingestion, flags, and the panel
+      work exactly as before (no behavior change on `*.sec.gov`).
+- [ ] **IR press release:** open a company IR news page (e.g. an
+      `investor.{company}.com` press release) → click the toolbar icon → panel shows
+      **No filing open** with an **Analyze this page** button → click it →
+      panel renders results with a ⚠ "doesn't look like an SEC filing" banner;
+      flag underlines are NOT painted on the page.
+- [ ] **Opt-in flags:** click **show them anyway** in the banner → flag underlines
+      appear on the page; the Flags overlay toggle reflects the state.
+- [ ] **IR-hosted real filing:** open an HTML 10-K/10-Q hosted off-EDGAR → analyze →
+      type is detected from text, NO warning banner, sections segment normally;
+      **Changes** reports no prior filing (no CIK) rather than erroring.
+- [ ] **Unsupported page:** open `chrome://version`, open the panel, click
+      **Analyze this page** → friendly "can't be analyzed" message, no crash.
+- [ ] **Double injection:** click **Analyze this page** twice on the same page →
+      exactly one `[FilingLens] ingested …` log in the page console; no duplicate
+      highlights or listeners.
+- [ ] **Privacy invariant:** DevTools Network on an analyzed IR page shows NO new
+      outbound requests from the extension (ingestion is DOM-only).

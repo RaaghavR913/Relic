@@ -33,14 +33,22 @@ import type {
   RedlineProgressMsg,
   RedlineStage,
   RedlinePriorInfo,
+  AnalyzePageResponse,
 } from '@/messages/types';
 import { RateLimitedQueue, fetchEdgarText } from './edgarQueue';
 import { resolvePriorFiling } from './resolvePrior';
+import { classifyInjectability } from './inject';
 
 // ── side panel setup ──────────────────────────────────────────────────────────
 
 chrome.sidePanel
   .setPanelBehavior({ openPanelOnActionClick: true })
+  .catch(console.error);
+
+// Let the content script write filing models/flags to chrome.storage.session
+// (MV3 default restricts session storage to trusted contexts only).
+chrome.storage.session
+  .setAccessLevel({ accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS' })
   .catch(console.error);
 
 // ── ensureOffscreen ───────────────────────────────────────────────────────────
@@ -169,6 +177,52 @@ async function handleComputeRedline(m: ComputeRedlineMsg): Promise<RedlineRespon
   return forwardToOffscreen<RedlineResponse>(fwd);
 }
 
+// ── on-demand content-script injection ("Analyze this page") ─────────────────
+
+/** Built content-script bundle — the path inside the packed extension. */
+const CONTENT_SCRIPT_FILE = 'src/content/index.js';
+
+/**
+ * Inject the content script into the active tab. Authorized by the activeTab
+ * grant from the user's toolbar click; no broad host permissions involved.
+ * The content script's own re-injection guard makes a duplicate call harmless.
+ */
+async function handleAnalyzePage(): Promise<AnalyzePageResponse> {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tab = tabs[0];
+  if (tab?.id === undefined) {
+    return { ok: false, reason: 'no_tab' };
+  }
+
+  // Without the "tabs" permission, tab.url is only populated when activeTab
+  // has been granted for this tab — its absence means the grant is missing.
+  if (!tab.url) {
+    return { ok: false, reason: 'no_permission' };
+  }
+
+  const injectability = classifyInjectability(tab.url);
+  if (injectability === 'unsupported') {
+    return { ok: false, reason: 'unsupported_url' };
+  }
+
+  // On auto hosts the manifest script already ran; injecting again is harmless
+  // (the content script's guard re-broadcasts FILING_READY instead of
+  // re-ingesting), and it resyncs a side panel that missed the original event.
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: [CONTENT_SCRIPT_FILE],
+    });
+    return { ok: true, status: injectability === 'auto_host' ? 'already_active' : 'injected' };
+  } catch (err) {
+    const message = String(err);
+    if (/cannot access|cannot be scripted|missing host permission/i.test(message)) {
+      return { ok: false, reason: 'no_permission', error: message };
+    }
+    return { ok: false, reason: 'error', error: message };
+  }
+}
+
 // ── message router ────────────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener(
@@ -273,6 +327,16 @@ chrome.runtime.onMessage.addListener(
       handleComputeRedline(m)
         .then(sendResponse)
         .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }));
+      return true;
+    }
+
+    // ── ANALYZE_PAGE — inject content script into the active tab on demand ──
+    if (msg.type === 'ANALYZE_PAGE') {
+      handleAnalyzePage()
+        .then(sendResponse)
+        .catch((err: unknown) =>
+          sendResponse({ ok: false, reason: 'error', error: String(err) } satisfies AnalyzePageResponse),
+        );
       return true;
     }
 

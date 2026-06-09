@@ -41,6 +41,34 @@ export interface ClearHighlightsMsg {
   type: 'CLEAR_HIGHLIGHTS';
 }
 
+/** Inject the content script into the active tab (on-demand "Analyze this page"). */
+export interface AnalyzePageMsg {
+  target: 'sw';
+  type: 'ANALYZE_PAGE';
+}
+
+export type AnalyzePageFailReason =
+  /** Browser UI, Web Store, local files — Chrome forbids injection. */
+  | 'unsupported_url'
+  /** activeTab grant missing/expired — user must click the toolbar icon on the page. */
+  | 'no_permission'
+  /** No active tab could be resolved. */
+  | 'no_tab'
+  /** Unexpected executeScript failure. */
+  | 'error';
+
+export interface AnalyzePageOkResponse {
+  ok: true;
+  /** 'already_active' — manifest content script already runs on this host. */
+  status: 'injected' | 'already_active';
+}
+export interface AnalyzePageErrResponse {
+  ok: false;
+  reason: AnalyzePageFailReason;
+  error?: string;
+}
+export type AnalyzePageResponse = AnalyzePageOkResponse | AnalyzePageErrResponse;
+
 // ── Service Worker → Offscreen ────────────────────────────────────────────────
 
 export interface OffscreenBuildIndexMsg {
@@ -448,6 +476,12 @@ export interface ContentSetFlagOverlayMsg {
   target: 'content';
   type: 'SET_FLAG_OVERLAY';
   enabled: boolean;
+  /**
+   * True when the user deliberately toggled flags on (overlay switch / banner
+   * action), as opposed to the panel's passive pref sync on load. On
+   * low-confidence generic pages, enabling requires an explicit gesture.
+   */
+  explicit?: boolean;
 }
 
 /**
