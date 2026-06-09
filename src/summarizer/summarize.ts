@@ -62,6 +62,8 @@ interface SummarizerCtor {
     type?: string;
     format?: string;
     length?: string;
+    outputLanguage?: string;
+    expectedInputLanguages?: string[];
     monitor?: (m: SummarizerMonitor) => void;
     signal?: AbortSignal;
   }): Promise<SummarizerInstance>;
@@ -172,6 +174,11 @@ async function runBuiltin(
     type: 'key-points',
     format: 'markdown',
     length,
+    // SEC filings are English. Declaring the I/O languages satisfies Chrome's
+    // Summarizer output-safety attestation and silences the "No output language
+    // was specified" warning (surfaced during live extension testing).
+    outputLanguage: 'en',
+    expectedInputLanguages: ['en'],
     monitor,
     ...(sig !== undefined ? { signal: sig } : {}),
   });
