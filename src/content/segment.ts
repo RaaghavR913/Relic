@@ -250,7 +250,6 @@ export function segmentSections(
     case '20-F':  return segmentByItems(text, ITEMS_20F, tableRanges);
     case 'S-1':   return segmentByTitlePatterns(text, SECTIONS_S1, tableRanges);
     case 'DEF 14A': return segmentByTitlePatterns(text, SECTIONS_DEF14A, tableRanges);
-    case 'TRANSCRIPT': return segmentTranscriptStub(text, tableRanges);
     default: return segmentFallback(text, tableRanges);
   }
 }
@@ -414,21 +413,6 @@ function makeSection(
   }
 
   return section;
-}
-
-function segmentTranscriptStub(
-  text: string,
-  tableRanges: ReadonlyArray<[number, number]>,
-): Section[] {
-  // Transcript segmentation is handled by transcript.ts; return a single catch-all
-  return [
-    makeSection(
-      { id: 'transcript_body', label: 'Transcript', order: 1 },
-      text.trim(),
-      [0, text.length],
-      tableRanges,
-    ),
-  ];
 }
 
 function segmentFallback(

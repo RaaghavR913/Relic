@@ -1,13 +1,12 @@
 /**
  * FilingLens — Session 1 section segmentation tests.
  *
- * Covers the item-number segmenter (10-K / 10-Q / 8-K), the title-pattern segmenter
- * (S-1 / DEF 14A), TOC de-duplication, and the transcript path.
+ * Covers the item-number segmenter (10-K / 10-Q / 8-K / 20-F), the title-pattern
+ * segmenter (S-1 / DEF 14A), and TOC de-duplication.
  */
 
 import { describe, it, expect } from 'vitest';
 import { segmentSections } from '@/content/segment';
-import { segmentTranscript, isTranscript } from '@/content/transcript';
 
 describe('10-K item segmentation', () => {
   it('segments standard ITEM headers into canonical sections', () => {
@@ -106,44 +105,6 @@ describe('DEF 14A title-pattern segmentation', () => {
     expect(ids).toContain('proxy_notice');
     expect(ids).toContain('proxy_prop1_election');
     expect(ids).toContain('proxy_exec_compensation');
-  });
-});
-
-describe('transcript path', () => {
-  const transcript = [
-    'Acme Corp Q3 2024 Earnings Call',
-    '',
-    'Operator: Good morning, ladies and gentlemen. Welcome to the Acme earnings call.',
-    '',
-    'Jane CEO: Thank you, operator. We had a strong quarter with revenue up 20%.',
-    '',
-    'QUESTIONS AND ANSWERS',
-    '',
-    'Q - John Analyst, Big Bank: Can you talk about margins?',
-    'A - Jane CEO: Margins expanded 200 basis points.',
-    'Q - Sara Analyst, Other Firm: What about guidance?',
-    'A - Bob CFO: We are raising full-year guidance.',
-  ].join('\n');
-
-  it('isTranscript detects an earnings call', () => {
-    expect(isTranscript(transcript)).toBe(true);
-    expect(isTranscript('ITEM 1. BUSINESS\nWe make things.')).toBe(false);
-  });
-
-  it('segmentTranscript splits prepared remarks and Q&A blocks', () => {
-    const sections = segmentTranscript(transcript, []);
-    const ids = sections.map(s => s.id);
-    expect(ids).toContain('transcript_prepared_remarks');
-    // At least one Q and one A block.
-    expect(ids.some(id => id.startsWith('transcript_qa_q_'))).toBe(true);
-    expect(ids.some(id => id.startsWith('transcript_qa_a_'))).toBe(true);
-
-    // charRanges must be valid slices of the text.
-    for (const s of sections) {
-      expect(s.charRange[0]).toBeGreaterThanOrEqual(0);
-      expect(s.charRange[1]).toBeLessThanOrEqual(transcript.length);
-      expect(s.charRange[1]).toBeGreaterThan(s.charRange[0]);
-    }
   });
 });
 

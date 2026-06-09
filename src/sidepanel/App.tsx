@@ -153,7 +153,7 @@ function NoFiling({ caps }: { caps: ReturnType<typeof useCapabilities>['caps'] }
       <EmptyState
         title="No filing open"
         body={
-          <>Open a 10-K, 10-Q, 8-K, S-1, proxy, or earnings transcript on EDGAR or an IR page, then reopen this panel to analyze it.</>
+          <>Open a 10-K, 10-Q, 8-K, 20-F, S-1, or proxy on EDGAR, then reopen this panel to analyze it.</>
         }
       />
       {caps && (

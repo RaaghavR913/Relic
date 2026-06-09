@@ -13,9 +13,7 @@
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://*.sec.gov"
   },
   "host_permissions": [
-    "https://*.sec.gov/*",
-    "https://*.fool.com/*",
-    "https://*.seekingalpha.com/*"
+    "https://*.sec.gov/*"
   ],
   "background": {
     "service_worker": "src/background/service-worker.ts",
@@ -24,9 +22,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://*.sec.gov/*",
-        "https://*.fool.com/*",
-        "https://*.seekingalpha.com/*"
+        "https://*.sec.gov/*"
       ],
       "js": ["src/content/index.ts"],
       "run_at": "document_idle",
@@ -53,9 +49,7 @@
     {
       "resources": ["assets/*", "wasm/*", "models/*"],
       "matches": [
-        "https://*.sec.gov/*",
-        "https://*.fool.com/*",
-        "https://*.seekingalpha.com/*"
+        "https://*.sec.gov/*"
       ]
     }
   ]

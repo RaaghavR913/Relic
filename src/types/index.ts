@@ -10,13 +10,12 @@ export type FilingType =
   | '20-F'
   | 'S-1'
   | 'DEF 14A'
-  | 'TRANSCRIPT'
   | 'UNKNOWN';
 
 export interface DocumentModel {
   source: {
     url: string;
-    host: 'edgar' | 'ir' | 'transcript';
+    host: 'edgar' | 'ir';
     accessionNo?: string;
     cik?: string;
   };

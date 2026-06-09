@@ -9,12 +9,12 @@ export interface DetectFilingTypeOptions {
   text: string;
   doc?: Document;
   url?: string;
-  host?: 'edgar' | 'ir' | 'transcript';
+  host?: 'edgar' | 'ir';
 }
 
 /**
  * Confidence of a filing-type detection:
- *   'high'   — authoritative XBRL dei:DocumentType fact (or known transcript host)
+ *   'high'   — authoritative XBRL dei:DocumentType fact
  *   'medium' — matched the EDGAR URL path pattern
  *   'low'    — fell back to a first-page text heuristic (or UNKNOWN)
  */
@@ -64,19 +64,7 @@ function heuristicFromText(head: string): FilingType {
   if (/ANNUAL REPORT\s*(?:ON\s*)?FORM\s*20-F|FORM\s+20-F\b/.test(h)) return '20-F';
   if (/NOTICE OF ANNUAL|PROXY STATEMENT|DEF\s*14A/.test(h)) return 'DEF 14A';
   if (/REGISTRATION STATEMENT|(?:FORM\s+)?S-1/.test(h)) return 'S-1';
-  if (isTranscriptHead(h)) return 'TRANSCRIPT';
   return 'UNKNOWN';
-}
-
-function isTranscriptHead(head: string): boolean {
-  let score = 0;
-  const h = head.slice(0, 6000);
-  if (/\bOPERATOR\b/m.test(h)) score += 3;
-  if (/EARNINGS\s+(?:CALL|CONFERENCE\s+CALL)/im.test(h)) score += 3;
-  if (/\bPREPARED\s+REMARKS\b/im.test(h)) score += 2;
-  if (/QUESTIONS?\s+AND\s+ANSWERS?/im.test(h)) score += 2;
-  if (/Q\s*[-–]\s*[A-Z]/m.test(h)) score += 1;
-  return score >= 4;
 }
 
 /** Detect the filing type along with a confidence signal for its source. */
@@ -84,10 +72,7 @@ export function detectFilingTypeWithConfidence({
   text,
   doc,
   url,
-  host,
 }: DetectFilingTypeOptions): FilingTypeDetection {
-  if (host === 'transcript') return { type: 'TRANSCRIPT', confidence: 'high' };
-
   // 1. XBRL dei:DocumentType — highest priority
   if (doc) {
     const xbrl =

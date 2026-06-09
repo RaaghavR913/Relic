@@ -13,20 +13,12 @@ import { buildNormalizedText } from './position-map.js';
 import { detectFilingTypeWithConfidence } from './detect.js';
 import { extractCompanyMeta } from './meta.js';
 import { segmentSections } from './segment.js';
-import { segmentTranscript, isTranscript } from '../transcript.js';
 
-const TRANSCRIPT_HOSTS = [
-  /(^|\.)fool\.com$/i,
-  /(^|\.)seekingalpha\.com$/i,
-  /(^|\.)motleyfool\.com$/i,
-];
-
-function classifyHost(url: string | undefined): 'edgar' | 'ir' | 'transcript' {
+function classifyHost(url: string | undefined): 'edgar' | 'ir' {
   if (!url) return 'ir';
   let host = '';
   try { host = new URL(url).hostname; } catch { return 'ir'; }
   if (/(?:^|\.)sec\.gov$/i.test(host)) return 'edgar';
-  if (TRANSCRIPT_HOSTS.some((re) => re.test(host))) return 'transcript';
   return 'ir';
 }
 
@@ -52,20 +44,10 @@ export function ingestDocument(opts: IngestOptions = {}): IngestResult {
   });
   const filingType: FilingType = detection.type;
 
-  const useTranscript = filingType === 'TRANSCRIPT' || host === 'transcript' || isTranscript(text);
-  const sections = useTranscript
-    ? segmentTranscript(text, tableRanges)
-    : segmentSections(text, { filingType, tableRanges });
+  const sections = segmentSections(text, { filingType, tableRanges });
 
-  // Confidence for the FINAL filing type. A text-heuristic transcript override (detected
-  // only via isTranscript on the body, not the host or an explicit TRANSCRIPT type) is low
-  // confidence; a known transcript host is high.
   const filingTypeConfidence: NonNullable<DocumentModel['filingTypeConfidence']> =
-    host === 'transcript'
-      ? 'high'
-      : useTranscript && detection.type !== 'TRANSCRIPT'
-        ? 'low'
-        : detection.confidence;
+    detection.confidence;
 
   const meta = extractCompanyMeta(picked.document, url);
 
@@ -78,7 +60,7 @@ export function ingestDocument(opts: IngestOptions = {}): IngestResult {
     },
     ...(meta.ticker ? { ticker: meta.ticker } : {}),
     ...(meta.companyName ? { companyName: meta.companyName } : {}),
-    filingType: useTranscript ? 'TRANSCRIPT' : filingType,
+    filingType,
     filingTypeConfidence,
     ...(meta.periodOfReport ? { periodOfReport: meta.periodOfReport } : {}),
     ...(meta.filedAt ? { filedAt: meta.filedAt } : {}),
@@ -95,4 +77,3 @@ export { buildNormalizedText, DomPositionMap } from './position-map.js';
 export { detectFilingType } from './detect.js';
 export { extractCompanyMeta } from './meta.js';
 export { segmentSections } from './segment.js';
-export { segmentTranscript } from '../transcript.js';
