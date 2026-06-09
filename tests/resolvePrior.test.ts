@@ -201,6 +201,33 @@ describe('resolvePriorFiling', () => {
     });
     expect(prior).toBeNull();
   });
+
+  // L4: `filings.recent` entirely ABSENT (not merely no-match). The prior lives
+  // only in the continuation file — the resolver must still page into it rather
+  // than returning null on the missing `recent`.
+  it('falls through to the continuation when filings.recent is absent entirely', async () => {
+    const noRecent = JSON.stringify({
+      name: 'Paged Filer Inc.',
+      cik: '1000000',
+      filings: {
+        // no `recent` key at all
+        files: [{ name: 'CIK0001000000-submissions-001.json' }],
+      },
+    });
+    const urls: string[] = [];
+    const fetchText = async (url: string) => {
+      urls.push(url);
+      return url.includes('submissions-001') ? continuationJson() : noRecent;
+    };
+
+    const prior = await resolvePriorFiling('1000000', '10-K', '2024-09-28', { fetchText });
+
+    expect(prior).not.toBeNull();
+    expect(prior!.accessionNo).toBe('0001000000-23-000040'); // FY2023 from the continuation
+    expect(prior!.reportDate).toBe('2023-09-30');
+    // The continuation was fetched through the same injected (rate-limited) fetchText.
+    expect(urls).toContain('https://data.sec.gov/submissions/CIK0001000000-submissions-001.json');
+  });
 });
 
 // ── RateLimitedQueue ─────────────────────────────────────────────────────────────

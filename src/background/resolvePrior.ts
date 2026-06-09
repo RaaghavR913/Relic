@@ -158,10 +158,12 @@ export async function resolvePriorFiling(
     throw new Error('Could not parse EDGAR submissions JSON');
   }
 
+  // `filings.recent` may be entirely absent (some submission JSONs page ALL
+  // filings into continuation files). Treat that the same as "present but no
+  // match" so the filings.files continuation below still runs — returning null
+  // here would miss a prior that only exists in the continuation (L4).
   const recent = data.filings?.recent;
-  if (!recent) return null;
-
-  const recentRows = rowsOf(recent);
+  const recentRows = recent ? rowsOf(recent) : [];
   let prior = selectPrior(recentRows, filingType, periodOfReport);
 
   // `filings.recent` only holds the most recent ~1000 filings. For a company
