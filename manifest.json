@@ -1,0 +1,63 @@
+{
+  "manifest_version": 3,
+  "name": "FilingLens",
+  "version": "0.2.0",
+  "description": "On-device SEC filing analysis — summaries, sentiment, redlines, and Q&A, all private.",
+  "permissions": [
+    "storage",
+    "sidePanel",
+    "activeTab",
+    "tabs",
+    "offscreen"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://*.sec.gov"
+  },
+  "host_permissions": [
+    "https://*.sec.gov/*",
+    "https://*.fool.com/*",
+    "https://*.seekingalpha.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.sec.gov/*",
+        "https://*.fool.com/*",
+        "https://*.seekingalpha.com/*"
+      ],
+      "js": ["src/content/index.ts"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "side_panel": {
+    "default_path": "src/sidepanel/index.html"
+  },
+  "action": {
+    "default_title": "FilingLens",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["assets/*", "wasm/*", "models/*"],
+      "matches": [
+        "https://*.sec.gov/*",
+        "https://*.fool.com/*",
+        "https://*.seekingalpha.com/*"
+      ]
+    }
+  ]
+}
