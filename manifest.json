@@ -7,7 +7,6 @@
     "storage",
     "sidePanel",
     "activeTab",
-    "tabs",
     "offscreen"
   ],
   "content_security_policy": {
