@@ -121,7 +121,19 @@ export default defineConfig(({ mode }) => ({
     ...(mode !== 'test'
       ? [
           webExtension({
-            manifest: './manifest.json',
+            // Single source of truth for the release version: package.json. The
+            // shipped manifest's `version` is always overwritten with pkg.version
+            // at build time, so the two can't silently drift (L3). manifest.json's
+            // own version field is just a default for tooling that reads it raw.
+            manifest: () => {
+              const base = JSON.parse(
+                fs.readFileSync(path.resolve(__dirname, 'manifest.json'), 'utf8'),
+              ) as Record<string, unknown>;
+              const pkg = JSON.parse(
+                fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8'),
+              ) as { version: string };
+              return { ...base, version: pkg.version };
+            },
             // Bundle the offscreen document alongside the extension.
             additionalInputs: ['src/offscreen/offscreen.html'],
           }),
