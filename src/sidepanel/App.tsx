@@ -69,7 +69,7 @@ function Header({ doc, tier }: { doc: DocumentModel | null; tier: GenerationTier
         </span>
         <span className="text-sm font-semibold tracking-tight">FilingLens</span>
         {tier && <span className="ml-1"><TierBadge tier={tier} /></span>}
-        <span className="ml-auto text-[10px] text-zinc-600">v0.7</span>
+        <span className="ml-auto text-[10px] text-zinc-600">v{chrome.runtime.getManifest().version}</span>
       </div>
       {doc && (
         <div className="mt-2">
