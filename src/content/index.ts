@@ -19,6 +19,7 @@
 
 import { ingestDocument } from './ingest';
 import { isLowConfidenceGeneric } from './ingest/detect';
+import { waitForContent } from './ingest/ready';
 import type { IngestResult, LanguageFlag, SentenceSentiment } from '@/types';
 import {
   HighlightController,
@@ -89,6 +90,12 @@ let _flagsVisible     = true;
 let _flagOptInRequired = false;
 
 async function run(): Promise<FilingLensDevApi> {
+  // On-demand injection can fire before a client-rendered (SPA) page has its
+  // article text in the DOM. Wait for content to be present/stable first; this
+  // resolves immediately on server-rendered pages (EDGAR, static), so it adds
+  // no delay there.
+  await waitForContent();
+
   const result = ingestDocument();
   const { model, positionMap } = result;
 
@@ -355,9 +362,16 @@ function shouldIngestThisFrame(): boolean {
 }
 
 if (ALREADY_INJECTED) {
-  // Second delivery (e.g. "Analyze this page" clicked twice, or on a page that
-  // already ran the manifest script): just resync the side panel.
-  FL_GLOBAL.__filingLensRebroadcast?.();
+  // Second delivery (e.g. "Analyze this page" clicked twice, or a page that
+  // already ran the manifest script). If the first attempt produced results,
+  // just resync the side panel. If it did NOT (rebroadcast unset — e.g. a slow
+  // SPA had no content yet on the first try), re-run ingestion now that the page
+  // may have rendered. run() adds no listeners, so a re-run is safe.
+  if (FL_GLOBAL.__filingLensRebroadcast) {
+    FL_GLOBAL.__filingLensRebroadcast();
+  } else {
+    run().catch((err) => console.error('[FilingLens] re-ingestion failed', err));
+  }
 } else if (shouldIngestThisFrame()) {
   run().then((api) => {
     (globalThis as unknown as { __FilingLens?: FilingLensDevApi }).__FilingLens = api;

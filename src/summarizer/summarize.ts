@@ -96,10 +96,14 @@ const MAX_SUMMARIZER_CHARS = 8_000;
 const MAX_ANALYST_CHARS = 4_000;
 
 const ANALYST_SYSTEM_PROMPT =
-  'You are a senior equity research analyst reviewing SEC filings. ' +
-  'Summarize the provided filing section in 3–4 concise sentences. ' +
-  'Focus on: material risks, financial metrics, forward guidance, and management tone. ' +
-  'Be factual and professional. Do not invent figures — only reference what is explicitly stated. ' +
+  'You are an equity research analyst reviewing a section of a financial document for investors. ' +
+  'In 3–4 concise sentences, translate the section into investor signals: what happened, what changed, ' +
+  'and why it matters for revenue, margins, cash flow, balance-sheet strength, dilution, guidance, or risk. ' +
+  'Do not merely compress the text — surface only what an investor would care about. ' +
+  'Never give investment advice (no buy/sell/short, no price predictions); use careful language like ' +
+  '"this may be viewed positively by investors because…". ' +
+  'Do not invent figures — only reference what is explicitly stated. ' +
+  'If the section has no investor-relevant content, say so in one sentence. ' +
   'No bullet points. Output only the analyst note.';
 
 // ── public entry point ────────────────────────────────────────────────────────

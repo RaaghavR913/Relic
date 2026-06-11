@@ -1,6 +1,6 @@
 # FilingLens
 
-On-device SEC filing analysis for Chrome. FilingLens runs entirely on your machine — summaries, sentiment, language flags, year-over-year redlines, and ask-the-filing Q&A never leave your device.
+On-device SEC filing analysis for Chrome. FilingLens runs entirely on your machine — summaries, sentiment, language flags, and year-over-year redlines never leave your device.
 
 Open any filing on [EDGAR](https://www.sec.gov/edgar) and FilingLens activates in the side panel with overlays painted directly on the filing page.
 
@@ -8,11 +8,11 @@ Open any filing on [EDGAR](https://www.sec.gov/edgar) and FilingLens activates i
 
 | Tab | What it does |
 |-----|--------------|
+| **Analyst** | Investor-focused document analysis: snapshot read (Bullish/Bearish/Mixed/Neutral) with 1–5 scores, top takeaways, what changed vs the prior filing, revenue/margin/cash-flow/share impact, risk signals, management narrative check, bull vs bear case, and a watch list — generated stage-by-stage on-device with evidence verified against the source text |
 | **Summary** | Plain-English section summaries, with analyst-style notes when Chrome's built-in AI is available |
 | **Sentiment** | Sentence-level FinBERT sentiment heatmap overlaid on the filing |
 | **Flags** | Highlights hedging, uncertainty, litigious, and negative language via lexicon + LM dictionary matching |
 | **Changes** | Year-over-year redline for comparable prior filings (risk factors, MD&A, and more) |
-| **Ask** | Retrieval-augmented Q&A over the current filing — synthesized answers or cited passages depending on device tier |
 
 Additional UI: section navigator, master overlay toggles, first-run onboarding, and jump-to-source highlighting for every insight.
 
@@ -35,7 +35,7 @@ EDGAR page
 content script ──► ingest + positionMap + CSS Custom Highlight overlays
     │
     ▼
-side panel (React) ──► Summary · Sentiment · Flags · Changes · Ask tabs
+side panel (React) ──► Summary · Sentiment · Flags · Changes tabs
     │
     ▼
 service worker ──► message router, EDGAR queue, offscreen document lifecycle
@@ -46,8 +46,8 @@ offscreen document ──► ONNX encoder/sentiment Web Workers (FinBERT + mxbai
 
 **Generation tiers.** At startup, FilingLens probes Chrome's built-in AI APIs (Summarizer, Prompt API / Gemini Nano) and classifies the device as `builtin` or `extractive`:
 
-- **builtin** — Chrome Summarizer + Prompt API for summaries, analyst notes, change narratives, and synthesized Q&A answers.
-- **extractive** — embedding-centrality sentence selection for summaries and passage-based Q&A; all other analysis (sentiment, flags, redline) is identical.
+- **builtin** — Chrome Summarizer + Prompt API for summaries, analyst notes, and change narratives.
+- **extractive** — embedding-centrality sentence selection for summaries; all other analysis (sentiment, flags, redline) is identical.
 
 **Highlighting.** All on-page overlays use the [CSS Custom Highlight API](https://developer.mozilla.org/en-US/docs/Web/API/CSS_Custom_Highlight_API) — 15 named, priority-stacked layers. No `<span>` injection, so XBRL interactive viewers stay intact.
 
@@ -60,15 +60,15 @@ src/
 ├── background/       # MV3 service worker — routing, EDGAR queue, offscreen lifecycle
 ├── content/          # Content script — ingestion, positionMap, highlight overlays
 │   ├── ingest/       # DOM walk, section detection, metadata extraction
-│   └── highlight/    # Sentiment, flag, redline, and Q&A citation layers
+│   └── highlight/    # Sentiment, flag, redline, and citation highlight layers
 ├── sidepanel/        # React side panel — tabs, onboarding, overlay controls
-│   └── qa/           # Retrieval client + answer synthesis
-├── offscreen/        # Offscreen document — chunking, embedding index, worker host
+├── offscreen/        # Offscreen document — embedding/sentiment worker host
 ├── workers/          # FinBERT sentiment + mxbai embedding Web Workers (ONNX)
+├── analyst/          # Investor analysis pipeline — staged Prompt API calls, evidence guards
 ├── summarizer/       # Two-tier section summarization + IndexedDB cache
 ├── redline/          # Prior-filing resolution, section alignment, diff engine
 ├── flagging/         # Lexicon + LM-dictionary language flag detection
-├── db/               # IndexedDB stores (summaries, sentiment, vectors)
+├── db/               # IndexedDB stores (summaries, sentiment)
 ├── runtime/          # Capability detection (builtin vs extractive tier)
 ├── messages/         # Typed chrome.runtime message contracts
 └── types/            # Canonical data model (DocumentModel, Section, etc.)
@@ -77,7 +77,7 @@ scripts/
 ├── fetch-models.mjs  # Download ONNX weights into models/ (build-time only)
 └── fetch-lm-dict.mjs # Download LM dictionary shards for flagging
 
-tests/                # Vitest unit tests (positionMap, redline, sentiment, QA, …)
+tests/                # Vitest unit tests (positionMap, redline, sentiment, …)
 public/icons/         # Extension icons
 ```
 
@@ -134,7 +134,7 @@ npm run dev
 npm test
 ```
 
-Tests cover core modules: `positionMap`, section segmentation, redline alignment/diff, sentiment scoring, flag detection, EDGAR queue, Q&A synthesis, and more. See `tests/` and `MANUAL_TEST.md` for the full side-panel manual test script.
+Tests cover core modules: `positionMap`, section segmentation, redline alignment/diff, sentiment scoring, flag detection, EDGAR queue, and more. See `tests/` and `MANUAL_TEST.md` for the full side-panel manual test script.
 
 ## Models
 
@@ -143,7 +143,7 @@ FilingLens bundles two quantized ONNX models (int8, ~134 MB total):
 | Model | Role |
 |-------|------|
 | `Xenova/finbert` | Sentence-level financial sentiment |
-| `mixedbread-ai/mxbai-embed-xsmall-v1` | Embedding index for extractive summaries and Q&A retrieval |
+| `mixedbread-ai/mxbai-embed-xsmall-v1` | Sentence embeddings for extractive summaries and the redline semantic pass |
 
 Weights are fetched at build time via `npm run fetch-models` and loaded from `chrome.runtime.getURL('models/…')` at runtime — no Hugging Face requests in the shipped extension.
 

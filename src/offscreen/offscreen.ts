@@ -3,9 +3,9 @@
 // ------------------------------------------------------------
 // Responsibilities:
 //   1. Encoder Web Worker lifecycle (lazy init, idle-unload).
-//   2. IndexedDB vector store (via src/db/vectorStore.ts).
-//   3. Section-aware chunking (via src/offscreen/chunker.ts).
-//   4. Cosine retrieval: embed query → dot-product scan → top-k.
+//   2. Extractive summarization (sentence-centrality ranking via embeddings).
+//   3. FinBERT sentiment classification.
+//   4. Redline diff (textual + embedding-backed semantic pass).
 //
 // The offscreen doc receives messages routed from the SW with target:'offscreen'.
 // It sends progress updates directly to side-panel listeners (target:'sidepanel')
@@ -16,13 +16,8 @@
 // ============================================================
 
 import type {
-  OffscreenBuildIndexMsg,
-  OffscreenRetrieveMsg,
   OffscreenExtractiveMsg,
   OffscreenSentimentMsg,
-  IndexResponse,
-  RetrieveResponse,
-  RetrievalResult,
   EmbedProgressMsg,
   ExtractiveResponse,
   SentimentResponse,
@@ -39,7 +34,6 @@ import type {
   AlignmentSummary,
 } from '@/messages/types';
 import type { DocumentModel, Section, SentenceSentiment, SectionDiff } from '@/types';
-import { chunkDocument, type Chunk } from './chunker';
 import { filterNonTableSentences } from './sentenceFilter';
 import {
   splitSentences,
@@ -58,13 +52,6 @@ import {
 } from '@/redline/diff';
 import { alignSections, focusAlignments } from '@/redline/align';
 import { parsePriorFiling } from '@/redline/parsePrior';
-import {
-  isIndexed,
-  recordManifest,
-  putVectors,
-  loadVectors,
-  type VectorRecord,
-} from '@/db/vectorStore';
 import { getSentimentCache, putSentimentCache } from '@/db/sentimentStore';
 
 // ── constants ─────────────────────────────────────────────────────────────────
@@ -600,124 +587,11 @@ function sendProgress(stage: EmbedProgressMsg['stage'], progress: number, detail
   chrome.runtime.sendMessage(msg).catch(() => {}); // ignore if side panel is closed
 }
 
-// ── BUILD_INDEX ───────────────────────────────────────────────────────────────
-
-async function buildIndex(doc: DocumentModel): Promise<IndexResponse> {
-  resetIdleTimer();
-
-  // Idempotency check.
-  const existing = await isIndexed(doc.rawTextHash);
-  if (existing) {
-    return { ok: true, rawTextHash: doc.rawTextHash, chunkCount: existing.chunkCount, skipped: true };
-  }
-
-  sendProgress('model_load', 0);
-
-  await ensureWorker();
-
-  sendProgress('model_load', 1);
-
-  const chunks = chunkDocument(doc);
-  if (chunks.length === 0) {
-    await recordManifest({
-      rawTextHash: doc.rawTextHash,
-      chunkCount: 0,
-      indexedAt: Date.now(),
-      modelId: MODEL_ID,
-    });
-    return { ok: true, rawTextHash: doc.rawTextHash, chunkCount: 0, skipped: false };
-  }
-
-  sendProgress('embedding', 0);
-
-  const texts = chunks.map((c) => c.text);
-  const vectors = await embedAll(texts);
-
-  sendProgress('storing', 0.5);
-
-  // Batch persist.
-  const STORE_BATCH = 64;
-  for (let i = 0; i < chunks.length; i += STORE_BATCH) {
-    const slice = chunks.slice(i, i + STORE_BATCH);
-    const records: VectorRecord[] = slice.map((chunk: Chunk, j: number) => ({
-      key: `${doc.rawTextHash}:${chunk.chunkId}`,
-      rawTextHash: doc.rawTextHash,
-      chunkId: chunk.chunkId,
-      sectionId: chunk.sectionId,
-      charRange: chunk.charRange,
-      // Transfer the buffer — the Float32Array is no longer needed in this scope.
-      vector: vectors[i + j]!.buffer as ArrayBuffer,
-      text: chunk.text,
-    }));
-    await putVectors(records);
-    sendProgress('storing', (i + slice.length) / chunks.length);
-  }
-
-  await recordManifest({
-    rawTextHash: doc.rawTextHash,
-    chunkCount: chunks.length,
-    indexedAt: Date.now(),
-    modelId: MODEL_ID,
-  });
-
-  sendProgress('complete', 1);
-  return { ok: true, rawTextHash: doc.rawTextHash, chunkCount: chunks.length, skipped: false };
-}
-
-// ── RETRIEVE ─────────────────────────────────────────────────────────────────
-
-function dotProduct(a: Float32Array, b: Float32Array): number {
-  let sum = 0;
-  const len = Math.min(a.length, b.length);
-  for (let i = 0; i < len; i++) sum += a[i]! * b[i]!;
-  return sum;
-}
-
-async function retrieve(
-  rawTextHash: string,
-  query: string,
-  k: number,
-): Promise<RetrieveResponse> {
-  resetIdleTimer();
-
-  await ensureWorker();
-
-  // Embed the query (unit-length because normalize:true in the pipeline).
-  const [queryVec] = await embedBatch([query]);
-  if (!queryVec) {
-    return { ok: false, error: 'Query embedding failed' };
-  }
-
-  const stored = await loadVectors(rawTextHash);
-  if (stored.length === 0) {
-    return { ok: false, error: `No vectors found for hash ${rawTextHash} — call BUILD_INDEX first.` };
-  }
-
-  // Linear-scan dot product (cheap CPU on offscreen main thread; no ANN index).
-  const scored = stored.map((sv) => ({
-    ...sv,
-    score: dotProduct(queryVec, sv.vector),
-  }));
-
-  scored.sort((a, b) => b.score - a.score);
-  const topK = scored.slice(0, k);
-
-  const results: RetrievalResult[] = topK.map((sv) => ({
-    chunkId: sv.chunkId,
-    sectionId: sv.sectionId,
-    charRange: sv.charRange,
-    text: sv.text,
-    score: sv.score,
-  }));
-
-  return { ok: true, results };
-}
-
 // ── EXTRACTIVE_SUMMARIZE ──────────────────────────────────────────────────────
 
 /**
  * Sentence-centrality extractive summarization for one section.
- * Reuses the same encoder worker as BUILD_INDEX — init is idempotent.
+ * The encoder worker init is idempotent and shared with the redline semantic pass.
  */
 async function extractiveSummarize(sectionText: string): Promise<ExtractiveResponse> {
   resetIdleTimer();
@@ -893,22 +767,6 @@ chrome.runtime.onMessage.addListener(
   ): boolean => {
     const msg = rawMsg as { target?: string; type?: string };
     if (msg.target !== 'offscreen') return false;
-
-    if (msg.type === 'BUILD_INDEX') {
-      const m = msg as OffscreenBuildIndexMsg;
-      buildIndex(m.doc)
-        .then(sendResponse)
-        .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }));
-      return true; // async sendResponse
-    }
-
-    if (msg.type === 'RETRIEVE') {
-      const m = msg as OffscreenRetrieveMsg;
-      retrieve(m.rawTextHash, m.query, m.k)
-        .then(sendResponse)
-        .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }));
-      return true;
-    }
 
     if (msg.type === 'EXTRACTIVE_SUMMARIZE') {
       const m = msg as OffscreenExtractiveMsg;

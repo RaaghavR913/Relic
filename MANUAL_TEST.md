@@ -1,8 +1,8 @@
 # FilingLens — Session 7 Manual Test Script
 
-Covers the unified side panel: first-run → first analyzed filing → all tabs → **Ask**
-in **both** generation tiers (`builtin` synthesized answers vs `extractive` relevant
-passages).
+Covers the unified side panel: first-run → first analyzed filing → all tabs
+(Summary · Sentiment · Flags · Changes) in **both** generation tiers (`builtin`
+vs `extractive`).
 
 ## 0. Build & load
 
@@ -68,6 +68,19 @@ HTML. (Any 10-K / 10-Q / 8-K / S-1 / DEF 14A primary doc works.)
       **Legend** disclosure with non-colour cues (underline styles + markers).
 
 ### Tabs
+- [ ] **Analyst** (default tab) — analysis auto-starts on document load.
+  - builtin tier → the stage indicator cycles (snapshot → takeaways → … → synthesis);
+    the **Investor Snapshot** card lands first (overall read chip Bullish/Bearish/
+    Mixed/Neutral, document type, confidence, key question), then sections stream in:
+    takeaways, what changed, what-this-means (revenue / margins / cash flow & balance
+    sheet / shares), risk signals, narrative check, bull vs bear, watch list,
+    plain-English explanation, and 1–5 score bars in the snapshot.
+  - Evidence quotes show a ↗ that highlights the quoted passage **on the page**.
+  - No output anywhere says "buy", "sell", or "short", or predicts the stock price.
+  - Re-opening the panel on the same filing replays the analysis instantly (cached);
+    **Regenerate** re-runs it.
+  - extractive tier → amber degraded banner; snapshot + what-changed only.
+  - Sparse docs (e.g. a Form 4) → sections show "Not enough information", no errors.
 - [ ] **Summary** — click *Summarize* on a section.
   - builtin tier → markdown key-points + a **Plain / Analyst** toggle (Analyst enabled).
   - extractive tier → key sentences as bullets, each with a ↗ jump link; the
@@ -91,44 +104,6 @@ HTML. (Any 10-K / 10-Q / 8-K / S-1 / DEF 14A primary doc works.)
       **without re-running analysis**.
 - [ ] Turn **Flags** off → page flag underlines + tooltip disappear; on → return.
 - [ ] Reload the side panel → toggle states persist.
-
----
-
-## 3. Ask — builtin tier (synthesized)
-
-Use Chrome with built-in AI available (`Built-in AI` badge in the header).
-
-1. Open the **Ask** tab.
-2. Click a suggested question (e.g. *"What are the most significant risk factors?"*)
-   or type your own and press **Ask**.
-
-- [ ] First ask shows **Preparing on-device search index** progress (encoder load +
-      embedding). Subsequent asks skip it (index cached).
-- [ ] If Gemini Nano needs downloading, a **Chrome is downloading Gemini Nano**
-      progress bar appears (Chrome-managed).
-- [ ] An **Answer** card streams tokens live (blinking caret while generating).
-- [ ] The answer contains inline **[1] [2]** citation chips; clicking one highlights
-      and scrolls to that passage **in the filing**.
-- [ ] **Sources** list shows the retrieved passages; cited ones are ring-highlighted,
-      uncited ones dimmed. Each has a ↗ **Show** deep-link.
-- [ ] **Stop** halts streaming mid-answer.
-- [ ] A "verify against the source" disclaimer shows under a completed answer.
-
----
-
-## 4. Ask — extractive tier (relevant passages)
-
-Use a browser/profile **without** built-in AI (`Extractive` badge), **or** test on a
-Chrome where `LanguageModel` is absent.
-
-1. Open the **Ask** tab. A green **positive** banner explains passages-only mode.
-2. Ask a question.
-
-- [ ] Index-build progress shows on first ask.
-- [ ] **No Answer card** is rendered (no synthesis).
-- [ ] A **Relevant passages** list appears, clearly labelled, each numbered with a
-      section label, snippet, and ↗ **Show** deep-link that highlights it in the filing.
-- [ ] No Gemini Nano download bar appears.
 
 ---
 

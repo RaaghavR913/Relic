@@ -5,28 +5,23 @@
 //   - Side-panel setup.
 //   - ensureOffscreen(): singleton guard using chrome.runtime.getContexts so that
 //     5 concurrent calls before creation yield exactly ONE offscreen document.
-//   - Message router: BUILD_INDEX / RETRIEVE → offscreen; HIGHLIGHT_RANGE / CLEAR_HIGHLIGHTS
-//     → active-tab content script; OFFSCREEN_IDLE → close offscreen doc.
+//   - Message router: SUMMARIZE_SECTION / ANALYZE_SENTIMENT / COMPUTE_REDLINE → offscreen;
+//     HIGHLIGHT_RANGE / CLEAR_HIGHLIGHTS → active-tab content script;
+//     OFFSCREEN_IDLE → close offscreen doc.
 //   - Cross-origin EDGAR fetches with rate limiting (Session 3+).
 //
 // Privacy invariant: no filing text and no derived analysis ever leaves the device.
 // ============================================================
 
 import type {
-  BuildIndexMsg,
-  RetrieveMsg,
   HighlightRangeMsg,
   ClearHighlightsMsg,
   SummarizeSectionMsg,
   AnalyzeSentimentMsg,
   ComputeRedlineMsg,
-  OffscreenBuildIndexMsg,
-  OffscreenRetrieveMsg,
   OffscreenExtractiveMsg,
   OffscreenSentimentMsg,
   OffscreenRedlineMsg,
-  IndexResponse,
-  RetrieveResponse,
   ExtractiveResponse,
   SentimentResponse,
   RedlineResponse,
@@ -39,11 +34,43 @@ import { RateLimitedQueue, fetchEdgarText } from './edgarQueue';
 import { resolvePriorFiling } from './resolvePrior';
 import { classifyInjectability } from './inject';
 
+/** Built content-script bundle — the path inside the packed extension. */
+const CONTENT_SCRIPT_FILE = 'src/content/index.js';
+
 // ── side panel setup ──────────────────────────────────────────────────────────
 
+// We open the side panel from action.onClicked rather than via
+// openPanelOnActionClick, because the toolbar-icon click is the user gesture
+// that grants the extension `activeTab` on the current page — and the side
+// panel itself never grants activeTab (crbug.com/40916430). With
+// openPanelOnActionClick:true the click is consumed by the panel and onClicked
+// never fires, so on-demand injection would have no permission.
 chrome.sidePanel
-  .setPanelBehavior({ openPanelOnActionClick: true })
+  .setPanelBehavior({ openPanelOnActionClick: false })
   .catch(console.error);
+
+chrome.action.onClicked.addListener((tab) => {
+  // Open the panel synchronously within the click gesture.
+  if (tab.windowId !== undefined) {
+    chrome.sidePanel.open({ windowId: tab.windowId }).catch(console.error);
+  } else if (tab.id !== undefined) {
+    chrome.sidePanel.open({ tabId: tab.id }).catch(console.error);
+  }
+
+  // This click just granted activeTab on `tab`. EDGAR (and other auto-host)
+  // pages already run the content script via the manifest, so we only inject on
+  // generic pages. Injecting here — in the same gesture that granted the
+  // permission — is the reliable path; the panel button is a secondary trigger
+  // that depends on the grant still being live. The content script's
+  // re-injection guard keeps a redundant inject harmless.
+  const injectability = classifyInjectability(tab.url);
+  console.debug(`[FilingLens] action click — ${injectability} — ${tab.url ?? '(url hidden)'}`);
+  if (tab.id !== undefined && injectability === 'injectable') {
+    chrome.scripting
+      .executeScript({ target: { tabId: tab.id }, files: [CONTENT_SCRIPT_FILE] })
+      .catch((err) => console.warn('[FilingLens] auto-inject on action click failed', err));
+  }
+});
 
 // Let the content script write filing models/flags to chrome.storage.session
 // (MV3 default restricts session storage to trusted contexts only).
@@ -93,8 +120,6 @@ async function getActiveTabId(): Promise<number | undefined> {
 
 async function forwardToOffscreen<T>(
   msg:
-    | OffscreenBuildIndexMsg
-    | OffscreenRetrieveMsg
     | OffscreenExtractiveMsg
     | OffscreenSentimentMsg
     | OffscreenRedlineMsg,
@@ -179,16 +204,16 @@ async function handleComputeRedline(m: ComputeRedlineMsg): Promise<RedlineRespon
 
 // ── on-demand content-script injection ("Analyze this page") ─────────────────
 
-/** Built content-script bundle — the path inside the packed extension. */
-const CONTENT_SCRIPT_FILE = 'src/content/index.js';
-
 /**
  * Inject the content script into the active tab. Authorized by the activeTab
  * grant from the user's toolbar click; no broad host permissions involved.
  * The content script's own re-injection guard makes a duplicate call harmless.
+ * This is the panel-button path; it works only while the grant from the last
+ * icon click is still live (same tab, no navigation since). The primary path is
+ * the action.onClicked handler above, which injects inside the grant gesture.
  */
 async function handleAnalyzePage(): Promise<AnalyzePageResponse> {
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   const tab = tabs[0];
   if (tab?.id === undefined) {
     return { ok: false, reason: 'no_tab' };
@@ -233,34 +258,6 @@ chrome.runtime.onMessage.addListener(
   ): boolean => {
     const msg = rawMsg as { target?: string; type?: string };
     if (msg.target !== 'sw') return false;
-
-    // ── BUILD_INDEX ──
-    if (msg.type === 'BUILD_INDEX') {
-      const m = msg as BuildIndexMsg;
-      forwardToOffscreen<IndexResponse>({
-        target: 'offscreen',
-        type: 'BUILD_INDEX',
-        doc: m.doc,
-      })
-        .then(sendResponse)
-        .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }));
-      return true;
-    }
-
-    // ── RETRIEVE ──
-    if (msg.type === 'RETRIEVE') {
-      const m = msg as RetrieveMsg;
-      forwardToOffscreen<RetrieveResponse>({
-        target: 'offscreen',
-        type: 'RETRIEVE',
-        rawTextHash: m.rawTextHash,
-        query: m.query,
-        k: m.k,
-      })
-        .then(sendResponse)
-        .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }));
-      return true;
-    }
 
     // ── HIGHLIGHT_RANGE — forward to active tab content script ──
     if (msg.type === 'HIGHLIGHT_RANGE') {

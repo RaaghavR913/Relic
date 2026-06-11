@@ -16,20 +16,6 @@ export type MessageTarget = 'sw' | 'offscreen' | 'sidepanel' | 'content';
 
 // ── Side Panel → Service Worker ───────────────────────────────────────────────
 
-export interface BuildIndexMsg {
-  target: 'sw';
-  type: 'BUILD_INDEX';
-  doc: DocumentModel;
-}
-
-export interface RetrieveMsg {
-  target: 'sw';
-  type: 'RETRIEVE';
-  rawTextHash: string;
-  query: string;
-  k: number;
-}
-
 export interface HighlightRangeMsg {
   target: 'sw';
   type: 'HIGHLIGHT_RANGE';
@@ -68,22 +54,6 @@ export interface AnalyzePageErrResponse {
   error?: string;
 }
 export type AnalyzePageResponse = AnalyzePageOkResponse | AnalyzePageErrResponse;
-
-// ── Service Worker → Offscreen ────────────────────────────────────────────────
-
-export interface OffscreenBuildIndexMsg {
-  target: 'offscreen';
-  type: 'BUILD_INDEX';
-  doc: DocumentModel;
-}
-
-export interface OffscreenRetrieveMsg {
-  target: 'offscreen';
-  type: 'RETRIEVE';
-  rawTextHash: string;
-  query: string;
-  k: number;
-}
 
 // ── Offscreen → Service Worker (events) ──────────────────────────────────────
 
@@ -129,34 +99,6 @@ export interface ContentClearMsg {
   target: 'content';
   type: 'CLEAR_HIGHLIGHTS';
 }
-
-// ── Response shapes (sendResponse / Promise resolution) ───────────────────────
-
-export interface IndexOkResponse {
-  ok: true;
-  rawTextHash: string;
-  chunkCount: number;
-  /** True when the document was already in the manifest store — embedding was skipped. */
-  skipped: boolean;
-}
-export interface IndexErrResponse { ok: false; error: string }
-export type IndexResponse = IndexOkResponse | IndexErrResponse;
-
-export interface RetrievalResult {
-  chunkId: string;
-  sectionId: string;
-  /** DOCUMENT-space char range (into positionMap.text). */
-  charRange: [number, number];
-  text: string;
-  score: number;
-}
-
-export interface RetrieveOkResponse {
-  ok: true;
-  results: RetrievalResult[];
-}
-export interface RetrieveErrResponse { ok: false; error: string }
-export type RetrieveResponse = RetrieveOkResponse | RetrieveErrResponse;
 
 // ── Summarization (Session 3) ─────────────────────────────────────────────────
 

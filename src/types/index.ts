@@ -82,6 +82,148 @@ export interface DiffSpan {
   range: [number, number];
 }
 
+// ── investor analysis types (Analyst tab) ────────────────────────────────────
+
+export type InsightLabel =
+  | 'Bullish'
+  | 'Bearish'
+  | 'Mixed'
+  | 'Neutral'
+  | 'Watch Item'
+  | 'Red Flag'
+  | 'Quality Signal'
+  | 'Weakness Signal'
+  | 'Unclear';
+
+export type InsightCategory =
+  | 'Revenue'
+  | 'Margins'
+  | 'Cash Flow'
+  | 'Balance Sheet'
+  | 'Shares'
+  | 'Risk'
+  | 'Guidance'
+  | 'Management Commentary'
+  | 'Valuation'
+  | 'Operations'
+  | 'Legal/Regulatory'
+  | 'Customer Demand';
+
+export type Severity = 'Low' | 'Medium' | 'High';
+export type TimeHorizon = 'Short-term' | 'Medium-term' | 'Long-term';
+export type ConfidenceLevel = 'Low' | 'Medium' | 'High';
+export type OverallRead = 'Bullish' | 'Bearish' | 'Mixed' | 'Neutral';
+export type ScorePoint = 1 | 2 | 3 | 4 | 5;
+
+/** Investor-facing document classification (broader than FilingType — covers IR pages). */
+export type AnalysisDocumentType =
+  | '10-K'
+  | '10-Q'
+  | '8-K'
+  | 'Earnings Call'
+  | 'Investor Presentation'
+  | 'Income Statement'
+  | 'Balance Sheet'
+  | 'Cash Flow Statement'
+  | 'Other';
+
+/** One investor-relevant signal extracted from the document. */
+export interface FilingInsight {
+  label: InsightLabel;
+  category: InsightCategory;
+  title: string;
+  summary: string;
+  whyItMatters: string;
+  investorMeaning: string;
+  /** Short verbatim quote from the document. Present only when verified against source. */
+  evidence?: string;
+  /** DOCUMENT-space char range of the verified evidence quote (jump-to-source). */
+  evidenceRange?: [number, number];
+  severity: Severity;
+  timeHorizon: TimeHorizon;
+  confidence: ConfidenceLevel;
+}
+
+export interface NarrativeCheck {
+  claim: string;
+  evidence: string;
+  assessment: 'Supported' | 'Partially Supported' | 'Not Supported' | 'Unclear';
+  investorMeaning: string;
+}
+
+export interface WatchItem {
+  item: string;
+  whyItMatters: string;
+  relatedMetric?: string;
+}
+
+/** 1 = weak, 5 = strong — except riskLevel where 1 = low risk, 5 = high risk. */
+export interface AnalysisScores {
+  revenueStrength: ScorePoint;
+  marginQuality: ScorePoint;
+  cashFlowQuality: ScorePoint;
+  balanceSheetStrength: ScorePoint;
+  riskLevel: ScorePoint;
+  managementCredibility: ScorePoint;
+  shareholderFriendliness: ScorePoint;
+}
+
+/** Pipeline stages, in execution order. The UI renders incrementally as stages land. */
+export type AnalysisStage =
+  | 'snapshot'
+  | 'takeaways'
+  | 'whatChanged'
+  | 'revenue'
+  | 'margins'
+  | 'cashflow'
+  | 'shares'
+  | 'risks'
+  | 'narrative'
+  | 'synthesis';
+
+export interface FilingAnalysis {
+  documentType: AnalysisDocumentType;
+  companyName?: string;
+  ticker?: string;
+  period?: string;
+
+  overallRead: OverallRead;
+  confidence: ConfidenceLevel;
+  oneSentenceSummary: string;
+
+  investorSnapshot: {
+    mainFinancialTheme: string;
+    timeHorizon: TimeHorizon;
+    mostImportantInvestorQuestion: string;
+  };
+
+  topTakeaways: FilingInsight[];
+  whatChanged: FilingInsight[];
+  revenueImpact: FilingInsight[];
+  marginImpact: FilingInsight[];
+  cashFlowImpact: FilingInsight[];
+  balanceSheetHealth: FilingInsight[];
+  shareImpact: FilingInsight[];
+  riskSignals: FilingInsight[];
+
+  managementNarrativeCheck: NarrativeCheck[];
+
+  bullCase: string[];
+  bearCase: string[];
+  /** Which side the document supports more, and why — without overstating certainty. */
+  netRead: string;
+
+  whatToWatchNext: WatchItem[];
+  scores?: AnalysisScores;
+  plainEnglishExplanation: string;
+
+  /** Stages that completed successfully (LM or deterministic). */
+  stagesDone: AnalysisStage[];
+  /** True when generated without the Prompt API (extractive tier): deterministic signals only. */
+  degraded: boolean;
+  generatedAt: number;
+}
+
 // ── positionMap types ─────────────────────────────────────────────────────────
 
 /**
@@ -108,7 +250,7 @@ export interface BuildResult {
 
 /**
  * Critical shared artifact produced by Session 1.
- * Every overlay (sentiment, flags, redline, Q&A deep-links) uses this to convert
+ * Every overlay (sentiment, flags, redline, citation deep-links) uses this to convert
  * [charStart, charEnd) ranges in positionMap.text into live DOM Ranges / DOMRects —
  * without ever wrapping nodes in spans.
  */

@@ -100,15 +100,28 @@ export function detectFilingType(opts: DetectFilingTypeOptions): FilingType {
 }
 
 /**
- * Confidence gate for on-demand analysis: a generic (non-EDGAR) page whose type
- * detection fell through to UNKNOWN. On such pages the on-page flag overlay
- * stays hidden until the user explicitly opts in, and the side panel shows a
- * "doesn't look like a filing" warning. An IR-hosted page where the heuristics
- * DID recognize a real filing keeps full behavior.
+ * Confidence gate for on-demand analysis. On a low-confidence generic page the
+ * on-page flag overlay stays hidden until the user opts in, and the side panel
+ * shows a "doesn't look like a filing" warning.
+ *
+ * A page is low-confidence generic when it is NOT on EDGAR and either:
+ *   • type detection fell through to UNKNOWN, OR
+ *   • a multi-item form was claimed (10-K/10-Q/8-K/20-F/etc.) but the document
+ *     never segmented into its items — it collapsed to the single fallback
+ *     section. This catches generic pages that merely *mention* a form name
+ *     (e.g. a press release referencing "the Company's Annual Report on Form
+ *     10-K"), which the text heuristic otherwise misreads as that form.
+ *
+ * A genuine off-EDGAR filing segments into many sections, so it keeps full
+ * behavior with no warning.
  */
 export function isLowConfidenceGeneric(model: {
   source: { host: 'edgar' | 'ir' };
   filingType: FilingType;
+  sections: ReadonlyArray<unknown>;
 }): boolean {
-  return model.source.host === 'ir' && model.filingType === 'UNKNOWN';
+  if (model.source.host === 'edgar') return false;
+  if (model.filingType === 'UNKNOWN') return true;
+  // Recognized a form but it didn't actually segment into items → misdetection.
+  return model.sections.length <= 1;
 }

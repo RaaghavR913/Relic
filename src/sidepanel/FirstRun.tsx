@@ -14,7 +14,7 @@ import type { Capabilities } from '@/runtime/capabilities';
 import { TierBadge, Banner, LockIcon, stateLabel, stateColor } from './ui';
 
 const ENCODER_MODELS = [
-  { name: 'mxbai-embed-xsmall', role: 'Semantic search & Q&A retrieval', size: '~23 MB' },
+  { name: 'mxbai-embed-xsmall', role: 'Extractive summary & redline embeddings', size: '~23 MB' },
   { name: 'FinBERT', role: 'Sentence-level financial sentiment', size: '~106 MB' },
 ];
 
@@ -45,8 +45,8 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
         </span>
         <h1 className="text-base font-semibold text-zinc-100">Welcome to FilingLens</h1>
         <p className="max-w-xs text-xs leading-relaxed text-zinc-400">
-          Plain-English summaries, sentiment, language flags, year-over-year changes, and
-          ask-the-filing Q&amp;A — analyzed entirely on your device.
+          Plain-English summaries, sentiment, language flags, and year-over-year
+          changes — analyzed entirely on your device.
         </p>
       </div>
 
@@ -79,7 +79,7 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
           ))}
         </ul>
         <p className="mt-2 text-[10px] leading-relaxed text-zinc-600">
-          Included in the extension and loaded locally the first time you use sentiment or Q&amp;A — no download, no network request.
+          Included in the extension and loaded locally the first time you use sentiment or extractive summaries — no download, no network request.
         </p>
       </section>
 
@@ -93,8 +93,8 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
         {builtin ? (
           <>
             <p className="text-[11px] leading-relaxed text-zinc-400">
-              Chrome’s built-in AI is available — summaries, analyst notes, and Q&amp;A are synthesized
-              on-device by Gemini Nano.
+              Chrome’s built-in AI is available — summaries, analyst notes, and change narratives are
+              synthesized on-device by Gemini Nano.
             </p>
             <div className="mt-2 flex items-center justify-between rounded-lg bg-zinc-800/50 px-3 py-2 text-[11px]">
               <span className="text-zinc-300">Gemini Nano</span>
@@ -102,16 +102,16 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
             </div>
             {(nanoState === 'downloadable' || nanoState === 'downloading') && (
               <p className="mt-2 text-[10px] leading-relaxed text-zinc-600">
-                Chrome will download and manage Gemini Nano the first time you ask a question — you’ll
-                see its progress then. Sentiment and flags work right away in the meantime.
+                Chrome will download and manage Gemini Nano the first time you generate an analyst note —
+                you’ll see its progress then. Sentiment and flags work right away in the meantime.
               </p>
             )}
           </>
         ) : (
           <Banner tone="positive" icon="✓">
             Built-in AI isn’t available on this device, so FilingLens runs in <strong>extractive mode</strong>:
-            summaries become the filing’s most important sentences, and Q&amp;A surfaces the most relevant
-            passages. Sentiment, flags, and year-over-year changes are fully available — all on-device.
+            summaries become the filing’s most important sentences. Sentiment, flags, and year-over-year
+            changes are fully available — all on-device.
           </Banner>
         )}
       </section>

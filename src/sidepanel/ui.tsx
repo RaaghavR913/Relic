@@ -38,7 +38,7 @@ export function TierBadge({ tier }: { tier: GenerationTier }) {
     return (
       <span
         className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300 ring-1 ring-inset ring-emerald-500/30"
-        title="Chrome built-in AI (Gemini Nano) is available — generative summaries and Q&A run on-device."
+        title="Chrome built-in AI (Gemini Nano) is available — generative summaries and analyst notes run on-device."
       >
         Built-in AI
       </span>
@@ -47,7 +47,7 @@ export function TierBadge({ tier }: { tier: GenerationTier }) {
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full bg-zinc-700/60 px-2.5 py-0.5 text-[11px] font-semibold text-zinc-300 ring-1 ring-inset ring-zinc-600/40"
-      title="Extractive mode — key-sentence summaries and relevant-passage Q&A run fully on-device."
+      title="Extractive mode — key-sentence summaries run fully on-device."
     >
       Extractive
     </span>

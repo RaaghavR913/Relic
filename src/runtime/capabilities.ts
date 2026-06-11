@@ -2,8 +2,8 @@
  * FilingLens capability detection — the linchpin of the lean (built-in-AI-only) build.
  *
  * getCapabilities() classifies the device into a generationTier ('builtin' | 'extractive')
- * that drives the entire tier-aware UX: summaries (Session 3), change summaries (Session 6),
- * and ask-the-filing Q&A (Session 7). It also reports WebGPU (a perf signal for the encoders,
+ * that drives the entire tier-aware UX: summaries (Session 3) and change summaries
+ * (Session 6). It also reports WebGPU (a perf signal for the encoders,
  * NOT a gate — WASM is always available as fallback).
  *
  * Source of truth for availability is each API's own availability() call, which already
@@ -22,7 +22,7 @@ export type GenerationTier = 'builtin' | 'extractive';
 export interface Capabilities {
   webgpu: { supported: boolean; adapter: boolean };
   summarizer: AvailabilityState; // Chrome Summarizer API -> plain-English summaries
-  promptApi: AvailabilityState;  // Chrome Prompt API (Gemini Nano) -> analyst notes, Q&A
+  promptApi: AvailabilityState;  // Chrome Prompt API (Gemini Nano) -> analyst notes, change narratives
   generationTier: GenerationTier;
   /** any generative API is obtainable but needs a one-time download before first use */
   needsModelDownload: boolean;
@@ -135,7 +135,7 @@ export async function createSummarizer(opts: CreateOptions = {}): Promise<unknow
   });
 }
 
-/** Create a Prompt API (Gemini Nano) session for analyst notes / Q&A synthesis. */
+/** Create a Prompt API (Gemini Nano) session for analyst notes / change narratives. */
 export async function createPromptSession(
   opts: CreateOptions & { systemPrompt?: string } = {},
 ): Promise<unknown> {

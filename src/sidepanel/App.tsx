@@ -5,8 +5,8 @@
 //   • Header: company · filing type · period + generation-tier badge.
 //   • First-run onboarding (privacy + downloads + tier), shown once.
 //   • Section navigator + master overlay controls (heatmap / flags + legend).
-//   • Tabs: Summary · Sentiment · Flags · Changes · Ask — all kept mounted so
-//     async analysis (sentiment streaming, redline, Q&A) survives tab switches.
+//   • Tabs: Summary · Sentiment · Flags · Changes — all kept mounted so
+//     async analysis (sentiment streaming, redline) survives tab switches.
 //   • Loading skeletons, empty states, degradation banners; WCAG AA; reduced-motion.
 // ============================================================
 
@@ -23,11 +23,11 @@ import type {
 } from '@/messages/types';
 import { isLowConfidenceGeneric } from '@/content/ingest/detect';
 import { setFlags as setFlagOverlayPref } from './overlayPrefs';
+import { AnalystPanel } from './AnalystPanel';
 import { SummaryPanel } from './SummaryPanel';
 import { SentimentPanel } from './SentimentPanel';
 import { FlagPanel } from './FlagPanel';
 import { RedlinePanel } from './RedlinePanel';
-import { AskPanel } from './AskPanel';
 import { FirstRun } from './FirstRun';
 import { OverlayControls } from './OverlayControls';
 import { SectionNavigator } from './SectionNavigator';
@@ -47,14 +47,14 @@ const ONBOARDED_KEY = 'filinglens:onboarded';
 
 // ── tabs ──────────────────────────────────────────────────────────────────────
 
-type TabId = 'summary' | 'sentiment' | 'flags' | 'changes' | 'ask';
+type TabId = 'analyst' | 'summary' | 'sentiment' | 'flags' | 'changes';
 
 const TABS: Array<{ id: TabId; label: string }> = [
+  { id: 'analyst', label: 'Analyst' },
   { id: 'summary', label: 'Summary' },
   { id: 'sentiment', label: 'Sentiment' },
   { id: 'flags', label: 'Flags' },
   { id: 'changes', label: 'Changes' },
-  { id: 'ask', label: 'Ask' },
 ];
 
 function fmtDate(iso?: string): string | null {
@@ -84,6 +84,9 @@ function analyzeFailCopy(response: AnalyzePageResponse | undefined): string {
 
 function Header({ doc, tier }: { doc: DocumentModel | null; tier: GenerationTier | null }) {
   const period = fmtDate(doc?.periodOfReport);
+  // Don't assert a specific form when detection is low-confidence (e.g. a press
+  // release that merely names a form) — the type heuristic can misfire off-EDGAR.
+  const typeLabel = doc && isLowConfidenceGeneric(doc) ? 'Document' : doc?.filingType;
   return (
     <header className="border-b border-zinc-800 px-4 py-3">
       <div className="flex items-center gap-2.5">
@@ -101,7 +104,7 @@ function Header({ doc, tier }: { doc: DocumentModel | null; tier: GenerationTier
             {doc.ticker ? <span className="ml-1.5 text-zinc-500">{doc.ticker}</span> : null}
           </p>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] text-zinc-500">
-            <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-medium text-zinc-300">{doc.filingType}</span>
+            <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-medium text-zinc-300">{typeLabel}</span>
             {period && <span>· Period {period}</span>}
             <span>· {doc.sections.length} sections</span>
           </p>
@@ -244,7 +247,7 @@ export default function App() {
   const { caps, error, refresh } = useCapabilities();
   const [currentDoc, setCurrentDoc] = useState<DocumentModel | null>(null);
   const [currentFlags, setCurrentFlags] = useState<LanguageFlag[]>([]);
-  const [activeTab, setActiveTab] = useState<TabId>('summary');
+  const [activeTab, setActiveTab] = useState<TabId>('analyst');
 
   // Onboarding gate.
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
@@ -291,13 +294,15 @@ export default function App() {
       setAnalyzeError(analyzeFailCopy(response));
       return;
     }
-    // Injected — wait for FILING_READY (handled by the message listener).
+    // Injected — wait for FILING_READY (handled by the message listener). The
+    // content script waits for client-rendered (SPA) pages to render before
+    // ingesting (up to ~8s), so allow headroom beyond that before giving up.
     analyzeTimer.current = setTimeout(() => {
       setAnalyzing(false);
       setAnalyzeError(
-        "Couldn't extract enough readable text from this page to analyze.",
+        "This page is taking a while to load or has little readable text. Once it finishes loading, click “Analyze this page” again.",
       );
-    }, 10_000);
+    }, 15_000);
   }, [clearAnalyzeTimer]);
 
   // Subscribe to FILING_READY + FLAG_RESULTS; recover from session storage on open.
@@ -412,6 +417,14 @@ export default function App() {
 
                 {/* Tab panels — kept mounted to preserve async state across switches. */}
                 <div
+                  id="panel-analyst"
+                  role="tabpanel"
+                  aria-labelledby="tab-analyst"
+                  hidden={activeTab !== 'analyst'}
+                >
+                  <AnalystPanel doc={currentDoc} detectedTier={caps.generationTier} flags={currentFlags} />
+                </div>
+                <div
                   id="panel-summary"
                   role="tabpanel"
                   aria-labelledby="tab-summary"
@@ -436,9 +449,6 @@ export default function App() {
                 </div>
                 <div id="panel-changes" role="tabpanel" aria-labelledby="tab-changes" hidden={activeTab !== 'changes'}>
                   <RedlinePanel doc={currentDoc} detectedTier={caps.generationTier} />
-                </div>
-                <div id="panel-ask" role="tabpanel" aria-labelledby="tab-ask" hidden={activeTab !== 'ask'}>
-                  <AskPanel doc={currentDoc} tier={caps.generationTier} />
                 </div>
 
                 <PrivacyNote className="mt-1" />
