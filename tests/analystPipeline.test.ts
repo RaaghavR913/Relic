@@ -347,7 +347,9 @@ describe('generateFilingAnalysis — extractive tier', () => {
     expect(analysis.degraded).toBe(true);
     expect(analysis.confidence).toBe('Low');
     expect(analysis.whatChanged).toHaveLength(1); // redline still works without LM
-    expect(analysis.topTakeaways).toHaveLength(0);
+    // The deterministic tier now synthesizes real cards from on-device signals
+    // (no LM): takeaways come from the document's highest-signal sentences.
+    expect(analysis.topTakeaways.length).toBeGreaterThan(0);
     expect(analysis.documentType).toBe('10-K');
   });
 });

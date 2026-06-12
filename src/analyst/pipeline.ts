@@ -232,10 +232,22 @@ export async function generateFilingAnalysis(
   const sig = opts.signal;
   const hints = buildHints(aux);
 
-  // Start from the deterministic skeleton, then upgrade stage by stage.
+  // Start from the deterministic skeleton, then upgrade stage by stage. In the
+  // builtin tier the LM owns the insight arrays, so clear the deterministic
+  // pre-fill here: a failed LM stage must fail soft to EMPTY (the UI renders
+  // "Not enough information"), not silently fall back to the deterministic cards
+  // — that would blur which content the model actually produced and confuse the
+  // progressive/streaming reveal. (whatChanged is re-derived from the redline.)
   const analysis = deterministicAnalysis(doc, aux);
   analysis.degraded = false;
   analysis.stagesDone = [];
+  analysis.topTakeaways = [];
+  analysis.revenueImpact = [];
+  analysis.marginImpact = [];
+  analysis.cashFlowImpact = [];
+  analysis.balanceSheetHealth = [];
+  analysis.shareImpact = [];
+  analysis.riskSignals = [];
   // Clear degraded-mode placeholder copy; LM stages fill these in.
   analysis.oneSentenceSummary = '';
   analysis.investorSnapshot.mainFinancialTheme = '';

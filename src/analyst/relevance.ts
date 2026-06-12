@@ -50,11 +50,23 @@ const KEYWORDS: Record<Exclude<Dimension, 'overview'>, RegExp> = {
 // earns a bonus; bare boilerplate scores low and falls out of the budget.
 const NUMERIC = /(?:\$\s?[\d,.]+|\d+(?:\.\d+)?\s?%|\b\d{2,}\b)/;
 
-interface ScoredSentence {
+export interface ScoredSentence {
   text: string;
   score: number;
   /** Position for restoring document order. */
   order: number;
+  /** Section the sentence came from (provenance for deterministic insight cards). */
+  sectionId: string;
+  sectionLabel: string;
+  /** Whether the sentence carries a figure/percentage/$ amount. */
+  hasNumeric: boolean;
+}
+
+/** Dimensions whose keyword set a sentence matches (used to label insights). */
+export function sentenceDimensions(text: string): Array<Exclude<Dimension, 'overview'>> {
+  return (Object.keys(KEYWORDS) as Array<Exclude<Dimension, 'overview'>>).filter((d) =>
+    KEYWORDS[d].test(text),
+  );
 }
 
 /** Split section text into rough sentences. Keeps it dependency-free. */
@@ -80,6 +92,30 @@ export function selectRelevantText(
   dims: ReadonlyArray<Exclude<Dimension, 'overview'>>,
   maxChars: number,
 ): string {
+  const scored = scoreSentences(doc, dims);
+
+  const picked: ScoredSentence[] = [];
+  let used = 0;
+  for (const s of scored) {
+    if (used + s.text.length + 1 > maxChars) continue;
+    picked.push(s);
+    used += s.text.length + 1;
+    if (used >= maxChars * 0.95) break;
+  }
+
+  picked.sort((a, b) => a.order - b.order);
+  return picked.map((s) => s.text).join(' ');
+}
+
+/**
+ * Score every sentence in the document against the given dimensions and return
+ * them sorted by relevance (descending), then document order. Shared by
+ * selectRelevantText (LM excerpt budgeting) and the deterministic insight tier.
+ */
+function scoreSentences(
+  doc: DocumentModel,
+  dims: ReadonlyArray<Exclude<Dimension, 'overview'>>,
+): ScoredSentence[] {
   const regexes = dims.map((d) => KEYWORDS[d]);
   const scored: ScoredSentence[] = [];
   let order = 0;
@@ -97,26 +133,35 @@ export function selectRelevantText(
         if (re.test(sentence)) score += 2;
       }
       if (score === 0) continue;
-      if (NUMERIC.test(sentence)) score += 2;
+      const hasNumeric = NUMERIC.test(sentence);
+      if (hasNumeric) score += 2;
       // Light boost for sentences from priority sections.
       score += prio < PRIORITY_SECTION_PREFIXES.length ? 1 : 0;
-      scored.push({ text: sentence, score, order });
+      scored.push({
+        text: sentence,
+        score,
+        order,
+        sectionId: section.id,
+        sectionLabel: section.label,
+        hasNumeric,
+      });
     }
   }
 
   scored.sort((a, b) => b.score - a.score || a.order - b.order);
+  return scored;
+}
 
-  const picked: ScoredSentence[] = [];
-  let used = 0;
-  for (const s of scored) {
-    if (used + s.text.length + 1 > maxChars) continue;
-    picked.push(s);
-    used += s.text.length + 1;
-    if (used >= maxChars * 0.95) break;
-  }
-
-  picked.sort((a, b) => a.order - b.order);
-  return picked.map((s) => s.text).join(' ');
+/**
+ * The top-N most relevant sentences for the given dimensions (by score, then doc
+ * order). Deterministic — used to build on-device insight cards without an LM.
+ */
+export function topRelevantSentences(
+  doc: DocumentModel,
+  dims: ReadonlyArray<Exclude<Dimension, 'overview'>>,
+  limit: number,
+): ScoredSentence[] {
+  return scoreSentences(doc, dims).slice(0, limit);
 }
 
 /**

@@ -19,12 +19,21 @@ import type {
   FilingInsight,
   FilingType,
   InsightCategory,
+  InsightLabel,
   LanguageFlag,
   OverallRead,
   SectionDiff,
   SentenceSentiment,
+  TimeHorizon,
 } from '@/types';
 import type { RedlineEntry } from '@/redline/redlineStore';
+import { finalizeInsight } from './evidence';
+import {
+  topRelevantSentences,
+  sentenceDimensions,
+  type Dimension,
+  type ScoredSentence,
+} from './relevance';
 
 // ── document type mapping ─────────────────────────────────────────────────────
 
@@ -156,48 +165,218 @@ const QUESTION_BY_TYPE: Partial<Record<AnalysisDocumentType, string>> = {
   'Other': 'What in this document is material to the company\'s financial trajectory?',
 };
 
+// ── deterministic insight synthesis (no LM) ──────────────────────────────────
+// Build real investor cards from on-device signals only: the relevance engine
+// surfaces the highest-signal (numeric, keyword-matched) sentences per dimension;
+// each becomes a verified, advice-scrubbed FilingInsight labeled by the section's
+// FinBERT sentiment skew. Honest by construction — every card's text is the
+// filing's own words, run through the same evidence/advice guards as the LM path.
+
+interface DimMeta {
+  category: InsightCategory;
+  horizon: TimeHorizon;
+  why: string;
+}
+
+const DIM_META: Record<Exclude<Dimension, 'overview'>, DimMeta> = {
+  revenue: { category: 'Revenue', horizon: 'Medium-term', why: 'Revenue trajectory is the top-line driver of the investment case.' },
+  margins: { category: 'Margins', horizon: 'Medium-term', why: 'Margins show whether growth is translating into profit.' },
+  cashflow: { category: 'Cash Flow', horizon: 'Medium-term', why: 'Cash generation funds operations, buybacks, and debt service without dilution.' },
+  balancesheet: { category: 'Balance Sheet', horizon: 'Long-term', why: 'Leverage and liquidity determine resilience through a downturn.' },
+  shares: { category: 'Shares', horizon: 'Medium-term', why: 'Buybacks, dilution, and dividends directly change per-share value.' },
+  risk: { category: 'Risk', horizon: 'Medium-term', why: 'Risk-factor language often front-runs financial impact.' },
+  management: { category: 'Management Commentary', horizon: 'Medium-term', why: 'Management framing signals where leadership is steering attention.' },
+};
+
+/** Net FinBERT sentiment skew for one section → an insight label + signed magnitude. */
+function sectionSkew(
+  sectionId: string,
+  sentiments: SentenceSentiment[] | null | undefined,
+): { label: InsightLabel; net: number; n: number } {
+  const s = (sentiments ?? []).filter((x) => x.sectionId === sectionId);
+  if (s.length < 3) return { label: 'Neutral', net: 0, n: s.length };
+  const pos = s.filter((x) => x.label === 'positive').length / s.length;
+  const neg = s.filter((x) => x.label === 'negative').length / s.length;
+  const net = pos - neg;
+  let label: InsightLabel = 'Neutral';
+  if (net > 0.15) label = 'Bullish';
+  else if (net < -0.15) label = 'Bearish';
+  else if (pos > 0.1 && neg > 0.1) label = 'Mixed';
+  return { label, net, n: s.length };
+}
+
+/** Turn one scored sentence into a verified, advice-scrubbed insight card. */
+function insightFromSentence(
+  doc: DocumentModel,
+  s: ScoredSentence,
+  dim: Exclude<Dimension, 'overview'>,
+  aux: AuxSignals,
+): FilingInsight | null {
+  const meta = DIM_META[dim];
+  const skew = sectionSkew(s.sectionId, aux.sentiments);
+  const label: InsightLabel =
+    dim === 'risk' ? (skew.net < -0.2 ? 'Red Flag' : 'Watch Item') : skew.label;
+  const investorMeaning =
+    skew.n >= 3 && skew.label !== 'Neutral'
+      ? `On-device sentiment reads the ${s.sectionLabel} language as net-${skew.net > 0 ? 'positive' : 'negative'}.`
+      : '';
+  return finalizeInsight(doc, {
+    label,
+    category: meta.category,
+    title: s.sectionLabel,
+    summary: s.text,
+    whyItMatters: meta.why,
+    investorMeaning,
+    severity: s.hasNumeric ? 'Medium' : 'Low',
+    timeHorizon: meta.horizon,
+    confidence: 'Medium',
+  });
+}
+
+function buildDimInsights(
+  doc: DocumentModel,
+  aux: AuxSignals,
+  dim: Exclude<Dimension, 'overview'>,
+  limit: number,
+): FilingInsight[] {
+  return topRelevantSentences(doc, [dim], limit)
+    .map((s) => insightFromSentence(doc, s, dim, aux))
+    .filter((x): x is FilingInsight => x !== null);
+}
+
+/** Cross-dimension headline takeaways (deduped), labeled by their own dimension. */
+function buildTakeaways(doc: DocumentModel, aux: AuxSignals, limit: number): FilingInsight[] {
+  const dims: Array<Exclude<Dimension, 'overview'>> = [
+    'revenue', 'margins', 'cashflow', 'shares', 'risk', 'management',
+  ];
+  const pool = topRelevantSentences(doc, dims, limit * 3);
+  const seen = new Set<string>();
+  const out: FilingInsight[] = [];
+  for (const s of pool) {
+    const key = s.text.slice(0, 80).toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const dim = sentenceDimensions(s.text)[0] ?? 'revenue';
+    const ins = insightFromSentence(doc, s, dim, aux);
+    if (ins) out.push(ins);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+/** A single "cautionary language density" card when LM flags are dense. */
+function buildFlagDensityInsight(flags: LanguageFlag[] | null | undefined): FilingInsight | null {
+  const fs = flags ?? [];
+  if (fs.length < 8) return null;
+  const byType = new Map<string, number>();
+  for (const f of fs) byType.set(f.type, (byType.get(f.type) ?? 0) + 1);
+  const parts = [...byType.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([t, n]) => `${t.replace(/_/g, ' ')} ×${n}`);
+  const heavy = fs.length > 40;
+  return {
+    label: heavy ? 'Red Flag' : 'Watch Item',
+    category: 'Risk',
+    title: 'Cautionary language density',
+    summary: `${fs.length} flagged cautionary/legal/uncertainty phrases: ${parts.join(', ')}.`,
+    whyItMatters:
+      'A high density of hedging, litigious, or uncertainty language can signal management caution or elevated disclosure risk.',
+    investorMeaning:
+      'Compare against the prior year — a rising flag count often precedes a change in tone or disclosed risk.',
+    severity: heavy ? 'High' : 'Medium',
+    timeHorizon: 'Medium-term',
+    confidence: 'Medium',
+  };
+}
+
+function buildRiskSignals(doc: DocumentModel, aux: AuxSignals, limit: number): FilingInsight[] {
+  const flagCard = buildFlagDensityInsight(aux.flags);
+  const fromText = buildDimInsights(doc, aux, 'risk', limit);
+  return [...(flagCard ? [flagCard] : []), ...fromText].slice(0, limit + 1);
+}
+
+/** One honest, signal-grounded sentence summarizing the on-device read. */
+function deterministicOneLiner(doc: DocumentModel, aux: AuxSignals, read: OverallRead): string {
+  const company = doc.companyName ?? 'The company';
+  const dt = mapDocumentType(doc.filingType);
+  const bits: string[] = [];
+  const sents = aux.sentiments ?? [];
+  if (sents.length >= 10) {
+    const pos = Math.round((sents.filter((s) => s.label === 'positive').length / sents.length) * 100);
+    const neg = Math.round((sents.filter((s) => s.label === 'negative').length / sents.length) * 100);
+    bits.push(`sentiment ${pos}% positive / ${neg}% negative`);
+  }
+  const flags = aux.flags ?? [];
+  if (flags.length > 0) bits.push(`${flags.length} cautionary-language flag${flags.length === 1 ? '' : 's'}`);
+  if (aux.redline?.status === 'computed' && aux.redline.diffs.length > 0) {
+    const n = aux.redline.diffs.length;
+    bits.push(`${n} section${n === 1 ? '' : 's'} changed vs the prior filing`);
+  }
+  const tail = bits.length ? ` — ${bits.join(', ')}.` : '.';
+  return `On-device signals read ${read.toLowerCase()} for ${company}'s ${dt}${tail}`;
+}
+
 /**
- * Build the best possible FilingAnalysis without any generative model:
- * deterministic snapshot + redline-driven what-changed. All narrative
- * sections stay empty and `degraded` is set so the UI explains why.
+ * Build the best FilingAnalysis without any generative model: a deterministic
+ * snapshot plus real takeaways / risk signals / per-dimension cards synthesized
+ * from on-device sentiment, language flags, and the prior-filing redline. Only
+ * the genuinely LM-shaped sections (bull/bear, narrative check, watch list,
+ * plain-English) stay empty; `degraded` is set so the UI frames the difference.
  */
 export function deterministicAnalysis(
   doc: DocumentModel,
   aux: AuxSignals,
 ): FilingAnalysis {
   const documentType = mapDocumentType(doc.filingType);
+  const overallRead = overallReadFromSentiment(aux.sentiments);
   const whatChanged = whatChangedFromRedline(doc, aux.redline);
+
+  const topTakeaways = buildTakeaways(doc, aux, 5);
+  const revenueImpact = buildDimInsights(doc, aux, 'revenue', 2);
+  const marginImpact = buildDimInsights(doc, aux, 'margins', 2);
+  const cashFlowImpact = buildDimInsights(doc, aux, 'cashflow', 2);
+  const balanceSheetHealth = buildDimInsights(doc, aux, 'balancesheet', 2);
+  const shareImpact = buildDimInsights(doc, aux, 'shares', 2);
+  const riskSignals = buildRiskSignals(doc, aux, 4);
+
+  const stagesDone: FilingAnalysis['stagesDone'] = ['snapshot'];
+  if (topTakeaways.length) stagesDone.push('takeaways');
+  if (whatChanged.length) stagesDone.push('whatChanged');
+  if (revenueImpact.length) stagesDone.push('revenue');
+  if (marginImpact.length) stagesDone.push('margins');
+  if (cashFlowImpact.length || balanceSheetHealth.length) stagesDone.push('cashflow');
+  if (shareImpact.length) stagesDone.push('shares');
+  if (riskSignals.length) stagesDone.push('risks');
 
   return {
     documentType,
     ...(doc.companyName !== undefined ? { companyName: doc.companyName } : {}),
     ...(doc.ticker !== undefined ? { ticker: doc.ticker } : {}),
     ...(doc.periodOfReport !== undefined ? { period: doc.periodOfReport } : {}),
-    overallRead: overallReadFromSentiment(aux.sentiments),
+    overallRead,
     confidence: 'Low',
-    oneSentenceSummary:
-      'Generative analysis is unavailable on this device — the read below is built from on-device sentiment, language-flag, and prior-filing-change signals only.',
+    oneSentenceSummary: deterministicOneLiner(doc, aux, overallRead),
     investorSnapshot: {
-      mainFinancialTheme: `${documentType} review based on deterministic on-device signals`,
+      mainFinancialTheme: 'On-device read from sentiment, language flags, and prior-filing changes',
       timeHorizon: documentType === '10-K' ? 'Long-term' : 'Medium-term',
       mostImportantInvestorQuestion:
         QUESTION_BY_TYPE[documentType] ?? QUESTION_BY_TYPE['Other']!,
     },
-    topTakeaways: [],
+    topTakeaways,
     whatChanged,
-    revenueImpact: [],
-    marginImpact: [],
-    cashFlowImpact: [],
-    balanceSheetHealth: [],
-    shareImpact: [],
-    riskSignals: [],
+    revenueImpact,
+    marginImpact,
+    cashFlowImpact,
+    balanceSheetHealth,
+    shareImpact,
+    riskSignals,
     managementNarrativeCheck: [],
     bullCase: [],
     bearCase: [],
     netRead: '',
     whatToWatchNext: [],
     plainEnglishExplanation: '',
-    stagesDone: ['snapshot', ...(whatChanged.length > 0 ? ['whatChanged' as const] : [])],
+    stagesDone,
     degraded: true,
     generatedAt: Date.now(),
   };

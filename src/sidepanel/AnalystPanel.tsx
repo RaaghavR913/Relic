@@ -383,9 +383,10 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
       </div>
 
       {a?.degraded && (
-        <div role="status" className="rounded-lg bg-amber-950/40 px-3 py-2 text-[11px] text-amber-300 ring-1 ring-inset ring-amber-700/30">
-          Full investor analysis needs Chrome built-in AI (Gemini Nano). Showing the deterministic
-          read from on-device sentiment, flags, and prior-filing changes.
+        <div role="status" className="rounded-lg bg-sky-950/40 px-3 py-2 text-[11px] text-sky-300 ring-1 ring-inset ring-sky-800/30">
+          On-device read — takeaways, risks, and per-dimension cards are built from sentiment,
+          language flags, and prior-filing changes. Enable Chrome built-in AI (Gemini Nano) for a
+          fuller narrative with bull/bear cases, a management-claim check, and a watch list.
         </div>
       )}
 
@@ -407,17 +408,15 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
           {/* 1–2 ── Snapshot (includes one-sentence summary + scores) */}
           <SnapshotCard analysis={a} />
 
-          {/* 3 ── Top takeaways */}
-          {!a.degraded && (
-            <Collapse
-              title="Top investor takeaways"
-              count={a.topTakeaways.length}
-              defaultOpen
-              pending={running && !a.stagesDone.includes('takeaways')}
-            >
-              <InsightList insights={a.topTakeaways} emptyNote="Not enough information in this document." />
-            </Collapse>
-          )}
+          {/* 3 ── Top takeaways (populated in both the LM and on-device tiers) */}
+          <Collapse
+            title="Top investor takeaways"
+            count={a.topTakeaways.length}
+            defaultOpen
+            pending={running && !a.stagesDone.includes('takeaways')}
+          >
+            <InsightList insights={a.topTakeaways} emptyNote="Not enough information in this document." />
+          </Collapse>
 
           {/* 4 ── What changed */}
           <Collapse
@@ -433,44 +432,40 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
           </Collapse>
 
           {/* 5 ── What this means */}
-          {!a.degraded && (
-            <Collapse
-              title="What this means"
-              count={
-                a.revenueImpact.length + a.marginImpact.length +
-                a.cashFlowImpact.length + a.balanceSheetHealth.length + a.shareImpact.length
-              }
-              pending={running && !a.stagesDone.includes('shares')}
-            >
-              <div className="flex flex-col gap-2.5">
-                <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">For revenue</p>
-                <InsightList insights={a.revenueImpact} emptyNote="Not enough information." />
-                <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">For margins & profitability</p>
-                <InsightList insights={a.marginImpact} emptyNote="Not enough information." />
-                <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">For cash flow & balance sheet</p>
-                <InsightList
-                  insights={[...a.cashFlowImpact, ...a.balanceSheetHealth]}
-                  emptyNote="Not enough information."
-                />
-                <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">For shares & investor sentiment</p>
-                <InsightList insights={a.shareImpact} emptyNote="Not enough information." />
-              </div>
-            </Collapse>
-          )}
+          <Collapse
+            title="What this means"
+            count={
+              a.revenueImpact.length + a.marginImpact.length +
+              a.cashFlowImpact.length + a.balanceSheetHealth.length + a.shareImpact.length
+            }
+            pending={running && !a.stagesDone.includes('shares')}
+          >
+            <div className="flex flex-col gap-2.5">
+              <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">For revenue</p>
+              <InsightList insights={a.revenueImpact} emptyNote="Not enough information." />
+              <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">For margins & profitability</p>
+              <InsightList insights={a.marginImpact} emptyNote="Not enough information." />
+              <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">For cash flow & balance sheet</p>
+              <InsightList
+                insights={[...a.cashFlowImpact, ...a.balanceSheetHealth]}
+                emptyNote="Not enough information."
+              />
+              <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">For shares & investor sentiment</p>
+              <InsightList insights={a.shareImpact} emptyNote="Not enough information." />
+            </div>
+          </Collapse>
 
           {/* 6 ── Risk signals */}
-          {!a.degraded && (
-            <Collapse
-              title="Risk signals"
-              count={a.riskSignals.length}
-              pending={running && !a.stagesDone.includes('risks')}
-            >
-              <InsightList insights={a.riskSignals} emptyNote="No material investor risks surfaced beyond boilerplate." />
-            </Collapse>
-          )}
+          <Collapse
+            title="Risk signals"
+            count={a.riskSignals.length}
+            pending={running && !a.stagesDone.includes('risks')}
+          >
+            <InsightList insights={a.riskSignals} emptyNote="No material investor risks surfaced beyond boilerplate." />
+          </Collapse>
 
           {/* 7 ── Management narrative check */}
-          {!a.degraded && a.managementNarrativeCheck.length > 0 && (
+          {a.managementNarrativeCheck.length > 0 && (
             <Collapse title="Management narrative check" count={a.managementNarrativeCheck.length}>
               <div className="flex flex-col gap-2">
                 {a.managementNarrativeCheck.map((n, i) => (
@@ -498,7 +493,7 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
           )}
 
           {/* 8 ── Bull vs bear */}
-          {!a.degraded && (a.bullCase.length > 0 || a.bearCase.length > 0) && (
+          {(a.bullCase.length > 0 || a.bearCase.length > 0) && (
             <Collapse title="Bull case vs bear case" defaultOpen>
               <div className="flex flex-col gap-2">
                 {a.bullCase.length > 0 && (
@@ -531,7 +526,7 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
           )}
 
           {/* 9 ── What to watch next */}
-          {!a.degraded && a.whatToWatchNext.length > 0 && (
+          {a.whatToWatchNext.length > 0 && (
             <Collapse title="What to watch next" count={a.whatToWatchNext.length}>
               <ul className="flex flex-col gap-2">
                 {a.whatToWatchNext.map((w, i) => (
@@ -550,7 +545,7 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
           )}
 
           {/* 10 ── Plain-English explanation */}
-          {!a.degraded && a.plainEnglishExplanation && (
+          {a.plainEnglishExplanation && (
             <Collapse title="Plain-English explanation">
               <p className="px-1 text-xs leading-relaxed text-zinc-300">{a.plainEnglishExplanation}</p>
             </Collapse>
