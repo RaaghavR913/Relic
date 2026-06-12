@@ -33,9 +33,15 @@ export function parseEdgarUrl(url: string): Pick<CompanyMeta, 'cik' | 'accession
 }
 
 export function extractCompanyMeta(doc: Document, url?: string): CompanyMeta {
+  // Fallback chain, most → least authoritative. XBRL is the registrant of record;
+  // off-EDGAR pages (IR / earnings) have no dei:* facts, so fall back to structured
+  // page metadata before the title regex — this is what kills most "Unknown company".
   const companyName =
     queryXbrlFact(doc, 'dei:EntityRegistrantName') ??
     queryXbrlFact(doc, 'dei:entityregistrantname') ??
+    jsonLdOrgName(doc) ??
+    metaContent(doc, 'og:site_name') ??
+    firstH1(doc) ??
     titleFromDoc(doc);
 
   const tickerRaw =
@@ -76,4 +82,64 @@ function titleFromDoc(doc: Document): string | undefined {
   if (!title) return undefined;
   const m = /^([^|–—\n]{3,80}?)\s*(?:(?:\d{4})|10-K|10-Q|8-K|S-1|DEF|proxy)/i.exec(title);
   return m?.[1]?.trim() || undefined;
+}
+
+/** Read a `<meta property|name="key">` content value, trimmed. */
+function metaContent(doc: Document, key: string): string | undefined {
+  const el =
+    doc.querySelector(`meta[property="${key}"]`) ?? doc.querySelector(`meta[name="${key}"]`);
+  const content = el?.getAttribute('content')?.trim();
+  return content || undefined;
+}
+
+/** First `<h1>` text, cleaned — a decent company/brand signal on IR pages. */
+function firstH1(doc: Document): string | undefined {
+  const h1 = doc.querySelector('h1')?.textContent?.trim().replace(/\s+/g, ' ');
+  return h1 && h1.length >= 2 && h1.length <= 120 ? h1 : undefined;
+}
+
+// Schema.org @types we accept as the page's owning organization.
+const ORG_TYPE_RE = /Organization|Corporation|LocalBusiness/i;
+
+/**
+ * Walk a parsed JSON-LD value for the name of an Organization/Corporation node.
+ * Handles arrays, `@graph`, and nested publisher/author objects. Depth-bounded.
+ */
+function findOrgName(node: unknown, depth = 0): string | undefined {
+  if (depth > 4 || node === null || typeof node !== 'object') return undefined;
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const n = findOrgName(item, depth + 1);
+      if (n) return n;
+    }
+    return undefined;
+  }
+  const o = node as Record<string, unknown>;
+  const type = o['@type'];
+  const typeStr = Array.isArray(type) ? type.join(' ') : typeof type === 'string' ? type : '';
+  if (ORG_TYPE_RE.test(typeStr) && typeof o['name'] === 'string' && o['name'].trim()) {
+    return o['name'].trim();
+  }
+  for (const key of ['@graph', 'publisher', 'author', 'organization', 'mainEntity']) {
+    if (key in o) {
+      const n = findOrgName(o[key], depth + 1);
+      if (n) return n;
+    }
+  }
+  return undefined;
+}
+
+/** Company name from a JSON-LD `<script type="application/ld+json">` block, if any. */
+function jsonLdOrgName(doc: Document): string | undefined {
+  for (const s of Array.from(doc.querySelectorAll('script[type="application/ld+json"]'))) {
+    let data: unknown;
+    try {
+      data = JSON.parse(s.textContent ?? '');
+    } catch {
+      continue;
+    }
+    const name = findOrgName(data);
+    if (name) return name;
+  }
+  return undefined;
 }

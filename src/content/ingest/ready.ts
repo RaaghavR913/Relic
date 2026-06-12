@@ -63,7 +63,10 @@ export function waitForContent(opts: WaitForContentOptions = {}): Promise<void> 
   return new Promise<void>((resolve) => {
     let lastLen = currentTextLength(doc);
     let settled = false;
-    let observer: MutationObserver | null = null;
+    const observers: MutationObserver[] = [];
+    const frameCleanups: Array<() => void> = [];
+    // Same-origin iframes we've already wired up — avoids double-observing.
+    const attachedFrames = new WeakSet<HTMLIFrameElement>();
     let pollTimer: ReturnType<typeof setInterval> | null = null;
     let settleTimer: ReturnType<typeof setTimeout> | null = null;
     let capTimer: ReturnType<typeof setTimeout> | null = null;
@@ -71,18 +74,63 @@ export function waitForContent(opts: WaitForContentOptions = {}): Promise<void> 
     const cleanup = () => {
       if (settled) return;
       settled = true;
-      observer?.disconnect();
+      for (const o of observers) o.disconnect();
+      for (const c of frameCleanups) c();
       if (pollTimer !== null) clearInterval(pollTimer);
       if (settleTimer !== null) clearTimeout(settleTimer);
       if (capTimer !== null) clearTimeout(capTimer);
       resolve();
     };
 
+    // The inline-XBRL viewer (and other iframe-embedded filings) stream the real
+    // document into a same-origin child iframe AFTER document_idle. A
+    // MutationObserver on the top document never sees those child mutations, so
+    // attach an observer to each same-origin iframe's document too, and re-probe
+    // on its `load` (the document is replaced on navigation). currentTextLength
+    // already descends into these frames via pickFilingRoot, so this only makes
+    // the settle signal responsive rather than poll-bound.
+    const observeFrame = (frame: HTMLIFrameElement) => {
+      const tryObserve = () => {
+        try {
+          const cdoc = frame.contentDocument;
+          if (!cdoc?.documentElement) return;
+          const obs = new MutationObserver(check);
+          obs.observe(cdoc.documentElement, { subtree: true, childList: true, characterData: true });
+          observers.push(obs);
+        } catch {
+          // cross-origin frame — the parent cannot read it; the top observer/poll cover the rest.
+        }
+      };
+      tryObserve();
+      const onLoad = () => {
+        tryObserve();
+        check();
+      };
+      frame.addEventListener('load', onLoad);
+      frameCleanups.push(() => frame.removeEventListener('load', onLoad));
+    };
+
+    const ensureFramesObserved = () => {
+      let frames: HTMLIFrameElement[];
+      try {
+        frames = Array.from(doc.querySelectorAll('iframe'));
+      } catch {
+        return;
+      }
+      for (const f of frames) {
+        if (attachedFrames.has(f)) continue;
+        attachedFrames.add(f);
+        observeFrame(f);
+      }
+    };
+
     // Re-evaluate readiness on every signal. Once the threshold is met we arm a
     // settle timer; further meaningful growth re-arms it so we ingest only after
-    // the SPA stops streaming content in.
+    // the page stops streaming content in.
     const check = () => {
       if (settled) return;
+      // Pick up iframes added (or first becoming readable) since the last check.
+      ensureFramesObserved();
       const len = currentTextLength(doc);
       const grew = len - lastLen > GROWTH_EPSILON;
       lastLen = Math.max(lastLen, len);
@@ -99,12 +147,14 @@ export function waitForContent(opts: WaitForContentOptions = {}): Promise<void> 
       }
     };
 
-    observer = new MutationObserver(check);
-    observer.observe(doc.documentElement, {
+    const topObserver = new MutationObserver(check);
+    topObserver.observe(doc.documentElement, {
       subtree: true,
       childList: true,
       characterData: true,
     });
+    observers.push(topObserver);
+    ensureFramesObserved();
     pollTimer = setInterval(check, POLL_MS);
     capTimer = setTimeout(cleanup, maxWaitMs);
 

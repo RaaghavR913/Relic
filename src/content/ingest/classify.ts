@@ -87,7 +87,8 @@ export function classifyPage(doc: Document, url: string): PageCategory {
     if (hasInlineXbrl(doc)) return 'edgar_ixbrl';
 
     // Search / browse / company-profile surfaces — readable but not a single filing.
-    if (/\/cgi-bin\/browse-edgar|\/edgar\/search|\/cgi-bin\/srqsb/i.test(url)) {
+    // efts.sec.gov is the EDGAR full-text-search service host (search only).
+    if (/(?:^|\.)efts\.sec\.gov$/i.test(host) || /\/cgi-bin\/browse-edgar|\/edgar\/search|\/cgi-bin\/srqsb/i.test(url)) {
       return 'sec_search';
     }
 
