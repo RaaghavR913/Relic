@@ -10,6 +10,7 @@
 import type { ReactNode } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import type { AvailabilityState, GenerationTier } from '@/runtime/capabilities';
+import brandLogoUrl from '@/assets/brand-logo.png';
 
 // ── tier + availability presentation ──────────────────────────────────────────
 
@@ -173,6 +174,17 @@ export function PrivacyNote({ className = '' }: { className?: string }) {
       <LockIcon className="h-3 w-3 shrink-0 text-emerald-400" />
       <span>100% on-device — no filing text or analysis ever leaves your computer.</span>
     </p>
+  );
+}
+
+export function BrandLogo({ className = 'h-6 w-6' }: { className?: string }) {
+  return (
+    <img
+      src={brandLogoUrl}
+      alt=""
+      aria-hidden="true"
+      className={`shrink-0 object-contain ${className}`}
+    />
   );
 }
 

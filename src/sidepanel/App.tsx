@@ -37,7 +37,7 @@ import {
   TierBadge,
   PrivacyNote,
   EmptyState,
-  LockIcon,
+  BrandLogo,
   stateColor,
   stateLabel,
 } from './ui';
@@ -111,9 +111,7 @@ function Header({ doc, tier }: { doc: DocumentModel | null; tier: GenerationTier
   return (
     <header className="border-b border-zinc-800 px-4 py-3">
       <div className="flex items-center gap-2.5">
-        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-sky-500/10 ring-1 ring-sky-500/30">
-          <LockIcon className="h-3.5 w-3.5 text-sky-400" />
-        </span>
+        <BrandLogo className="h-6 w-6" />
         <span className="text-sm font-semibold tracking-tight">FilingLens</span>
         {tier && <span className="ml-1"><TierBadge tier={tier} /></span>}
         <span className="ml-auto text-[10px] text-zinc-600">v{chrome.runtime.getManifest().version}</span>

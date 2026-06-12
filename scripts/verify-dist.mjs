@@ -92,7 +92,32 @@ if (!fs.existsSync(wasmDir)) {
   }
 }
 
-// ── 5. no sourcemaps in a production dist ─────────────────────────────────────
+// ── 5. extension icons are real assets, not 1×1 placeholders ───────────────────
+function pngDimensions(fp) {
+  const buf = fs.readFileSync(fp);
+  if (buf.length < 24 || buf.toString('ascii', 1, 4) !== 'PNG') return null;
+  return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20) };
+}
+
+const iconSets = [manifest.icons, manifest.action?.default_icon].filter(Boolean);
+for (const set of iconSets) {
+  for (const [size, rel] of Object.entries(set)) {
+    const fp = path.join(DIST, rel);
+    if (!fs.existsSync(fp)) {
+      fail(`icon missing from dist: ${rel} (manifest ${size})`);
+      continue;
+    }
+    const dim = pngDimensions(fp);
+    const expected = Number(size);
+    if (!dim || dim.w < 8 || dim.h < 8) {
+      fail(`icon ${rel} looks like a placeholder (${dim?.w ?? '?'}×${dim?.h ?? '?'}) — rebuild after updating public/icons/`);
+    } else if (Number.isFinite(expected) && (dim.w !== expected || dim.h !== expected)) {
+      fail(`icon ${rel} is ${dim.w}×${dim.h}, manifest expects ${expected}×${expected}`);
+    }
+  }
+}
+
+// ── 6. no sourcemaps in a production dist ─────────────────────────────────────
 const maps = [];
 walk(DIST, (f) => f.endsWith('.map') && maps.push(path.relative(DIST, f)));
 if (maps.length > 0) {
@@ -105,4 +130,4 @@ if (errors.length > 0) {
   for (const e of errors) console.error(`  - ${e}`);
   process.exit(1);
 }
-console.log('✓ verify-dist: dist/ looks shippable (manifest entries, models, ORT glue+binary, CSP, no sourcemaps).');
+console.log('✓ verify-dist: dist/ looks shippable (manifest entries, icons, models, ORT glue+binary, CSP, no sourcemaps).');

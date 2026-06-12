@@ -11,7 +11,7 @@
 
 import { motion, useReducedMotion } from 'framer-motion';
 import type { Capabilities } from '@/runtime/capabilities';
-import { TierBadge, Banner, LockIcon, stateLabel, stateColor } from './ui';
+import { TierBadge, Banner, BrandLogo, LockIcon, stateLabel, stateColor } from './ui';
 
 const ENCODER_MODELS = [
   { name: 'mxbai-embed-xsmall', role: 'Extractive summary & redline embeddings', size: '~23 MB' },
@@ -40,9 +40,7 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
     >
       {/* Hero */}
       <div className="flex flex-col items-center gap-2 pt-2 text-center">
-        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 ring-1 ring-emerald-500/30">
-          <LockIcon className="h-6 w-6 text-emerald-400" />
-        </span>
+        <BrandLogo className="h-12 w-12" />
         <h1 className="text-base font-semibold text-zinc-100">Welcome to FilingLens</h1>
         <p className="max-w-xs text-xs leading-relaxed text-zinc-400">
           Plain-English summaries, sentiment, language flags, and year-over-year
