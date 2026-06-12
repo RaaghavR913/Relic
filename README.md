@@ -26,6 +26,26 @@ FilingLens is built around a zero-egress guarantee:
 
 Your filing text and derived analysis never leave the device.
 
+## Chrome Web Store submission notes
+
+Permission rationale, for reviewers:
+
+- **`host_permissions: https://*.sec.gov/*`** — the only host the extension fetches from
+  (prior-year filings for redline). The content script also auto-runs here.
+- **`activeTab` + `scripting`** — power the on-demand "Analyze this page" action: a toolbar
+  click grants `activeTab` on the current page, and the content script is injected into it.
+  No broad host permission is requested for non-SEC pages; analysis is opt-in per page.
+- **`offscreen`** — runs the ONNX Web Workers (DOM-less inference) off the service worker.
+- **`storage` / `sidePanel`** — session-scoped model/flag cache and the side-panel UI.
+- **`web_accessible_resources: <all_urls>`** — kept broad to support "Analyze this page" as
+  it expands across arbitrary financial domains. The exposed resources are **non-sensitive
+  bundled ML assets only** (quantized ONNX weights + ORT WASM); they contain no user data and
+  expose no analysis. (Today these load only inside the offscreen document; the broad scope is
+  forward-looking and can be narrowed to specific hosts on request.)
+
+The CSP (`script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' https://*.sec.gov`) blocks
+all egress except SEC, reinforcing the zero-egress guarantee at the platform level.
+
 ## How it works
 
 ```

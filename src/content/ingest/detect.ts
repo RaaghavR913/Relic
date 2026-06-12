@@ -42,6 +42,7 @@ function normaliseType(raw: string): FilingType {
   if (s === '10-Q') return '10-Q';
   if (s.startsWith('8-K')) return '8-K';
   if (s === '20-F') return '20-F';
+  if (s.startsWith('6-K')) return '6-K';
   if (s === 'S-1' || s === 'S-11') return 'S-1';
   if (s === 'DEF 14A' || s === 'DEF14A' || s === 'DEFA14A') return 'DEF 14A';
   return 'UNKNOWN';
@@ -52,6 +53,7 @@ const URL_PATTERNS: ReadonlyArray<[RegExp, FilingType]> = [
   [/[/_-]10-q[/_A.]/i, '10-Q'],
   [/[/_-]8-k[/_A.]/i,  '8-K'],
   [/[/_-]20-f[/_A.]/i, '20-F'],
+  [/[/_-]6-k[/_A.]/i,  '6-K'],
   [/[/_-]s-1[/_A.]/i,  'S-1'],
   [/def[_-]?14a/i,     'DEF 14A'],
 ];
@@ -62,6 +64,7 @@ function heuristicFromText(head: string): FilingType {
   if (/QUARTERLY REPORT\s*(?:ON\s*)?FORM\s*10-Q|FORM\s+10-Q\b/.test(h)) return '10-Q';
   if (/CURRENT REPORT\s*(?:ON\s*)?FORM\s*8-K|FORM\s+8-K\b/.test(h)) return '8-K';
   if (/ANNUAL REPORT\s*(?:ON\s*)?FORM\s*20-F|FORM\s+20-F\b/.test(h)) return '20-F';
+  if (/REPORT OF FOREIGN (?:PRIVATE )?ISSUER|FORM\s+6-K\b/.test(h)) return '6-K';
   if (/NOTICE OF ANNUAL|PROXY STATEMENT|DEF\s*14A/.test(h)) return 'DEF 14A';
   // Require an actual S-1 form reference or a registration-statement phrase — never
   // a bare "S-1" substring, which appears incidentally on data pages that merely

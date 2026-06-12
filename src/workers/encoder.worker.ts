@@ -25,6 +25,11 @@ type FeatureExtractor = (
 // State -----------------------------------------------------------------------
 let extractor: FeatureExtractor | null = null;
 let activeDevice: 'webgpu' | 'wasm' = 'wasm';
+// Remembered INIT params + a one-shot shared guard so a mid-inference WebGPU
+// failure (driver crash / OOM after a clean init) re-initializes once on WASM and
+// retries, instead of failing the whole embedding pass.
+let initParams: { wasmPaths: string; modelBasePath: string; modelId: string; numThreads: number } | null = null;
+let wasmFallback: Promise<boolean> | null = null;
 
 function post(msg: WorkerOutbound, transfer?: Transferable[]): void {
   if (transfer && transfer.length > 0) {
@@ -43,6 +48,7 @@ async function init(
   numThreads: number,
   forceWasm = false,
 ): Promise<void> {
+  initParams = { wasmPaths, modelBasePath, modelId, numThreads };
   // Configure ONNX Runtime WASM paths — must be set before any pipeline is created.
   // ORT resolves both the backend glue (.mjs) and binary (.wasm) under this prefix;
   // the build copies every ort-wasm-* glue+binary into dist/wasm/ to match.
@@ -94,6 +100,24 @@ async function init(
   post({ type: 'READY', device: activeDevice, diag: { wasmPaths, attempts } });
 }
 
+/**
+ * Recover from a mid-inference WebGPU failure by re-initializing once on WASM.
+ * Shared promise so concurrent failing requests trigger a single re-init, then
+ * each retries. Resolves false once already on WASM (or with no INIT params).
+ */
+function tryWasmFallback(): Promise<boolean> {
+  if (activeDevice !== 'webgpu' || !initParams) return Promise.resolve(false);
+  if (!wasmFallback) {
+    const p = initParams;
+    extractor = null;
+    console.debug('[encoder.worker] inference failed on WebGPU — re-initializing on WASM');
+    wasmFallback = init(p.wasmPaths, p.modelBasePath, p.modelId, p.numThreads, true).then(
+      () => extractor !== null,
+    );
+  }
+  return wasmFallback;
+}
+
 // Embed -----------------------------------------------------------------------
 
 async function embed(id: string, texts: string[]): Promise<void> {
@@ -121,6 +145,11 @@ async function embed(id: string, texts: string[]): Promise<void> {
 
     post({ type: 'EMBED_RESULT', id, buffers, dim }, buffers);
   } catch (err) {
+    // WebGPU can die mid-pass; transparently fall back to WASM and retry once.
+    if (await tryWasmFallback()) {
+      await embed(id, texts);
+      return;
+    }
     post({ type: 'ERROR', id, message: String(err) });
   }
 }

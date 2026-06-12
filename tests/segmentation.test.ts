@@ -118,6 +118,32 @@ describe('DEF 14A title-pattern segmentation', () => {
   });
 });
 
+describe('6-K title-pattern segmentation', () => {
+  it('segments a foreign-issuer interim earnings release by its headings', () => {
+    const text = [
+      'FINANCIAL HIGHLIGHTS',
+      'Half-year revenue rose 9% to EUR 2.1 billion.',
+      '',
+      'RESULTS OF OPERATIONS',
+      'Operating profit improved on cost discipline and pricing.',
+      '',
+      'OUTLOOK',
+      'We expect mid-single-digit growth for the full year.',
+    ].join('\n');
+    const ids = segmentSections(text, '6-K', []).map((s) => s.id);
+    expect(ids).toContain('6k_financial_highlights');
+    expect(ids).toContain('6k_results');
+    expect(ids).toContain('6k_outlook');
+  });
+
+  it('falls back to a whole-document section when an unusual 6-K has no earnings headings', () => {
+    const text = 'Notice of the annual general meeting and proposed resolutions for shareholders.';
+    const sections = segmentSections(text, '6-K', []);
+    expect(sections.length).toBe(1);
+    expect(sections[0]!.id).toBe('document_body');
+  });
+});
+
 describe('20-F item segmentation', () => {
   it('segments standard top-level 20-F items into canonical sections', () => {
     const text = [

@@ -189,6 +189,21 @@ const SECTIONS_S1: Array<{ pattern: RegExp; def: ItemDef }> = [
   { pattern: /FINANCIAL STATEMENTS/i,           def: { id: 's1_financial_statements',    label: 'Financial Statements',            order: 190 } },
 ];
 
+// 6-K (foreign private issuer interim report) — free-form, usually an earnings
+// release. No canonical items, so segment by common earnings-release headings. The
+// <=1-hit whole-document fallback in segmentByTitlePatterns keeps an unusual 6-K
+// (e.g. an AGM notice) from being chopped into a single misleading section.
+const SECTIONS_6K: Array<{ pattern: RegExp; def: ItemDef }> = [
+  { pattern: /FINANCIAL HIGHLIGHTS/i,           def: { id: '6k_financial_highlights', label: 'Financial Highlights',           order: 10 } },
+  { pattern: /RESULTS OF OPERATIONS|OPERATING (?:AND FINANCIAL )?RESULTS|FINANCIAL REVIEW/i, def: { id: '6k_results', label: 'Results of Operations', order: 20 } },
+  { pattern: /(?:BUSINESS|OPERATING) REVIEW/i,  def: { id: '6k_business_review',      label: 'Business Review',                order: 30 } },
+  { pattern: /LIQUIDITY|CAPITAL RESOURCES/i,    def: { id: '6k_liquidity',            label: 'Liquidity and Capital Resources', order: 40 } },
+  { pattern: /OUTLOOK|GUIDANCE|PROSPECTS/i,     def: { id: '6k_outlook',              label: 'Outlook',                        order: 50 } },
+  { pattern: /RECENT DEVELOPMENTS/i,            def: { id: '6k_recent_developments',  label: 'Recent Developments',            order: 60 } },
+  { pattern: /DIVIDENDS?|CAPITAL RETURN/i,      def: { id: '6k_dividend',             label: 'Dividend',                       order: 70 } },
+  { pattern: /RISK FACTORS/i,                   def: { id: '6k_risk_factors',         label: 'Risk Factors',                   order: 80 } },
+];
+
 // DEF 14A (proxy statement) section patterns
 const SECTIONS_DEF14A: Array<{ pattern: RegExp; def: ItemDef }> = [
   { pattern: /NOTICE OF ANNUAL/i,               def: { id: 'proxy_notice',              label: 'Notice of Annual Meeting',        order: 5  } },
@@ -248,6 +263,7 @@ export function segmentSections(
     case '10-Q':  return segmentByItems(text, ITEMS_10Q, tableRanges);
     case '8-K':   return segmentByItems(text, ITEMS_8K, tableRanges);
     case '20-F':  return segmentByItems(text, ITEMS_20F, tableRanges);
+    case '6-K':   return segmentByTitlePatterns(text, SECTIONS_6K, tableRanges);
     case 'S-1':   return segmentByTitlePatterns(text, SECTIONS_S1, tableRanges);
     case 'DEF 14A': return segmentByTitlePatterns(text, SECTIONS_DEF14A, tableRanges);
     default: return segmentFallback(text, tableRanges);

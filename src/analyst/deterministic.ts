@@ -44,6 +44,8 @@ export function mapDocumentType(filingType: FilingType): AnalysisDocumentType {
     case '8-K': return '8-K';
     // 20-F is an annual report; closest investor-facing bucket is 10-K-like.
     case '20-F': return '10-K';
+    // 6-K is the foreign-issuer interim report; map to the domestic interim analog.
+    case '6-K': return '10-Q';
     case 'S-1':
     case 'DEF 14A':
     case 'DATA_REPORT':

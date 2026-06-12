@@ -145,6 +145,7 @@ function handleWorkerMsg(e: MessageEvent): void {
 
   if (msg.type === 'READY') {
     workerDevice = msg.device;
+    if (msg.diag) console.debug(`[offscreen] encoder ready on ${msg.device} —`, msg.diag.attempts);
     pendingInit?.resolve(msg.device);
     pendingInit = null;
     return;
@@ -267,6 +268,7 @@ function handleSentimentWorkerMsg(e: MessageEvent): void {
 
   if (msg.type === 'READY') {
     sentimentWorkerDevice = msg.device;
+    if (msg.diag) console.debug(`[offscreen] FinBERT ready on ${msg.device} —`, msg.diag.attempts);
     sentimentPendingInit?.resolve(msg.device);
     sentimentPendingInit = null;
     return;

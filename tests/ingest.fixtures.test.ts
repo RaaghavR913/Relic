@@ -116,6 +116,23 @@ const FIXTURES: Fixture[] = [
     </body></html>`,
   },
   {
+    name: '6-K (foreign issuer interim, XBRL dei)',
+    url: `${ARCHIVES}/sappe-6k.htm`,
+    filingType: '6-K',
+    category: 'edgar_filing',
+    minSections: 2,
+    sectionIdIncludes: '6k_results',
+    companyName: /Global PLC/,
+    html: `<!doctype html><html><head><title>Global PLC 6-K</title></head><body>
+      <span name="dei:DocumentType">6-K</span>
+      <span name="dei:EntityRegistrantName">Global PLC</span>
+      <h1>REPORT OF FOREIGN PRIVATE ISSUER</h1>
+      <h2>FINANCIAL HIGHLIGHTS</h2>${BODY('Half-year revenue rose 9% to €2.1 billion. ' + LOREM.repeat(2))}
+      <h2>RESULTS OF OPERATIONS</h2>${BODY('Operating profit improved on cost discipline. ' + LOREM.repeat(2))}
+      <h2>OUTLOOK</h2>${BODY('We expect mid-single-digit growth for the full year. ' + LOREM.repeat(2))}
+    </body></html>`,
+  },
+  {
     name: 'inline-XBRL (contextref, viewer URL, no dei)',
     url: 'https://www.sec.gov/cgi-bin/viewer?action=view&type=10-K',
     filingType: '10-K',

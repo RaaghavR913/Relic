@@ -34,9 +34,30 @@ type ClassificationPipeline = (
 
 let classifier: ClassificationPipeline | null = null;
 let activeDevice: 'webgpu' | 'wasm' = 'wasm';
+// Remembered INIT params + one-shot shared guard for a mid-inference WebGPU
+// failure → re-init once on WASM and retry (see tryWasmFallback below).
+let initParams: { wasmPaths: string; modelBasePath: string; modelId: string; numThreads: number } | null = null;
+let wasmFallback: Promise<boolean> | null = null;
 
 function post(msg: SentimentWorkerOutbound): void {
   self.postMessage(msg);
+}
+
+/**
+ * Recover from a mid-inference WebGPU failure by re-initializing once on WASM.
+ * Shared promise so concurrent failing requests trigger a single re-init.
+ */
+function tryWasmFallback(): Promise<boolean> {
+  if (activeDevice !== 'webgpu' || !initParams) return Promise.resolve(false);
+  if (!wasmFallback) {
+    const p = initParams;
+    classifier = null;
+    console.debug('[sentiment.worker] inference failed on WebGPU — re-initializing on WASM');
+    wasmFallback = init(p.wasmPaths, p.modelBasePath, p.modelId, p.numThreads, true).then(
+      () => classifier !== null,
+    );
+  }
+  return wasmFallback;
 }
 
 // ── init ──────────────────────────────────────────────────────────────────────
@@ -48,6 +69,7 @@ async function init(
   numThreads: number,
   forceWasm = false,
 ): Promise<void> {
+  initParams = { wasmPaths, modelBasePath, modelId, numThreads };
   // Configure ONNX Runtime WASM paths — must be set before any pipeline is created.
   // ORT resolves both the backend glue (.mjs) and binary (.wasm) under this prefix;
   // the build copies every ort-wasm-* glue+binary into dist/wasm/ to match.
@@ -169,6 +191,11 @@ async function classify(id: string, texts: string[]): Promise<void> {
     const msg: SentimentWorkerClassifyResultMsg = { type: 'CLASSIFY_RESULT', id, labels, scores };
     post(msg);
   } catch (err) {
+    // WebGPU can die mid-pass; transparently fall back to WASM and retry once.
+    if (await tryWasmFallback()) {
+      await classify(id, texts);
+      return;
+    }
     post({ type: 'ERROR', id, message: String(err) });
   }
 }

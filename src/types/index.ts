@@ -8,6 +8,7 @@ export type FilingType =
   | '10-Q'
   | '8-K'
   | '20-F'
+  | '6-K' // foreign private issuer interim report (often carries an earnings release)
   | 'S-1'
   | 'DEF 14A'
   | 'DATA_REPORT' // sec.gov data/research/info page — readable, but NOT a company filing
