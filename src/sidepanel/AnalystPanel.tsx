@@ -26,6 +26,7 @@ import { ANALYST_DISCLAIMER } from '@/analyst/prompts';
 import { getCachedAnalysis, putAnalysis, clearAnalysis } from '@/analyst/analysisStore';
 import { getCachedRedline } from '@/redline/redlineStore';
 import { getSentimentCache } from '@/db/sentimentStore';
+import { isLowConfidenceGeneric } from '@/content/ingest/detect';
 
 // Must match FINBERT_MODEL_ID in offscreen.ts (not imported — that module
 // hosts workers and must not be pulled into the side panel bundle).
@@ -291,11 +292,20 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
   const [status, setStatus] = useState<Status>('idle');
   const [currentStage, setCurrentStage] = useState<AnalysisStage | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
 
   const acRef = useRef<AbortController | null>(null);
   const startedForRef = useRef<string | null>(null);
   const flagsRef = useRef(flags);
   flagsRef.current = flags;
+
+  // Non-filings (e.g. a Yahoo quote page) and misdetected pages that didn't
+  // segment into sections aren't worth the full on-device LM pipeline — and we
+  // must not trigger a multi-GB Gemini Nano download for them. Degrade to the
+  // deterministic tier: instant, no download, no hang. The tier also keys the
+  // analysis cache, so it's threaded through every store call below.
+  const gatedToDeterministic = isLowConfidenceGeneric(doc) || doc.sections.length <= 1;
+  const analysisTier: GenerationTier = gatedToDeterministic ? 'extractive' : detectedTier;
 
   const run = useCallback(async (force = false) => {
     acRef.current?.abort();
@@ -305,9 +315,9 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
 
     try {
       if (force) {
-        await clearAnalysis(doc.rawTextHash, detectedTier).catch(() => {});
+        await clearAnalysis(doc.rawTextHash, analysisTier).catch(() => {});
       } else {
-        const cached = await getCachedAnalysis(doc.rawTextHash, detectedTier);
+        const cached = await getCachedAnalysis(doc.rawTextHash, analysisTier);
         if (cached) {
           setAnalysis(cached);
           setStatus('done');
@@ -325,7 +335,7 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
       ]);
 
       const result = await generateFilingAnalysis(doc, {
-        tier: detectedTier,
+        tier: analysisTier,
         aux: { redline, sentiments, flags: flagsRef.current },
         signal: ac.signal,
         onStage: (stage, partial) => {
@@ -334,20 +344,26 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
           setCurrentStage(STAGE_ORDER[idx + 1] ?? null);
           setAnalysis({ ...partial });
         },
+        onDownloadProgress: (loaded) => {
+          if (ac.signal.aborted) return;
+          setDownloadProgress(loaded);
+        },
       });
 
       if (ac.signal.aborted) return;
       setAnalysis(result);
       setStatus('done');
       setCurrentStage(null);
-      await putAnalysis(doc.rawTextHash, detectedTier, result).catch(console.warn);
+      setDownloadProgress(null);
+      await putAnalysis(doc.rawTextHash, analysisTier, result).catch(console.warn);
     } catch (err) {
       if (ac.signal.aborted) return;
       setStatus('error');
       setCurrentStage(null);
+      setDownloadProgress(null);
       setError(String(err));
     }
-  }, [doc, detectedTier]);
+  }, [doc, analysisTier]);
 
   // Auto-run once per document.
   useEffect(() => {
@@ -384,9 +400,43 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
 
       {a?.degraded && (
         <div role="status" className="rounded-lg bg-sky-950/40 px-3 py-2 text-[11px] text-sky-300 ring-1 ring-inset ring-sky-800/30">
-          On-device read — takeaways, risks, and per-dimension cards are built from sentiment,
-          language flags, and prior-filing changes. Enable Chrome built-in AI (Gemini Nano) for a
-          fuller narrative with bull/bear cases, a management-claim check, and a watch list.
+          {gatedToDeterministic ? (
+            <>
+              On-device read — this page didn’t parse as a multi-section SEC filing, so the analysis
+              is built deterministically from sentiment, language flags, and prior-filing changes
+              (no AI model is run). Open a filing on EDGAR for the full narrative analysis.
+            </>
+          ) : (
+            <>
+              On-device read — takeaways, risks, and per-dimension cards are built from sentiment,
+              language flags, and prior-filing changes. Enable Chrome built-in AI (Gemini Nano) for a
+              fuller narrative with bull/bear cases, a management-claim check, and a watch list.
+            </>
+          )}
+        </div>
+      )}
+
+      {/* First-use Gemini Nano download — show progress instead of looking frozen. */}
+      {downloadProgress !== null && (
+        <div
+          role="progressbar"
+          aria-valuenow={Math.round(downloadProgress * 100)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label="On-device model loading"
+          className="flex flex-col gap-1"
+        >
+          <div className="flex justify-between text-[10px] text-zinc-500">
+            <span>Loading on-device model…</span>
+            <span>{Math.round(downloadProgress * 100)}%</span>
+          </div>
+          <div className="h-1 w-full overflow-hidden rounded-full bg-zinc-800">
+            <motion.div
+              className="h-full rounded-full bg-sky-500"
+              animate={{ width: `${downloadProgress * 100}%` }}
+              transition={{ duration: 0.3 }}
+            />
+          </div>
         </div>
       )}
 

@@ -13,7 +13,13 @@
  *   3. Direct investment advice is scrubbed from model output.
  *   4. whatChanged comes from the redline engine (deterministic), not the LM.
  *   5. Extractive tier produces a degraded analysis with zero LM calls.
- *   6. A stage that returns invalid JSON fails soft — later stages still run.
+ *   6. A stage that returns invalid JSON / empty output fails soft to the
+ *      deterministic floor — its on-device cards are retained, later stages run.
+ *   7. A hung LM stage is bounded by a per-stage deadline (no infinite "Reading…").
+ *   8. A hung/failed snapshot short-circuits to the deterministic floor.
+ *   9. Gemini Nano download progress is forwarded to the caller.
+ *  10. The non-filing gate (isLowConfidenceGeneric / ≤1 section) selects the
+ *      deterministic tier — no LM calls, no model download.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -23,6 +29,7 @@ import {
   type AnalystLMFactory,
   type AnalystLMSession,
 } from '@/analyst/pipeline';
+import { isLowConfidenceGeneric } from '@/content/ingest/detect';
 import type { RedlineEntry } from '@/redline/redlineStore';
 
 // ── fixtures ──────────────────────────────────────────────────────────────────
@@ -297,16 +304,34 @@ describe('generateFilingAnalysis — builtin tier', () => {
     expect(change.confidence).toBe('High');
   });
 
-  it('fails soft when a stage returns invalid JSON', async () => {
+  it('fails soft to the deterministic floor when a stage returns invalid JSON', async () => {
     const { factory, calls } = makeFactory({ takeaways: 'not json at all' });
     const analysis = await generateFilingAnalysis(makeDoc(), {
-      tier: 'builtin', lmFactory: factory,
+      tier: 'builtin',
+      aux: { redline: makeRedline() },
+      lmFactory: factory,
     });
-    expect(analysis.topTakeaways).toHaveLength(0);
-    expect(analysis.stagesDone).not.toContain('takeaways');
-    // Later stages still ran.
+    // The takeaways LM stage produced nothing usable, so the deterministic
+    // on-device takeaways (the floor) are retained rather than wiped to empty.
+    expect(analysis.topTakeaways.length).toBeGreaterThan(0);
+    expect(analysis.stagesDone).toContain('takeaways');
+    // Later stages still ran and the model still contributed elsewhere.
     expect(calls).toContain('risks');
     expect(analysis.riskSignals.length).toBeGreaterThan(0);
+    expect(analysis.degraded).toBe(false);
+  });
+
+  it('keeps deterministic cards when an LM stage returns an empty array', async () => {
+    // Revenue content exists in the doc, but the model returns []: the floor's
+    // on-device revenue cards must survive rather than be overwritten with empty.
+    const { factory, calls } = makeFactory({ revenue: '[]' });
+    const analysis = await generateFilingAnalysis(makeDoc(), {
+      tier: 'builtin',
+      aux: { redline: makeRedline() },
+      lmFactory: factory,
+    });
+    expect(calls).toContain('revenue'); // stage was attempted
+    expect(analysis.revenueImpact.length).toBeGreaterThan(0); // floor retained
   });
 
   it('skips dimension stages on sparse documents (no relevant text)', async () => {
@@ -332,6 +357,134 @@ describe('generateFilingAnalysis — builtin tier', () => {
     expect(analysis.revenueImpact).toHaveLength(0);
     // Stages are still marked done so the UI can render "Not enough information".
     expect(analysis.stagesDone).toContain('revenue');
+  });
+
+  it('bounds a hung LM stage with a deadline and continues (no infinite wait)', async () => {
+    vi.useFakeTimers();
+    try {
+      // The takeaways prompt never resolves; every other stage is canned.
+      const factory: AnalystLMFactory = async () => ({
+        prompt: vi.fn().mockImplementation((text: string) => {
+          const stage = /^TASK: (\w+)/.exec(text)?.[1] ?? 'unknown';
+          if (stage === 'takeaways') return new Promise<string>(() => {}); // hangs forever
+          const resp = STAGE_RESPONSES[stage];
+          if (resp === undefined) throw new Error(`no canned response for ${stage}`);
+          return Promise.resolve(resp);
+        }),
+        destroy: vi.fn(),
+      });
+
+      const promise = generateFilingAnalysis(makeDoc(), {
+        tier: 'builtin',
+        aux: { redline: makeRedline() },
+        lmFactory: factory,
+      });
+      // Drive every per-stage deadline; the hung takeaways stage times out, the
+      // rest resolve via microtasks between timer firings.
+      await vi.advanceTimersByTimeAsync(1_000_000);
+      const analysis = await promise;
+
+      // Pipeline completed instead of hanging.
+      expect(analysis.generatedAt).toBeGreaterThan(0);
+      // takeaways timed out → deterministic floor retained, not empty.
+      expect(analysis.topTakeaways.length).toBeGreaterThan(0);
+      // A later stage that did respond still produced LM content.
+      expect(analysis.marginImpact[0]?.label).toBe('Bearish');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('short-circuits to the deterministic floor when the snapshot stage hangs', async () => {
+    vi.useFakeTimers();
+    try {
+      let promptCalls = 0;
+      const factory: AnalystLMFactory = async () => ({
+        prompt: vi.fn().mockImplementation(() => {
+          promptCalls++;
+          return new Promise<string>(() => {}); // snapshot (and only snapshot) hangs
+        }),
+        destroy: vi.fn(),
+      });
+
+      const promise = generateFilingAnalysis(makeDoc(), {
+        tier: 'builtin',
+        aux: { redline: makeRedline() },
+        lmFactory: factory,
+      });
+      await vi.advanceTimersByTimeAsync(1_000_000);
+      const analysis = await promise;
+
+      // Only the snapshot stage was attempted — no 8 more doomed timeouts.
+      expect(promptCalls).toBe(1);
+      expect(analysis.degraded).toBe(true);
+      // Deterministic floor is intact: redline changes + on-device takeaways.
+      expect(analysis.whatChanged.length).toBeGreaterThan(0);
+      expect(analysis.topTakeaways.length).toBeGreaterThan(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('forwards Gemini Nano download progress to the caller', async () => {
+    const seen: number[] = [];
+    const factory: AnalystLMFactory = async (_sys, _signal, onDownloadProgress) => {
+      // Simulate Chrome emitting download progress on first create().
+      onDownloadProgress?.(0.5);
+      onDownloadProgress?.(1);
+      return {
+        prompt: vi.fn().mockImplementation((text: string) => {
+          const stage = /^TASK: (\w+)/.exec(text)?.[1] ?? 'unknown';
+          return Promise.resolve(STAGE_RESPONSES[stage] ?? '[]');
+        }),
+        destroy: vi.fn(),
+      };
+    };
+
+    await generateFilingAnalysis(makeDoc(), {
+      tier: 'builtin',
+      aux: { redline: makeRedline() },
+      lmFactory: factory,
+      onDownloadProgress: (p) => seen.push(p),
+    });
+
+    expect(seen).toContain(0.5);
+    expect(seen).toContain(1);
+  });
+});
+
+describe('generateFilingAnalysis — non-filing gate', () => {
+  // Mirrors the AnalystPanel gate: low-confidence / ≤1-section pages (e.g. a
+  // Yahoo Finance quote page) degrade to the deterministic tier, so the heavy
+  // LM pipeline + first-use model download never fire on a non-filing.
+  function makeNonFilingDoc(): DocumentModel {
+    return {
+      source: { url: 'https://finance.yahoo.com/quote/NVDA', host: 'ir' },
+      companyName: 'Yahoo Finance',
+      filingType: 'UNKNOWN',
+      sections: [{
+        id: 'document', label: 'Document', order: 0,
+        text: 'NVIDIA Corporation (NVDA) real-time quote and market summary page.',
+        charRange: [0, 65],
+      }],
+      rawTextHash: 'yahoo-hash',
+    };
+  }
+
+  it('flags a Yahoo-like page as low-confidence so the panel picks the deterministic tier', () => {
+    const doc = makeNonFilingDoc();
+    const gated = isLowConfidenceGeneric(doc) || doc.sections.length <= 1;
+    expect(gated).toBe(true);
+  });
+
+  it('runs zero LM calls and returns a degraded analysis at the deterministic tier', async () => {
+    const { factory, calls } = makeFactory();
+    const analysis = await generateFilingAnalysis(makeNonFilingDoc(), {
+      tier: 'extractive', // what the gate forces for a non-filing
+      lmFactory: factory,
+    });
+    expect(calls).toHaveLength(0);
+    expect(analysis.degraded).toBe(true);
   });
 });
 

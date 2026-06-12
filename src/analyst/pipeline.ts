@@ -67,21 +67,36 @@ export interface AnalystLMSession {
 export type AnalystLMFactory = (
   systemPrompt: string,
   signal?: AbortSignal,
+  /** Surfaces Gemini Nano's one-time download progress (0..1) on first create. */
+  onDownloadProgress?: (loaded: number) => void,
 ) => Promise<AnalystLMSession | null>;
+
+interface LMMonitor {
+  addEventListener(
+    type: 'downloadprogress',
+    cb: (e: { loaded: number; total?: number }) => void,
+  ): void;
+}
 
 interface LMCtor {
   create(opts: {
     initialPrompts?: Array<{ role: string; content: string }>;
+    monitor?: (m: LMMonitor) => void;
     signal?: AbortSignal;
   }): Promise<AnalystLMSession>;
 }
 
-const defaultLMFactory: AnalystLMFactory = async (systemPrompt, signal) => {
+const defaultLMFactory: AnalystLMFactory = async (systemPrompt, signal, onDownloadProgress) => {
   const LM = (globalThis as Record<string, unknown>)['LanguageModel'] as LMCtor | undefined;
   if (!LM) return null;
   try {
     return await LM.create({
       initialPrompts: [{ role: 'system', content: systemPrompt }],
+      // Mirror summarize.ts / capabilities.ts: surface the first-use model
+      // download so the UI shows progress instead of looking frozen.
+      monitor: (m) => {
+        m.addEventListener('downloadprogress', (e) => onDownloadProgress?.(e.loaded));
+      },
       ...(signal !== undefined ? { signal } : {}),
     });
   } catch {
@@ -96,6 +111,49 @@ const DIMENSION_BUDGET = 3_200;
 const SYNTHESIS_BUDGET = 2_800;
 /** Below this many relevant chars, skip the LM call (sparse docs, e.g. Form 4). */
 const MIN_EXCERPT_CHARS = 200;
+
+// Per-stage deadlines. The first LM call can include a one-time model download
+// or cold warmup, so it gets a longer budget than subsequent stages. Without
+// these, a hung LanguageModel.create()/prompt() wedges the whole pipeline and
+// pins the panel on "Reading the document…" forever (the bug this fixes).
+const SNAPSHOT_TIMEOUT_MS = 30_000;
+const STAGE_TIMEOUT_MS = 20_000;
+
+/**
+ * Run `fn` with a hard deadline. Returns `fn`'s result, or `null` if it doesn't
+ * settle within `ms` (the child signal is aborted, best-effort, to free the LM
+ * session). A real parent-abort (user cancel / unmount / new run) propagates as
+ * an AbortError so the caller can bail cleanly. The Promise.race guarantees we
+ * stop awaiting even if Chrome ignores the abort signal mid-download.
+ */
+async function withDeadline<T>(
+  fn: (signal: AbortSignal) => Promise<T>,
+  ms: number,
+  parent: AbortSignal | undefined,
+): Promise<T | null> {
+  if (parent?.aborted) throw new DOMException('aborted', 'AbortError');
+  const child = new AbortController();
+  const onAbort = () => child.abort();
+  parent?.addEventListener('abort', onAbort);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => {
+      child.abort();
+      resolve(null);
+    }, ms);
+  });
+  try {
+    return await Promise.race([fn(child.signal), timeout]);
+  } catch (err) {
+    if (parent?.aborted) throw new DOMException('aborted', 'AbortError');
+    // Timeout-driven abort or a stage-local failure → fail soft.
+    if (err instanceof DOMException && err.name === 'AbortError') return null;
+    throw err;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    parent?.removeEventListener('abort', onAbort);
+  }
+}
 
 // ── parsing / validation helpers ─────────────────────────────────────────────
 
@@ -212,6 +270,8 @@ export interface GenerateAnalysisOptions {
   signal?: AbortSignal;
   /** Called after every completed stage with the (mutated) analysis so far. */
   onStage?: (stage: AnalysisStage, analysis: FilingAnalysis) => void;
+  /** Surfaces Gemini Nano's one-time download progress (0..1) to the UI. */
+  onDownloadProgress?: (loaded: number) => void;
   /** Test seam — defaults to the Chrome Prompt API. */
   lmFactory?: AnalystLMFactory;
 }
@@ -232,32 +292,30 @@ export async function generateFilingAnalysis(
   const sig = opts.signal;
   const hints = buildHints(aux);
 
-  // Start from the deterministic skeleton, then upgrade stage by stage. In the
-  // builtin tier the LM owns the insight arrays, so clear the deterministic
-  // pre-fill here: a failed LM stage must fail soft to EMPTY (the UI renders
-  // "Not enough information"), not silently fall back to the deterministic cards
-  // — that would blur which content the model actually produced and confuse the
-  // progressive/streaming reveal. (whatChanged is re-derived from the redline.)
+  // Deterministic floor, then upgrade. We keep the full deterministic analysis
+  // (snapshot one-liner, takeaways, per-dimension cards, risk signals, redline
+  // changes) as a baseline and let each LM stage OVERWRITE its section only when
+  // it produces real content. This guarantees the panel always has something to
+  // render immediately — so a slow/hung/unavailable LM can never pin the UI on
+  // the blank "Reading the document…" card — and if every LM stage fails the
+  // user still gets the honest on-device read instead of nothing.
   const analysis = deterministicAnalysis(doc, aux);
+  // Optimistically suppress the degraded banner while we attempt the LM upgrade
+  // (the header stage-label is the "upgrading" cue). Re-derived at the end from
+  // whether the model actually contributed anything.
   analysis.degraded = false;
-  analysis.stagesDone = [];
-  analysis.topTakeaways = [];
-  analysis.revenueImpact = [];
-  analysis.marginImpact = [];
-  analysis.cashFlowImpact = [];
-  analysis.balanceSheetHealth = [];
-  analysis.shareImpact = [];
-  analysis.riskSignals = [];
-  // Clear degraded-mode placeholder copy; LM stages fill these in.
-  analysis.oneSentenceSummary = '';
-  analysis.investorSnapshot.mainFinancialTheme = '';
+  let anyLMSuccess = false;
 
   const markDone = (stage: AnalysisStage) => {
     if (!analysis.stagesDone.includes(stage)) analysis.stagesDone.push(stage);
     opts.onStage?.(stage, analysis);
   };
 
-  /** One LM round-trip with constraint; returns parsed JSON or null (fail-soft). */
+  // Emit the floor immediately so the panel renders real content (non-null) from
+  // the first frame, before the first — potentially slow — LM call.
+  opts.onStage?.('snapshot', analysis);
+
+  /** One LM round-trip with constraint + hard deadline; returns parsed JSON or null. */
   const ask = async (
     stage: AnalysisStage,
     excerpts: string,
@@ -265,21 +323,24 @@ export async function generateFilingAnalysis(
     stageHints?: string,
   ): Promise<unknown | null> => {
     if (sig?.aborted) throw new DOMException('aborted', 'AbortError');
-    const session = await lmFactory(SYSTEM_PROMPT, sig);
-    if (!session) return null;
-    try {
-      const raw = await session.prompt(buildStagePrompt(stage, doc, excerpts, stageHints), {
-        responseConstraint: schema,
-        ...(sig !== undefined ? { signal: sig } : {}),
-      });
-      return parseJson(raw);
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') throw err;
-      console.warn(`[FilingLens] analyst stage "${stage}" failed:`, err);
-      return null;
-    } finally {
-      session.destroy();
-    }
+    const ms = stage === 'snapshot' ? SNAPSHOT_TIMEOUT_MS : STAGE_TIMEOUT_MS;
+    return withDeadline(async (signal) => {
+      const session = await lmFactory(SYSTEM_PROMPT, signal, opts.onDownloadProgress);
+      if (!session) return null;
+      try {
+        const raw = await session.prompt(buildStagePrompt(stage, doc, excerpts, stageHints), {
+          responseConstraint: schema,
+          signal,
+        });
+        return parseJson(raw);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') throw err;
+        console.warn(`[FilingLens] analyst stage "${stage}" failed:`, err);
+        return null;
+      } finally {
+        session.destroy();
+      }
+    }, ms, sig);
   };
 
   const overview = selectOverviewText(doc, OVERVIEW_BUDGET);
@@ -301,7 +362,16 @@ export async function generateFilingAnalysis(
         scrubAdvice(str(o['mostImportantInvestorQuestion'])) ||
         analysis.investorSnapshot.mostImportantInvestorQuestion,
     };
+    anyLMSuccess = true;
     markDone('snapshot');
+  } else {
+    // The first — and simplest — LM call produced nothing: the model is
+    // unavailable, still downloading, or hung past its deadline. Don't attempt
+    // 8 more doomed stages (each its own timeout). Finalize on the deterministic
+    // floor, which is already rendered, and flag it as an on-device read.
+    analysis.degraded = true;
+    analysis.generatedAt = Date.now();
+    return analysis;
   }
 
   // 2 ── top takeaways
@@ -309,6 +379,7 @@ export async function generateFilingAnalysis(
   const takeaways = coerceInsights(doc, takeRaw, 'Operations', 7);
   if (takeaways.length > 0) {
     analysis.topTakeaways = takeaways;
+    anyLMSuccess = true;
     markDone('takeaways');
   }
 
@@ -348,8 +419,11 @@ export async function generateFilingAnalysis(
     }
     const raw = await ask(d.stage, excerpts, insightArraySchema(d.max), d.stage === 'risks' ? hints : undefined);
     const insights = coerceInsights(doc, raw, d.category, d.max);
-    if (insights.length > 0 || raw !== null) {
+    // Overwrite the deterministic floor only when the LM produced real insights;
+    // a null/empty response keeps the on-device cards rather than wiping them.
+    if (insights.length > 0) {
       d.assign(insights);
+      anyLMSuccess = true;
       markDone(d.stage);
     }
   }
@@ -373,6 +447,7 @@ export async function generateFilingAnalysis(
         });
       }
       analysis.managementNarrativeCheck = checks;
+      anyLMSuccess = true;
       markDone('narrative');
     }
   } else {
@@ -413,10 +488,15 @@ export async function generateFilingAnalysis(
       }
       const scores = coerceScores(o['scores']);
       if (scores) analysis.scores = scores;
+      anyLMSuccess = true;
       markDone('synthesis');
     }
   }
 
+  // If no LM stage contributed (e.g. every call timed out or returned empty),
+  // the result is effectively the deterministic floor — label it honestly so
+  // the on-device banner explains what the user is looking at.
+  analysis.degraded = !anyLMSuccess;
   analysis.generatedAt = Date.now();
   return analysis;
 }
