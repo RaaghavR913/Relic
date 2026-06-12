@@ -30,7 +30,6 @@ import { FlagPanel } from './FlagPanel';
 import { RedlinePanel } from './RedlinePanel';
 import { FirstRun } from './FirstRun';
 import { OverlayControls } from './OverlayControls';
-import { SectionNavigator } from './SectionNavigator';
 import {
   Spinner,
   SkeletonCard,
@@ -56,6 +55,23 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'flags', label: 'Flags' },
   { id: 'changes', label: 'Changes' },
 ];
+
+/** True when the document is a readable SEC data/report page, not a company filing. */
+function isDataReport(doc: DocumentModel | null): boolean {
+  return doc?.filingType === 'DATA_REPORT';
+}
+
+/**
+ * Tabs investor-context features require a company/security — Analyst (investment
+ * thesis), Sentiment (read as thesis), and Changes (redline vs. a prior filing).
+ * They're hidden for SEC data/report pages, which keep Summary + Flags.
+ */
+const REPORT_DISABLED_TABS: ReadonlySet<TabId> = new Set(['analyst', 'sentiment', 'changes']);
+
+function tabsForDoc(doc: DocumentModel | null): Array<{ id: TabId; label: string }> {
+  if (!isDataReport(doc)) return TABS;
+  return TABS.filter((t) => !REPORT_DISABLED_TABS.has(t.id));
+}
 
 function fmtDate(iso?: string): string | null {
   if (!iso) return null;
@@ -86,7 +102,12 @@ function Header({ doc, tier }: { doc: DocumentModel | null; tier: GenerationTier
   const period = fmtDate(doc?.periodOfReport);
   // Don't assert a specific form when detection is low-confidence (e.g. a press
   // release that merely names a form) — the type heuristic can misfire off-EDGAR.
-  const typeLabel = doc && isLowConfidenceGeneric(doc) ? 'Document' : doc?.filingType;
+  // SEC data/report pages get an honest, non-filing label.
+  const typeLabel = isDataReport(doc)
+    ? 'SEC Data Report'
+    : doc && isLowConfidenceGeneric(doc)
+      ? 'Document'
+      : doc?.filingType;
   return (
     <header className="border-b border-zinc-800 px-4 py-3">
       <div className="flex items-center gap-2.5">
@@ -120,19 +141,21 @@ function TabBar({
   active,
   onSelect,
   flagCount,
+  tabs = TABS,
 }: {
   active: TabId;
   onSelect: (id: TabId) => void;
   flagCount: number;
+  tabs?: Array<{ id: TabId; label: string }>;
 }) {
   const onKeyDown = (e: React.KeyboardEvent) => {
-    const idx = TABS.findIndex((t) => t.id === active);
+    const idx = tabs.findIndex((t) => t.id === active);
     if (e.key === 'ArrowRight') {
       e.preventDefault();
-      onSelect(TABS[(idx + 1) % TABS.length]!.id);
+      onSelect(tabs[(idx + 1) % tabs.length]!.id);
     } else if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      onSelect(TABS[(idx - 1 + TABS.length) % TABS.length]!.id);
+      onSelect(tabs[(idx - 1 + tabs.length) % tabs.length]!.id);
     }
   };
 
@@ -143,7 +166,7 @@ function TabBar({
       onKeyDown={onKeyDown}
       className="flex gap-0.5 rounded-lg bg-zinc-900 p-0.5 ring-1 ring-zinc-800"
     >
-      {TABS.map((t) => {
+      {tabs.map((t) => {
         const selected = t.id === active;
         return (
           <button
@@ -249,6 +272,16 @@ export default function App() {
   const [currentFlags, setCurrentFlags] = useState<LanguageFlag[]>([]);
   const [activeTab, setActiveTab] = useState<TabId>('analyst');
 
+  // For SEC data/report pages the investor-only tabs are hidden; if the active
+  // tab is one of them (e.g. carried over from a prior filing), fall back to a
+  // tab that's actually visible so the panel never renders behind a missing tab.
+  const visibleTabs = tabsForDoc(currentDoc);
+  useEffect(() => {
+    if (!visibleTabs.some((t) => t.id === activeTab)) {
+      setActiveTab(visibleTabs[0]?.id ?? 'summary');
+    }
+  }, [visibleTabs, activeTab]);
+
   // Onboarding gate.
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
   useEffect(() => {
@@ -268,6 +301,10 @@ export default function App() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const analyzeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Mirror currentDoc into a ref so the analyze-timeout closure can read the
+  // latest value without being re-created on every document change.
+  const currentDocRef = useRef<DocumentModel | null>(null);
+  currentDocRef.current = currentDoc;
 
   const clearAnalyzeTimer = useCallback(() => {
     if (analyzeTimer.current !== null) {
@@ -299,9 +336,15 @@ export default function App() {
     // ingesting (up to ~8s), so allow headroom beyond that before giving up.
     analyzeTimer.current = setTimeout(() => {
       setAnalyzing(false);
-      setAnalyzeError(
-        "This page is taking a while to load or has little readable text. Once it finishes loading, click “Analyze this page” again.",
-      );
+      // If a document is already loaded for this page (e.g. the auto-injected
+      // content script on sec.gov analyzed it on load, and re-injection had nothing
+      // new to re-emit), the analysis already succeeded — don't surface a
+      // misleading "taking a while" warning. Only warn when nothing was produced.
+      if (!currentDocRef.current) {
+        setAnalyzeError(
+          "This page is taking a while to load or has little readable text. Once it finishes loading, click “Analyze this page” again.",
+        );
+      }
     }, 15_000);
   }, [clearAnalyzeTimer]);
 
@@ -398,6 +441,13 @@ export default function App() {
                     {analyzeError}
                   </Banner>
                 )}
+                {isDataReport(currentDoc) && (
+                  <Banner tone="info" icon="ℹ">
+                    <span className="font-semibold">SEC data/report page</span> — this is a
+                    regulatory document, not a company filing. Investor analysis, sentiment, and
+                    redline are unavailable; Summary and language flags still apply.
+                  </Banner>
+                )}
                 {isLowConfidenceGeneric(currentDoc) && (
                   <Banner tone="warn" icon="⚠">
                     <span className="font-semibold">This page doesn&rsquo;t look like an SEC filing</span>{' '}
@@ -411,19 +461,23 @@ export default function App() {
                     .
                   </Banner>
                 )}
-                <SectionNavigator doc={currentDoc} />
                 <OverlayControls />
-                <TabBar active={activeTab} onSelect={setActiveTab} flagCount={currentFlags.length} />
+                <TabBar active={activeTab} onSelect={setActiveTab} flagCount={currentFlags.length} tabs={visibleTabs} />
 
-                {/* Tab panels — kept mounted to preserve async state across switches. */}
-                <div
-                  id="panel-analyst"
-                  role="tabpanel"
-                  aria-labelledby="tab-analyst"
-                  hidden={activeTab !== 'analyst'}
-                >
-                  <AnalystPanel doc={currentDoc} detectedTier={caps.generationTier} flags={currentFlags} />
-                </div>
+                {/* Tab panels — kept mounted to preserve async state across switches.
+                    Investor-context panels (analyst/sentiment/changes) are not even
+                    mounted for SEC data/report pages, so they never auto-run
+                    investment-thesis analysis or hit EDGAR for a prior filing. */}
+                {!isDataReport(currentDoc) && (
+                  <div
+                    id="panel-analyst"
+                    role="tabpanel"
+                    aria-labelledby="tab-analyst"
+                    hidden={activeTab !== 'analyst'}
+                  >
+                    <AnalystPanel doc={currentDoc} detectedTier={caps.generationTier} flags={currentFlags} />
+                  </div>
+                )}
                 <div
                   id="panel-summary"
                   role="tabpanel"
@@ -432,14 +486,16 @@ export default function App() {
                 >
                   <SummaryPanel doc={currentDoc} detectedTier={caps.generationTier} />
                 </div>
-                <div
-                  id="panel-sentiment"
-                  role="tabpanel"
-                  aria-labelledby="tab-sentiment"
-                  hidden={activeTab !== 'sentiment'}
-                >
-                  <SentimentPanel doc={currentDoc} />
-                </div>
+                {!isDataReport(currentDoc) && (
+                  <div
+                    id="panel-sentiment"
+                    role="tabpanel"
+                    aria-labelledby="tab-sentiment"
+                    hidden={activeTab !== 'sentiment'}
+                  >
+                    <SentimentPanel doc={currentDoc} />
+                  </div>
+                )}
                 <div id="panel-flags" role="tabpanel" aria-labelledby="tab-flags" hidden={activeTab !== 'flags'}>
                   {currentFlags.length > 0 ? (
                     <FlagPanel doc={currentDoc} flags={currentFlags} />
@@ -447,9 +503,11 @@ export default function App() {
                     <EmptyState title="No language flags" body="No hedging, litigious, or uncertainty language was detected in this filing." />
                   )}
                 </div>
-                <div id="panel-changes" role="tabpanel" aria-labelledby="tab-changes" hidden={activeTab !== 'changes'}>
-                  <RedlinePanel doc={currentDoc} detectedTier={caps.generationTier} />
-                </div>
+                {!isDataReport(currentDoc) && (
+                  <div id="panel-changes" role="tabpanel" aria-labelledby="tab-changes" hidden={activeTab !== 'changes'}>
+                    <RedlinePanel doc={currentDoc} detectedTier={caps.generationTier} />
+                  </div>
+                )}
 
                 <PrivacyNote className="mt-1" />
 

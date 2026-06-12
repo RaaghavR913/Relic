@@ -285,6 +285,8 @@ export interface WorkerInitMsg {
   modelBasePath: string;
   modelId: string;
   numThreads: number;
+  /** Dev/diagnostic override: skip WebGPU and load the WASM backend directly. */
+  forceWasm?: boolean;
 }
 
 export interface WorkerEmbedMsg {
@@ -298,6 +300,12 @@ export type WorkerInbound = WorkerInitMsg | WorkerEmbedMsg;
 export interface WorkerReadyMsg {
   type: 'READY';
   device: 'webgpu' | 'wasm';
+  /** Optional diagnostics (dev panel): which runtime paths/backends were used. */
+  diag?: {
+    wasmPaths: string;
+    /** Per-backend load attempt outcomes, e.g. ["webgpu: ok"] or ["webgpu: <err>", "wasm: ok"]. */
+    attempts: string[];
+  };
 }
 
 export interface WorkerProgressMsg {
@@ -424,17 +432,6 @@ export interface ContentSetFlagOverlayMsg {
    * low-confidence generic pages, enabling requires an explicit gesture.
    */
   explicit?: boolean;
-}
-
-/**
- * Side panel → Content: scroll a document-space range into view and briefly
- * flash it (reuses the 'qa' highlight). Used by the section navigator's
- * "jump to section" affordance. Identical payload shape to SCROLL_TO_FLAG.
- */
-export interface ContentScrollToRangeMsg {
-  target: 'content';
-  type: 'SCROLL_TO_RANGE';
-  range: [number, number];
 }
 
 // ── Sentiment Worker (no chrome.*) ────────────────────────────────────────────

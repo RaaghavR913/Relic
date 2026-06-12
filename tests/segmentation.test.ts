@@ -86,6 +86,16 @@ describe('S-1 title-pattern segmentation', () => {
     expect(ids).toContain('s1_risk_factors');
     expect(ids).toContain('s1_use_of_proceeds');
   });
+
+  it('falls back to a whole-document section when only one title pattern matches', () => {
+    // A misdetected S-1 whose only match is the incidental word "Business"
+    // (e.g. the BDC data page). Must NOT yield a lone "Business" section pretending
+    // the page was parsed as an S-1 — that surfaced as the "1 sections" symptom.
+    const text = 'Business Development Company Report\nThis is a data set, not a prospectus.';
+    const sections = segmentSections(text, 'S-1', []);
+    expect(sections.length).toBe(1);
+    expect(sections[0]!.id).toBe('document_body');
+  });
 });
 
 describe('DEF 14A title-pattern segmentation', () => {

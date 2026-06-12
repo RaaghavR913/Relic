@@ -46,8 +46,11 @@ async function init(
   modelBasePath: string,
   modelId: string,
   numThreads: number,
+  forceWasm = false,
 ): Promise<void> {
   // Configure ONNX Runtime WASM paths — must be set before any pipeline is created.
+  // ORT resolves both the backend glue (.mjs) and binary (.wasm) under this prefix;
+  // the build copies every ort-wasm-* glue+binary into dist/wasm/ to match.
   (env.backends.onnx.wasm as Record<string, unknown>).wasmPaths = wasmPaths;
   (env.backends.onnx.wasm as Record<string, unknown>).numThreads = numThreads;
 
@@ -69,8 +72,14 @@ async function init(
     }
   };
 
-  // Try WebGPU first; fall back to WASM.
-  for (const device of ['webgpu', 'wasm'] as const) {
+  // Deterministic backend order: WebGPU first (fast), then WASM. `forceWasm` skips
+  // straight to WASM for diagnostics. Each attempt's outcome is recorded so the
+  // user-visible error reports the REAL first failure (e.g. a missing .mjs glue
+  // URL) instead of a generic "no available backend found".
+  const order: ReadonlyArray<'webgpu' | 'wasm'> = forceWasm ? ['wasm'] : ['webgpu', 'wasm'];
+  const attempts: string[] = [];
+
+  for (const device of order) {
     try {
       classifier = (await pipeline('text-classification', modelId, {
         device,
@@ -79,20 +88,24 @@ async function init(
         progress_callback: progressCallback,
       })) as unknown as ClassificationPipeline;
       activeDevice = device;
+      attempts.push(`${device}: ok`);
       const elapsed = (performance.now() - t0).toFixed(0);
       console.debug(`[sentiment.worker] FinBERT loaded on ${device} in ${elapsed} ms`);
       break;
     } catch (err) {
-      if (device === 'webgpu') {
-        console.debug('[sentiment.worker] WebGPU unavailable, falling back to WASM:', err);
-      } else {
-        post({ type: 'ERROR', message: `Failed to load FinBERT: ${String(err)}` });
-        return;
-      }
+      attempts.push(`${device}: ${String(err)}`);
+      console.debug(`[sentiment.worker] ${device} backend failed:`, err);
     }
   }
 
-  post({ type: 'READY', device: activeDevice });
+  if (!classifier) {
+    // Surface every backend's failure — the WebGPU error carries the missing-module
+    // URL that the old code hid behind a console.debug. (Q9.)
+    post({ type: 'ERROR', message: `Failed to load FinBERT: ${attempts.join(' | ')}` });
+    return;
+  }
+
+  post({ type: 'READY', device: activeDevice, diag: { wasmPaths, attempts } });
 }
 
 // ── classify ──────────────────────────────────────────────────────────────────
@@ -171,6 +184,7 @@ self.onmessage = (e: MessageEvent) => {
       msg.modelBasePath as string,
       msg.modelId as string,
       (msg.numThreads as number | undefined) ?? 1,
+      (msg.forceWasm as boolean | undefined) ?? false,
     );
   } else if (msg.type === 'CLASSIFY') {
     void classify(msg.id as string, msg.texts as string[]);

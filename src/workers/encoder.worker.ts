@@ -41,9 +41,11 @@ async function init(
   modelBasePath: string,
   modelId: string,
   numThreads: number,
+  forceWasm = false,
 ): Promise<void> {
   // Configure ONNX Runtime WASM paths — must be set before any pipeline is created.
-  // wasmPaths comes from the offscreen main thread (computed via chrome.runtime.getURL).
+  // ORT resolves both the backend glue (.mjs) and binary (.wasm) under this prefix;
+  // the build copies every ort-wasm-* glue+binary into dist/wasm/ to match.
   (env.backends.onnx.wasm as Record<string, unknown>).wasmPaths = wasmPaths;
   (env.backends.onnx.wasm as Record<string, unknown>).numThreads = numThreads;
 
@@ -63,8 +65,11 @@ async function init(
     }
   };
 
-  // Try WebGPU first; fall back to WASM.
-  for (const device of ['webgpu', 'wasm'] as const) {
+  // Deterministic backend order with per-attempt diagnostics (mirrors sentiment.worker).
+  const order: ReadonlyArray<'webgpu' | 'wasm'> = forceWasm ? ['wasm'] : ['webgpu', 'wasm'];
+  const attempts: string[] = [];
+
+  for (const device of order) {
     try {
       extractor = (await pipeline('feature-extraction', modelId, {
         device,
@@ -73,19 +78,20 @@ async function init(
         progress_callback: progressCallback,
       })) as unknown as FeatureExtractor;
       activeDevice = device;
+      attempts.push(`${device}: ok`);
       break;
     } catch (err) {
-      if (device === 'webgpu') {
-        // Expected on devices without GPU adapter; continue to WASM.
-        console.debug('[encoder.worker] WebGPU unavailable, falling back to WASM:', err);
-      } else {
-        post({ type: 'ERROR', message: `Failed to load pipeline: ${String(err)}` });
-        return;
-      }
+      attempts.push(`${device}: ${String(err)}`);
+      console.debug(`[encoder.worker] ${device} backend failed:`, err);
     }
   }
 
-  post({ type: 'READY', device: activeDevice });
+  if (!extractor) {
+    post({ type: 'ERROR', message: `Failed to load pipeline: ${attempts.join(' | ')}` });
+    return;
+  }
+
+  post({ type: 'READY', device: activeDevice, diag: { wasmPaths, attempts } });
 }
 
 // Embed -----------------------------------------------------------------------
@@ -130,6 +136,7 @@ self.onmessage = (e: MessageEvent) => {
       msg.modelBasePath as string,
       msg.modelId as string,
       (msg.numThreads as number | undefined) ?? 1,
+      (msg.forceWasm as boolean | undefined) ?? false,
     );
   } else if (msg.type === 'EMBED') {
     void embed(msg.id as string, msg.texts as string[]);

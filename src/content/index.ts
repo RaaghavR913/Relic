@@ -37,7 +37,6 @@ const _lmPrewarm = awaitLexiconReady();
 import type {
   ContentHighlightMsg,
   ContentScrollToFlagMsg,
-  ContentScrollToRangeMsg,
   ContentShowRedlineMsg,
   ContentSentimentAddMsg,
   ContentSetSentimentOverlayMsg,
@@ -302,23 +301,6 @@ if (!ALREADY_INJECTED) chrome.runtime.onMessage.addListener(
       if (_flagOverlay && _positionMap) {
         if (m.enabled) _flagOverlay.activate(_allFlags, _positionMap);
         else _flagOverlay.deactivate();
-      }
-      return false;
-    }
-
-    // Session 7: section-navigator jump — scroll + flash, no persistent paint.
-    if (msg.type === 'SCROLL_TO_RANGE') {
-      const m = rawMsg as ContentScrollToRangeMsg;
-      if (_positionMap && _highlightController) {
-        const domRange = _positionMap.toDomRange(m.range);
-        if (domRange) {
-          domRange.startContainer.parentElement?.scrollIntoView({
-            behavior: 'smooth',
-            block: 'center',
-          });
-          _highlightController.setRanges(RAG_HIGHLIGHT_LAYER, [domRange]);
-          setTimeout(() => _highlightController?.clear(RAG_HIGHLIGHT_LAYER), 1800);
-        }
       }
       return false;
     }

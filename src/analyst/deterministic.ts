@@ -37,6 +37,7 @@ export function mapDocumentType(filingType: FilingType): AnalysisDocumentType {
     case '20-F': return '10-K';
     case 'S-1':
     case 'DEF 14A':
+    case 'DATA_REPORT':
     case 'UNKNOWN':
     default:
       return 'Other';

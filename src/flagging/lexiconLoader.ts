@@ -4,7 +4,8 @@
 // Two-layer lexicon:
 //   Layer 1 (base)  — 118-entry curated multi-word phrases with analyst notes.
 //                     Imported statically; compiled once on first call.
-//   Layer 2 (LM)    — Full Loughran-McDonald Master Dictionary (2018) single words.
+//   Layer 2 (LM)    — curated Loughran-McDonald subset (2018): 566 single words
+//                     (neg 275 / unc 126 / lit 139 / wm 26), not the full ~3.9k set.
 //                     Loaded lazily via dynamic import; merged into cache on first
 //                     call to awaitLexiconReady(). Run `npm run fetch-lm-dict` to
 //                     refresh from the authoritative Notre Dame CSV.

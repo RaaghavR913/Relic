@@ -8,17 +8,22 @@ import fs from 'fs';
 // ── Custom plugin: copy ONNX Runtime WASM binaries to dist/wasm/ (flat) ────────
 // vite-plugin-static-copy preserves nested directory structure; this plugin does
 // a direct fs.copyFile into the flat dest directory instead.
-function copyWasmPlugin(): Plugin {
+//
+// CRITICAL: onnxruntime-web 1.22 loads each backend through an ES-module GLUE file
+// (ort-wasm-simd-threaded.{,asyncify,jsep,jspi}.mjs) which it dynamically imports
+// at runtime; that glue then fetches the matching .wasm binary. ORT resolves the
+// glue URL as `${wasm.wasmPaths}<name>.mjs`, and our workers set wasmPaths to
+// chrome.runtime.getURL('wasm/'). So BOTH the .mjs and the .wasm must live in
+// dist/wasm/. Copying only the .wasm (the old behavior) left the glue missing and
+// produced: "no available backend found" / "Failed to fetch dynamically imported
+// module .../ort-wasm-simd-threaded.asyncify.mjs". Always copy them as a pair.
+function copyWasmPlugin(isProd: boolean): Plugin {
   const ORT_WASM_DIR = path.resolve(
     __dirname,
     'node_modules/@huggingface/transformers/node_modules/onnxruntime-web/dist',
   );
-  const WASM_FILES = [
-    'ort-wasm-simd-threaded.jsep.wasm',
-    'ort-wasm-simd-threaded.wasm',
-    'ort-wasm-simd-threaded.asyncify.wasm',
-    'ort-wasm-simd-threaded.jspi.wasm',
-  ];
+  // Match every backend glue (.mjs) + binary (.wasm) the loader can request.
+  const ORT_ASSET_RE = /^ort-wasm-simd-threaded.*\.(mjs|wasm)$/;
 
   return {
     name: 'copy-ort-wasm',
@@ -26,21 +31,32 @@ function copyWasmPlugin(): Plugin {
     closeBundle() {
       const outDir = path.resolve(__dirname, 'dist/wasm');
       fs.mkdirSync(outDir, { recursive: true });
-      for (const file of WASM_FILES) {
-        const src = path.join(ORT_WASM_DIR, file);
-        const dest = path.join(outDir, file);
-        if (fs.existsSync(src)) {
-          fs.copyFileSync(src, dest);
+
+      let copied = 0;
+      if (fs.existsSync(ORT_WASM_DIR)) {
+        for (const file of fs.readdirSync(ORT_WASM_DIR)) {
+          if (!ORT_ASSET_RE.test(file)) continue;
+          // Skip sourcemaps for the glue modules (e.g. *.mjs.map) — runtime never needs them.
+          if (file.endsWith('.map')) continue;
+          fs.copyFileSync(path.join(ORT_WASM_DIR, file), path.join(outDir, file));
+          copied++;
         }
       }
+      if (copied === 0) {
+        const msg = `copy-ort-wasm: no ort-wasm-* assets found in ${ORT_WASM_DIR} — sentiment/embeddings will fail to load.`;
+        // In a production build this is a launch-blocking defect: a glue-less zip
+        // throws "no available backend found" at runtime. Fail the build loudly so
+        // it can never be uploaded silently. Dev/watch builds only warn.
+        if (isProd) this.error(msg);
+        else this.warn(msg);
+      }
 
-      // Deduplicate the ONNX WASM binary. onnxruntime-web references the wasm via
-      // `new URL(..., import.meta.url)`, so Vite also emits a (hashed) copy into
-      // dist/assets/. That copy is never loaded at runtime — the encoder/sentiment
-      // workers override `env.backends.onnx.wasm.wasmPaths` to
-      // chrome.runtime.getURL('wasm/'), so ORT always loads from dist/wasm/ above.
-      // Remove the orphaned assets/ copies so the binary ships exactly once
-      // (~23 MB saved from the CWS upload).
+      // Deduplicate the (large) ONNX .wasm binary. onnxruntime-web references the
+      // wasm via `new URL(..., import.meta.url)`, so Vite may also emit a hashed
+      // copy into dist/assets/. That copy is never loaded at runtime — the workers
+      // override wasmPaths to dist/wasm/. Remove only the orphaned assets/ *.wasm
+      // (NOT the .mjs glue — leaving any emitted glue in assets/ is a harmless
+      // fallback for the import.meta.url resolution branch). Saves ~23 MB on upload.
       const assetsDir = path.resolve(__dirname, 'dist/assets');
       if (fs.existsSync(assetsDir)) {
         for (const f of fs.readdirSync(assetsDir)) {
@@ -59,7 +75,7 @@ function copyWasmPlugin(): Plugin {
 // `models/` dir (populated by `npm run fetch-models`) and are copied verbatim
 // into the build output, where the workers load them via
 // chrome.runtime.getURL('models/').
-function copyModelsPlugin(): Plugin {
+function copyModelsPlugin(isProd: boolean): Plugin {
   const SRC = path.resolve(__dirname, 'models');
   const DEST = path.resolve(__dirname, 'dist/models');
   const SENTINEL = path.join(DEST, 'Xenova/finbert/onnx/model_quantized.onnx');
@@ -69,10 +85,13 @@ function copyModelsPlugin(): Plugin {
     apply: 'build',
     closeBundle() {
       if (!fs.existsSync(SRC)) {
-        this.warn(
+        const msg =
           'models/ not found — run `npm run fetch-models` to bundle the on-device ' +
-            'model weights, or sentiment/Q&A will fail to load at runtime.',
-        );
+          'model weights, or sentiment/summaries/redline will fail to load at runtime.';
+        // A model-less zip is a broken extension. Fail the production build loudly
+        // (closes the "fresh clone / CI ships a model-less build" trap); dev only warns.
+        if (isProd) this.error(msg);
+        else this.warn(msg);
         return;
       }
       // closeBundle fires once per sub-build; the 131 MB payload only needs copying
@@ -139,9 +158,10 @@ export default defineConfig(({ mode }) => ({
           }),
           // Copy ONNX Runtime WASM binaries to dist/wasm/ (flat directory) so the
           // encoder worker can load them via chrome.runtime.getURL('wasm/').
-          copyWasmPlugin(),
+          // Missing assets fail the build in production (see plugin).
+          copyWasmPlugin(mode === 'production'),
           // Bundle the quantized model weights so nothing is fetched at runtime.
-          copyModelsPlugin(),
+          copyModelsPlugin(mode === 'production'),
           // Keep shared chunks out of the dist root (see plugin comment).
           sharedChunkRouterPlugin(),
         ]
@@ -160,12 +180,6 @@ export default defineConfig(({ mode }) => ({
   worker: {
     format: 'es',
   },
-  test: {
-    environment: 'jsdom',
-    include: ['src/__tests__/**/*.test.ts'],
-    coverage: {
-      provider: 'v8',
-      include: ['src/content/**/*.ts'],
-    },
-  },
+  // NOTE: the Vitest config lives in vitest.config.ts (real test runner). No `test`
+  // block here — a stale one pointing at a non-existent src/__tests__ dir was removed.
 }));

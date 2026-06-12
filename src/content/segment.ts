@@ -370,6 +370,12 @@ function segmentByTitlePatterns(
 
   hits.sort((a, b) => a.headStart - b.headStart);
 
+  // A genuine S-1 / DEF 14A segments into many titled sections. Zero or one hit
+  // means the type was misdetected (e.g. a data page whose only match is the word
+  // "BUSINESS"); emit a whole-document fallback rather than a misleading lone
+  // "Business" section. This is what surfaced as "1 sections" on the BDC page.
+  if (hits.length <= 1) return segmentFallback(text, tableRanges);
+
   const sections: Section[] = [];
   for (let i = 0; i < hits.length; i++) {
     const hit = hits[i]!;

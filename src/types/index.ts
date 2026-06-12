@@ -10,12 +10,32 @@ export type FilingType =
   | '20-F'
   | 'S-1'
   | 'DEF 14A'
+  | 'DATA_REPORT' // sec.gov data/research/info page — readable, but NOT a company filing
   | 'UNKNOWN';
+
+/**
+ * Coarse page taxonomy decided up-front from URL + DOM, BEFORE filing-type
+ * detection. Every downstream decision (label, low-confidence demotion, tab
+ * gating, summary register) keys off this — never off a re-derived host string.
+ * This is the first-class fix for "all sec.gov pages are EDGAR filings".
+ */
+export type PageCategory =
+  | 'edgar_filing' // /Archives/edgar/data/... or XBRL dei:* facts present
+  | 'edgar_ixbrl' // inline-XBRL viewer (ix: namespace / contextref present)
+  | 'sec_search' // EDGAR full-text / browse-edgar search & company profile pages
+  | 'sec_data_report' // www.sec.gov data-research / rules / info pages (readable, not a filing)
+  | 'ir_or_financial' // off-sec.gov page that looks financial (earnings, IR)
+  | 'unsupported';
 
 export interface DocumentModel {
   source: {
     url: string;
     host: 'edgar' | 'ir';
+    /**
+     * Fine-grained page taxonomy (see PageCategory). Optional for back-compat
+     * with persisted models; new ingests always populate it.
+     */
+    category?: PageCategory;
     accessionNo?: string;
     cik?: string;
   };

@@ -138,9 +138,6 @@ function terminateWorkers(): void {
   sentimentPendingInit = null;
 }
 
-/** @deprecated Use terminateWorkers(). Kept for back-compat with old idle handler. */
-const terminateWorker = terminateWorkers;
-
 // ── worker message handler ────────────────────────────────────────────────────
 
 function handleWorkerMsg(e: MessageEvent): void {
