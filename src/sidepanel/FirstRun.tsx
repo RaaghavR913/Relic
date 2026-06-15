@@ -41,16 +41,16 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
       {/* Hero */}
       <div className="flex flex-col items-center gap-2 pt-2 text-center">
         <BrandLogo className="h-12 w-12" />
-        <h1 className="text-base font-semibold text-zinc-100">Welcome to FilingLens</h1>
-        <p className="max-w-xs text-xs leading-relaxed text-zinc-400">
-          Plain-English summaries, sentiment, language flags, and year-over-year
-          changes — analyzed entirely on your device.
+        <h1 className="text-base font-semibold text-zinc-100 font-[Georgia,serif]">Welcome to FilingLens</h1>
+        <p className="max-w-xs text-xs leading-relaxed text-zinc-400 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">
+          Plain-English summaries of Investor Sentiment Analysis &amp; Year-over-Year changes.
+          Analyzed entirely on your device.
         </p>
       </div>
 
       {/* Privacy explainer */}
-      <section className="rounded-xl bg-zinc-900 p-4 ring-1 ring-zinc-800">
-        <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-zinc-200">
+      <section className="rounded-xl bg-zinc-900 p-4 ring-1 ring-zinc-800 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
+        <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-zinc-200 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
           <LockIcon className="h-3.5 w-3.5 text-emerald-400" /> Private by design
         </p>
         <ul className="flex flex-col gap-1.5 text-[11px] leading-relaxed text-zinc-400">
@@ -61,7 +61,7 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
       </section>
 
       {/* Downloads */}
-      <section className="rounded-xl bg-zinc-900 p-4 ring-1 ring-zinc-800">
+      <section className="rounded-xl bg-zinc-900 p-4 ring-1 ring-zinc-800 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
         <p className="mb-2 text-[10px] font-medium uppercase tracking-widest text-zinc-500">
           Models bundled with the extension
         </p>
@@ -123,7 +123,7 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
       {/* CTA */}
       <button
         onClick={onDone}
-        className="w-full rounded-lg bg-sky-600 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500"
+        className="w-full rounded-lg bg-sky-600 py-2.5 text-base font-semibold font-[Georgia,serif] text-white transition hover:bg-sky-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500"
       >
         Get started
       </button>

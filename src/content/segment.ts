@@ -239,8 +239,14 @@ const SECTIONS_DEF14A: Array<{ pattern: RegExp; def: ItemDef }> = [
 const ITEM_HEADER_RE =
   /(?:^|\n)\s{0,4}ITEM\s+([\d]+(?:[A-Z]|\.\d{2}|\.[A-Z])?)\s*[.:\-–—]?\s+([^\n]{2,100})/gim;
 
-/** How many chars apart two occurrences must be to NOT be TOC entries. */
+/**
+ * Window (chars) used to detect a dense "table of contents" / index block: a
+ * header is treated as part of a TOC when at least TOC_MIN_CLUSTER DISTINCT item
+ * keys fall within ±TOC_DEDUPE_WINDOW of it. Real body headers sit far apart
+ * (sections of prose between them), so they are isolated, not clustered.
+ */
 const TOC_DEDUPE_WINDOW = 2000;
+const TOC_MIN_CLUSTER = 3;
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -296,9 +302,6 @@ function extractItemHits(text: string): HeaderHit[] {
 
     // Normalise item key: "1A" → "1a", "1.01" → "1.01"
     const key = itemNum.toLowerCase();
-    const headStart = m.index + raw.indexOf('ITEM') + raw.toUpperCase().indexOf('ITEM');
-
-    // More reliable: headStart = position of the match in text
     const matchStart = m.index;
     const lineOffset = raw.search(/ITEM/i);
     hits.push({
@@ -312,20 +315,66 @@ function extractItemHits(text: string): HeaderHit[] {
 }
 
 /**
- * Remove TOC clusters: if ≥ 3 items appear within TOC_DEDUPE_WINDOW chars,
- * all occurrences in that window are considered TOC entries.
- * Keep only the LAST occurrence of each itemKey (the real section header).
+ * Flag each header that sits inside a dense cluster of DISTINCT item keys — the
+ * signature of a table-of-contents / index block. A real body header is isolated
+ * (only its own key within the window) and stays unflagged. O(n²) over header
+ * hits, which is a small set even on a long filing.
+ */
+function computeClusterFlags(hits: HeaderHit[]): boolean[] {
+  const n = hits.length;
+  const inCluster = new Array<boolean>(n).fill(false);
+  for (let i = 0; i < n; i++) {
+    const lo = hits[i]!.headStart - TOC_DEDUPE_WINDOW;
+    const hi = hits[i]!.headStart + TOC_DEDUPE_WINDOW;
+    const keys = new Set<string>();
+    for (let j = 0; j < n; j++) {
+      const hs = hits[j]!.headStart;
+      if (hs >= lo && hs <= hi) keys.add(hits[j]!.itemKey);
+    }
+    if (keys.size >= TOC_MIN_CLUSTER) inCluster[i] = true;
+  }
+  return inCluster;
+}
+
+/**
+ * Collapse repeated item headers to one header per item, choosing the REAL body
+ * header rather than a table-of-contents line or a later cross-reference.
+ *
+ *   • If a key has any occurrence OUTSIDE a cluster, keep the FIRST such
+ *     occurrence — that is the genuine body header. A later isolated repeat
+ *     (an MD&A cross-reference like "see Item 1A") is a SECOND non-cluster
+ *     occurrence and is ignored. This is the fix for headers that used to be
+ *     mis-bound by keeping the last occurrence (which could leave Risk Factors
+ *     empty and let a neighbor swallow it).
+ *   • If every occurrence is inside a cluster (a key present only in a TOC, or
+ *     in a short item-dense block), fall back to the LAST occurrence — for a
+ *     front TOC that is the body header following the listing.
  */
 function deTocDedupe(hits: HeaderHit[]): HeaderHit[] {
-  // Group by itemKey, keep only the last occurrence
-  const lastByKey = new Map<string, HeaderHit>();
-  for (const hit of hits) {
-    const prev = lastByKey.get(hit.itemKey);
-    if (!prev || hit.headStart > prev.headStart) {
-      lastByKey.set(hit.itemKey, hit);
+  if (hits.length <= 1) return hits.slice();
+
+  const inCluster = computeClusterFlags(hits);
+  const chosen = new Map<string, HeaderHit>();
+  const fromPass1 = new Set<string>();
+
+  // Pass 1 — first NON-cluster occurrence of each key (the real body header).
+  for (let i = 0; i < hits.length; i++) {
+    if (inCluster[i]) continue;
+    const h = hits[i]!;
+    if (!chosen.has(h.itemKey)) {
+      chosen.set(h.itemKey, h);
+      fromPass1.add(h.itemKey);
     }
   }
-  return Array.from(lastByKey.values()).sort((a, b) => a.headStart - b.headStart);
+  // Pass 2 — keys seen only inside clusters: keep the LAST occurrence (the body
+  // header that follows a front TOC). Overwriting ends on the last occurrence.
+  for (let i = 0; i < hits.length; i++) {
+    const h = hits[i]!;
+    if (fromPass1.has(h.itemKey)) continue;
+    chosen.set(h.itemKey, h);
+  }
+
+  return Array.from(chosen.values()).sort((a, b) => a.headStart - b.headStart);
 }
 
 function buildSections(
@@ -450,4 +499,48 @@ function segmentFallback(
       tableRanges,
     ),
   ];
+}
+
+// ── segmentation confidence ────────────────────────────────────────────────────
+
+const LOAD_BEARING_MDNA = /mdna|operating_review/;
+const LOAD_BEARING_RISK = /risk_factors/;
+/** MD&A / operating-review prose is never this short in a real item filing. */
+const MIN_MDNA_CHARS = 50;
+
+function isItemForm(t: FilingType): boolean {
+  return t === '10-K' || t === '10-Q' || t === '8-K' || t === '20-F';
+}
+
+/**
+ * Heuristic confidence that the sections were correctly bounded. Returns 'low'
+ * when the structure looks mis-segmented, so the UI can warn instead of
+ * confidently presenting analysis of the wrong spans:
+ *   • an item-numbered form collapsed to the whole-document fallback,
+ *   • an MD&A / operating-review section located but near-empty (mis-bound), or
+ *   • a Risk-Factors section located but completely empty (swallowed by a
+ *     neighbouring section — the failure mode this hardening addresses).
+ * Title/freeform forms (S-1, DEF 14A, 6-K) and non-item documents are treated as
+ * 'high'; their own whole-document fallbacks govern quality. A Risk-Factors
+ * emptiness check is intentionally strict (length 0) so a legitimately brief
+ * 10-Q "no material changes" Item 1A is not mistaken for a mis-bound section.
+ */
+export function assessSegmentationConfidence(
+  sections: ReadonlyArray<Section>,
+  filingType: FilingType,
+): 'high' | 'low' {
+  if (sections.length === 0) return 'low';
+  if (
+    isItemForm(filingType) &&
+    sections.length === 1 &&
+    sections[0]!.id === 'document_body'
+  ) {
+    return 'low';
+  }
+  for (const s of sections) {
+    const len = s.text.trim().length;
+    if (LOAD_BEARING_MDNA.test(s.id) && len < MIN_MDNA_CHARS) return 'low';
+    if (LOAD_BEARING_RISK.test(s.id) && len === 0) return 'low';
+  }
+  return 'high';
 }

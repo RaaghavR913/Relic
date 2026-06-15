@@ -45,6 +45,13 @@ export interface WaitForContentOptions {
   minChars?: number;
   settleMs?: number;
   maxWaitMs?: number;
+  /**
+   * Group B sites: CSS selector for real page content. When set, the gate also
+   * waits until this selector matches at least one element — preventing extraction
+   * from running against a JS redirect interstitial or anti-bot placeholder.
+   * The selector is polled alongside the character-count check.
+   */
+  contentSelector?: string;
 }
 
 /**
@@ -56,9 +63,14 @@ export function waitForContent(opts: WaitForContentOptions = {}): Promise<void> 
   const minChars = opts.minChars ?? READY_MIN_CHARS;
   const settleMs = opts.settleMs ?? SETTLE_MS;
   const maxWaitMs = opts.maxWaitMs ?? MAX_WAIT_MS;
+  const contentSelector = opts.contentSelector;
+
+  // True when the optional content-selector gate is satisfied (group B sites).
+  const selectorReady = (): boolean =>
+    !contentSelector || doc.querySelector(contentSelector) !== null;
 
   // Fast path: content already present (EDGAR, static pages) → no waiting.
-  if (currentTextLength(doc) >= minChars) return Promise.resolve();
+  if (currentTextLength(doc) >= minChars && selectorReady()) return Promise.resolve();
 
   return new Promise<void>((resolve) => {
     let lastLen = currentTextLength(doc);
@@ -135,7 +147,7 @@ export function waitForContent(opts: WaitForContentOptions = {}): Promise<void> 
       const grew = len - lastLen > GROWTH_EPSILON;
       lastLen = Math.max(lastLen, len);
 
-      if (len >= minChars) {
+      if (len >= minChars && selectorReady()) {
         if (settleTimer === null || grew) {
           if (settleTimer !== null) clearTimeout(settleTimer);
           settleTimer = setTimeout(cleanup, settleMs);

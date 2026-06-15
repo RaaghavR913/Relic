@@ -93,17 +93,81 @@ export function scrubAdvice(text: string): string {
   return kept.join(' ').trim();
 }
 
+// ── number / figure verification ──────────────────────────────────────────────
+
+/**
+ * Extract the "digit cores" of financially significant figures from a text:
+ * dollar amounts, percentages, decimals, and 4+ digit numbers. Commas are
+ * stripped so "$1,234.5" and "1234.5" compare equal; scale words ("billion",
+ * "M") are ignored so "$1.1 billion" and "$1.1B" both yield "1.1". Bare 1–3
+ * digit counts (e.g. "3 segments") are skipped to avoid noise.
+ */
+function figureCores(text: string): string[] {
+  const cores: string[] = [];
+  const re = /(\$\s?)?(\d[\d,]*(?:\.\d+)?)(\s?%)?/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const core = m[2]!.replace(/,/g, '');
+    const digits = core.replace(/\D/g, '').length;
+    const significant = Boolean(m[1]) || Boolean(m[3]) || core.includes('.') || digits >= 4;
+    if (significant) cores.push(core);
+  }
+  return cores;
+}
+
+// Source figures are stable per document; memoize so each insight doesn't re-scan.
+const _sourceFiguresCache = new WeakMap<DocumentModel, Set<string>>();
+function sourceFigures(doc: DocumentModel): Set<string> {
+  let set = _sourceFiguresCache.get(doc);
+  if (!set) {
+    set = new Set<string>();
+    for (const section of doc.sections) for (const c of figureCores(section.text)) set.add(c);
+    _sourceFiguresCache.set(doc, set);
+  }
+  return set;
+}
+
+/**
+ * Drop sentences containing a financial figure that does not appear ANYWHERE in
+ * the source document — a guard against the model restating or inventing numbers
+ * in its prose (only the `evidence` quote was verified before). Conservative: a
+ * figure whose digits appear anywhere in source is accepted (formatting / scale
+ * tolerant), so only clear fabrications are cut. Verbatim extractive summaries —
+ * whose figures are by construction from the document — pass through unchanged.
+ */
+export function scrubUnverifiedFigures(
+  text: string,
+  doc: DocumentModel,
+): { text: string; stripped: boolean } {
+  if (!text) return { text, stripped: false };
+  const figs = sourceFigures(doc);
+  let stripped = false;
+  const kept = text.split(/(?<=[.!?])\s+/).filter((sentence) => {
+    const bad = figureCores(sentence).some((c) => !figs.has(c));
+    if (bad) stripped = true;
+    return !bad;
+  });
+  return { text: kept.join(' ').trim(), stripped };
+}
+
 // ── insight finalization ──────────────────────────────────────────────────────
 
 /**
- * Apply both guards to a model-produced insight. Returns null when scrubbing
- * leaves the insight without substance.
+ * Apply the guards to a model-produced insight: advice scrubbing, figure
+ * verification (fabricated numbers stripped → confidence downgraded), and
+ * evidence-quote verification. Returns null when scrubbing leaves the insight
+ * without substance. A caller-provided `evidenceRange` (the deterministic tier,
+ * whose summary IS a verbatim source sentence) is preserved for jump-to-source.
  */
 export function finalizeInsight(doc: DocumentModel, insight: FilingInsight): FilingInsight | null {
-  const summary = scrubAdvice(insight.summary);
-  const whyItMatters = scrubAdvice(insight.whyItMatters);
-  const investorMeaning = scrubAdvice(insight.investorMeaning);
+  const sum = scrubUnverifiedFigures(scrubAdvice(insight.summary), doc);
+  const why = scrubUnverifiedFigures(scrubAdvice(insight.whyItMatters), doc);
+  const inv = scrubUnverifiedFigures(scrubAdvice(insight.investorMeaning), doc);
+  const summary = sum.text;
+  const whyItMatters = why.text;
+  const investorMeaning = inv.text;
   if (!summary && !investorMeaning) return null;
+  const figuresStripped = sum.stripped || why.stripped || inv.stripped;
 
   const base: FilingInsight = {
     label: insight.label,
@@ -114,7 +178,8 @@ export function finalizeInsight(doc: DocumentModel, insight: FilingInsight): Fil
     investorMeaning,
     severity: insight.severity,
     timeHorizon: insight.timeHorizon,
-    confidence: insight.confidence,
+    confidence: figuresStripped ? 'Low' : insight.confidence,
+    ...(insight.evidenceRange ? { evidenceRange: insight.evidenceRange } : {}),
   };
 
   if (insight.evidence) {

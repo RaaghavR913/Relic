@@ -27,6 +27,22 @@ function isSecHost(host: string): boolean {
   return /(?:^|\.)sec\.gov$/i.test(host);
 }
 
+/**
+ * True for an EDGAR Filing Detail / accession index page — the directory listing
+ * of a submission's documents, NOT the document itself. These URLs match the
+ * `/Archives/edgar/data/` filing path but end in `-index.htm(l)` (the human page)
+ * or `-index.json`. Ingesting one yields the gray "Document Format Files" table
+ * (a single useless section), so it must be classified apart from a real filing.
+ */
+export function isEdgarIndexUrl(url: string): boolean {
+  try {
+    const { pathname } = new URL(url);
+    return /\/Archives\/edgar\/data\//i.test(pathname) && /-index\.(html?|json)$/i.test(pathname);
+  } catch {
+    return false;
+  }
+}
+
 /** Web Store hosts Chrome never lets an extension script (mirrors inject.ts). */
 const WEB_STORE_HOSTS = /(?:^|\.)chromewebstore\.google\.com$|^chrome\.google\.com$/i;
 
@@ -81,6 +97,10 @@ export function classifyPage(doc: Document, url: string): PageCategory {
   const host = safeHost(url);
 
   if (isSecHost(host)) {
+    // An accession index page lives under the filing path but is a directory of
+    // documents, not a filing — classify it apart so the UI can point the user at
+    // the primary document instead of analyzing the listing.
+    if (isEdgarIndexUrl(url)) return 'edgar_index';
     // Authoritative filing signals first — these can appear on any sec.gov path.
     if (/\/Archives\/edgar\/data\//i.test(url)) return 'edgar_filing';
     if (hasDeiFacts(doc)) return 'edgar_filing';

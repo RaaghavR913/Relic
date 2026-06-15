@@ -7,6 +7,7 @@
 // ============================================================
 
 import type { SentenceSentiment } from '@/types';
+import { evictToCap, txComplete, DEFAULT_CACHE_CAP } from '@/lib/idbEvict';
 
 const DB_NAME = 'filing-lens-sentiment';
 const DB_VERSION = 1;
@@ -75,18 +76,12 @@ export async function putSentimentCache(
   results: SentenceSentiment[],
 ): Promise<void> {
   const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(SENTIMENT_STORE, 'readwrite');
-    const record: SentimentRecord = {
-      rawTextHash,
-      modelId,
-      analyzedAt: Date.now(),
-      results,
-    };
-    const req = tx.objectStore(SENTIMENT_STORE).put(record);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
-  });
+  const tx = db.transaction(SENTIMENT_STORE, 'readwrite');
+  const store = tx.objectStore(SENTIMENT_STORE);
+  const record: SentimentRecord = { rawTextHash, modelId, analyzedAt: Date.now(), results };
+  store.put(record);
+  evictToCap(store, DEFAULT_CACHE_CAP, (r) => (r as SentimentRecord).analyzedAt);
+  await txComplete(tx);
 }
 
 /** Remove the cached entry for a filing (e.g. after a model upgrade). */

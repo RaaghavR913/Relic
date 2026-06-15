@@ -33,6 +33,7 @@ import type {
 import { RateLimitedQueue, fetchEdgarText } from './edgarQueue';
 import { resolvePriorFiling } from './resolvePrior';
 import { classifyInjectability } from './inject';
+import { getSiteProfile } from '@/content/ingest/siteProfiles';
 
 /** Built content-script bundle — the path inside the packed extension. */
 const CONTENT_SCRIPT_FILE = 'src/content/index.js';
@@ -220,9 +221,26 @@ async function handleAnalyzePage(): Promise<AnalyzePageResponse> {
   }
 
   // Without the "tabs" permission, tab.url is only populated when activeTab
-  // has been granted for this tab — its absence means the grant is missing.
+  // has been granted for this tab OR the extension has host permissions for it.
   if (!tab.url) {
     return { ok: false, reason: 'no_permission' };
+  }
+
+  // Group C: optional_host_permissions are required for panel-driven injection
+  // (i.e. when activeTab is not in effect from a fresh toolbar click). If the
+  // permission hasn't been granted, ask the side panel to request it — do not
+  // attempt executeScript, which would fail with a "missing host permission" error.
+  const profile = getSiteProfile(tab.url);
+  if (profile?.group === 'C' && profile.optionalHostPattern) {
+    const has = await chrome.permissions.contains({ origins: [profile.optionalHostPattern] });
+    if (!has) {
+      return {
+        ok: false,
+        reason: 'needs_optional_permission',
+        hosts: [profile.optionalHostPattern],
+        label: profile.label,
+      };
+    }
   }
 
   const injectability = classifyInjectability(tab.url);

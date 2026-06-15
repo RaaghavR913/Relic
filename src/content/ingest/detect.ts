@@ -128,11 +128,19 @@ export function isLowConfidenceGeneric(model: {
   source: { host: 'edgar' | 'ir'; category?: PageCategory };
   filingType: FilingType;
   sections: ReadonlyArray<unknown>;
+  segmentationConfidence?: 'high' | 'low';
 }): boolean {
+  // A filing whose sections look mis-bounded is low-confidence regardless of host:
+  // segmentation can fail on an authoritative EDGAR page too, and presenting
+  // analysis of the wrong spans confidently is the exact risk this guards against.
+  if (model.segmentationConfidence === 'low') return true;
   const category = model.source.category;
   if (category) {
     // Authoritative filings are trusted; data reports are intentionally readable.
     if (category === 'edgar_filing' || category === 'edgar_ixbrl') return false;
+    // An EDGAR index page gets its own dedicated "this is a directory" banner, so
+    // don't also flag it as a low-confidence generic page (avoids a double banner).
+    if (category === 'edgar_index') return false;
     if (model.filingType === 'DATA_REPORT') return false;
   } else if (model.source.host === 'edgar') {
     // Back-compat: pre-category models only carried host.

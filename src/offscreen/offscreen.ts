@@ -11,8 +11,9 @@
 // It sends progress updates directly to side-panel listeners (target:'sidepanel')
 // and sends OFFSCREEN_IDLE to the SW when the idle timer fires.
 //
-// PRIVACY: no text leaves the device; all fetch calls go to EDGAR (already on-page)
-// or to Hugging Face for the one-time model weight download.
+// PRIVACY: no text leaves the device. Model weights are BUNDLED in the extension
+// (loaded via chrome.runtime.getURL('models/') with allowRemoteModels=false) — they
+// are never fetched from Hugging Face at runtime. The only network calls are EDGAR.
 // ============================================================
 
 import type {
@@ -35,6 +36,7 @@ import type {
 } from '@/messages/types';
 import type { DocumentModel, Section, SentenceSentiment, SectionDiff } from '@/types';
 import { filterNonTableSentences } from './sentenceFilter';
+import { calibrateSentimentLabel } from './calibrateSentiment';
 import {
   splitSentences,
   rankByCentrality,
@@ -47,6 +49,7 @@ import {
   assembleSectionDiff,
   diffSection,
   templatedChangeSummary,
+  jaccardSimilarity,
   type Similarity,
   type SectionDiffCore,
 } from '@/redline/diff';
@@ -58,8 +61,9 @@ import { getSentimentCache, putSentimentCache } from '@/db/sentimentStore';
 
 const MODEL_ID = 'mixedbread-ai/mxbai-embed-xsmall-v1';
 /**
- * FinBERT ONNX export — ProsusAI/finbert via the Xenova/Hugging Face ONNX
- * community. Transformers.js v4 resolves ONNX weights from the Hub automatically.
+ * FinBERT ONNX export — ProsusAI/finbert via the Xenova ONNX community export.
+ * The quantized weights are bundled under models/ and loaded locally
+ * (allowRemoteModels=false) — never fetched from the Hub at runtime.
  */
 const FINBERT_MODEL_ID = 'Xenova/finbert';
 const IDLE_TIMEOUT_MS = 5 * 60 * 1_000; // 5 minutes
@@ -523,9 +527,9 @@ async function analyzeSentiment(
         section.charRange[0] + sent.range[1],
       ];
 
-      const sentimentLabel = (
-        label === 'positive' || label === 'negative' ? label : 'neutral'
-      ) as 'positive' | 'negative' | 'neutral';
+      // Confidence-floor calibration: low-score positive/negative → neutral, so
+      // boilerplate/legal prose isn't painted with confident sentiment colour.
+      const sentimentLabel = calibrateSentimentLabel(label, score);
 
       sectionResults.push({
         sectionId: section.id,
@@ -687,9 +691,14 @@ async function computeRedline(m: OffscreenRedlineMsg): Promise<RedlineResponse> 
     return { ok: false, error: `Prior filing parse failed: ${String(e)}` };
   }
 
-  // 2. Align sections (all of them, for the alignment summary list).
+  // 2. Align sections (all of them, for the alignment summary list). A bounded
+  // token-Jaccard fallback re-pairs sections that were renumbered/renamed across
+  // years (so they aren't read as added+removed → a misleading "no changes").
   sendRedlineProgress('aligning', 0.3, 'Aligning sections…');
-  const alignment = alignSections(m.doc.sections, priorModel.sections);
+  const SIM_SAMPLE = 4_000; // cap per-section text sampled for similarity
+  const alignment = alignSections(m.doc.sections, priorModel.sections, {
+    similarity: (c, p) => jaccardSimilarity(c.text.slice(0, SIM_SAMPLE), p.text.slice(0, SIM_SAMPLE)),
+  });
   const alignmentSummary: AlignmentSummary[] = alignment.map((a) => ({
     id: a.id,
     label: a.label,

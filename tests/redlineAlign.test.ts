@@ -7,14 +7,30 @@ import {
   alignSections,
   focusMatches,
   focusAlignments,
+  redlineSupportsForm,
   DEFAULT_FOCUS_IDS,
 } from '../src/redline/align';
 import { segmentSections } from '../src/content/segment';
+import { jaccardSimilarity } from '../src/redline/diff';
 import type { Section } from '../src/types';
 
 function sec(id: string, label: string, order: number, text = `${id} text`): Section {
   return { id, label, order, text, charRange: [0, text.length] };
 }
+
+describe('redlineSupportsForm', () => {
+  it('is true for forms with mapped focus sections', () => {
+    for (const f of ['10-K', '10-Q', '20-F', 'S-1', 'DEF 14A', '8-K'] as const) {
+      expect(redlineSupportsForm(f)).toBe(true);
+    }
+  });
+
+  it('is false for forms with no focus coverage (UNKNOWN / 6-K / DATA_REPORT)', () => {
+    for (const f of ['UNKNOWN', '6-K', 'DATA_REPORT'] as const) {
+      expect(redlineSupportsForm(f)).toBe(false);
+    }
+  });
+});
 
 describe('alignSections', () => {
   it('matches sections present in both filings by canonical id', () => {
@@ -168,5 +184,47 @@ describe('focusAlignments unsupported-form guard (M1)', () => {
     ];
     const aligned = alignSections(current, prior);
     expect(focusAlignments(aligned).length).toBeGreaterThan(0);
+  });
+});
+
+describe('alignSections — content-similarity fallback (renumbered/renamed sections)', () => {
+  it('pairs sections via an injected similarity matcher when ids do not match', () => {
+    const current = [sec('item_5_new_id', 'Operating Review', 90, 'this year operating review and results')];
+    const prior = [sec('item_7_old_id', 'Operating Review', 90, 'last year operating review and results')];
+
+    // Without a matcher: the differing ids read as added + removed.
+    const noSim = alignSections(current, prior);
+    expect(noSim.find((a) => a.id === 'item_5_new_id')!.status).toBe('added');
+    expect(noSim.find((a) => a.id === 'item_7_old_id')!.status).toBe('removed');
+
+    // With a matcher that scores the pair highly: they collapse to one 'matched'.
+    const withSim = alignSections(current, prior, {
+      similarity: (c, p) => (c.id === 'item_5_new_id' && p.id === 'item_7_old_id' ? 0.9 : 0),
+    });
+    const matched = withSim.filter((a) => a.status === 'matched');
+    expect(matched).toHaveLength(1);
+    expect(matched[0]!.current!.id).toBe('item_5_new_id');
+    expect(matched[0]!.prior!.id).toBe('item_7_old_id');
+    expect(withSim.filter((a) => a.status === 'removed')).toHaveLength(0);
+  });
+
+  it('does not pair dissimilar sections below the threshold', () => {
+    const current = [sec('a', 'A', 1, 'apples bananas cherries')];
+    const prior = [sec('b', 'B', 1, 'quarterly dividends and buybacks')];
+    const withSim = alignSections(current, prior, { similarity: () => 0.3 }); // < default 0.6
+    expect(withSim.find((a) => a.id === 'a')!.status).toBe('added');
+    expect(withSim.find((a) => a.id === 'b')!.status).toBe('removed');
+  });
+
+  it('uses real token-Jaccard to pair near-duplicate cross-year section text', () => {
+    const a = 'The Company faces risks from competition, regulation, litigation, and supply chain disruption that could materially affect results.';
+    const b = 'The Company faces risks from competition, regulation, litigation, and supply chain disruption that may materially affect operating results next year.';
+    const current = [sec('risk_new', 'Risk Factors', 20, a)];
+    const prior = [sec('risk_old', 'Risk Factors', 20, b)];
+    const aligned = alignSections(current, prior, {
+      similarity: (c, p) => jaccardSimilarity(c.text, p.text),
+    });
+    expect(aligned.some((al) => al.status === 'matched')).toBe(true);
+    expect(aligned.filter((al) => al.status === 'removed')).toHaveLength(0);
   });
 });

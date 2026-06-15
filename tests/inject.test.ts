@@ -3,9 +3,18 @@ import { classifyInjectability } from '../src/background/inject';
 
 describe('classifyInjectability', () => {
   it('classifies manifest-matched hosts as auto_host', () => {
+    // SEC.gov (original)
     expect(classifyInjectability('https://www.sec.gov/Archives/edgar/data/320193/000032019323000106/aapl-20230930.htm')).toBe('auto_host');
     expect(classifyInjectability('https://efts.sec.gov/LATEST/search-index?q=test')).toBe('auto_host');
     expect(classifyInjectability('https://sec.gov/')).toBe('auto_host');
+    // Group A
+    expect(classifyInjectability('https://stockanalysis.com/stocks/aapl/')).toBe('auto_host');
+    expect(classifyInjectability('https://www.annualreports.com/Company/apple')).toBe('auto_host');
+    expect(classifyInjectability('https://www.fool.com/earnings/call-transcripts/x/')).toBe('auto_host');
+    expect(classifyInjectability('https://www.benzinga.com/stock/AAPL')).toBe('auto_host');
+    // Group B
+    expect(classifyInjectability('https://sec.report/Document/0000320193-24-000006/')).toBe('auto_host');
+    expect(classifyInjectability('https://finviz.com/quote.ashx?t=AAPL')).toBe('auto_host');
   });
 
   it('does not treat lookalike hosts as auto_host', () => {
@@ -16,7 +25,6 @@ describe('classifyInjectability', () => {
   it('classifies ordinary http(s) pages as injectable', () => {
     expect(classifyInjectability('https://investor.apple.com/investor-relations/default.aspx')).toBe('injectable');
     expect(classifyInjectability('https://finance.yahoo.com/news/some-article.html')).toBe('injectable');
-    expect(classifyInjectability('https://www.fool.com/earnings/call-transcripts/x/')).toBe('injectable');
     expect(classifyInjectability('https://seekingalpha.com/article/123')).toBe('injectable');
     expect(classifyInjectability('http://example.com/annual-report.html')).toBe('injectable');
   });

@@ -5,7 +5,7 @@
 //   • Header: company · filing type · period + generation-tier badge.
 //   • First-run onboarding (privacy + downloads + tier), shown once.
 //   • Section navigator + master overlay controls (heatmap / flags + legend).
-//   • Tabs: Summary · Sentiment · Flags · Changes — all kept mounted so
+//   • Tabs: Analyst · Summary · Sentiment · Changes — all kept mounted so
 //     async analysis (sentiment streaming, redline) survives tab switches.
 //   • Loading skeletons, empty states, degradation banners; WCAG AA; reduced-motion.
 // ============================================================
@@ -13,10 +13,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useCapabilities } from '../runtime/useCapabilities';
-import type { GenerationTier } from '../runtime/capabilities';
 import type { DocumentModel, LanguageFlag } from '@/types';
 import type {
   FilingReadyMsg,
+  FilingGatedMsg,
   FlagResultsMsg,
   AnalyzePageMsg,
   AnalyzePageResponse,
@@ -26,7 +26,6 @@ import { setFlags as setFlagOverlayPref } from './overlayPrefs';
 import { AnalystPanel } from './AnalystPanel';
 import { SummaryPanel } from './SummaryPanel';
 import { SentimentPanel } from './SentimentPanel';
-import { FlagPanel } from './FlagPanel';
 import { RedlinePanel } from './RedlinePanel';
 import { FirstRun } from './FirstRun';
 import { OverlayControls } from './OverlayControls';
@@ -34,7 +33,6 @@ import {
   Spinner,
   SkeletonCard,
   Banner,
-  TierBadge,
   PrivacyNote,
   EmptyState,
   BrandLogo,
@@ -46,13 +44,12 @@ const ONBOARDED_KEY = 'filinglens:onboarded';
 
 // ── tabs ──────────────────────────────────────────────────────────────────────
 
-type TabId = 'analyst' | 'summary' | 'sentiment' | 'flags' | 'changes';
+type TabId = 'analyst' | 'summary' | 'sentiment' | 'changes';
 
 const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'analyst', label: 'Analyst' },
   { id: 'summary', label: 'Summary' },
   { id: 'sentiment', label: 'Sentiment' },
-  { id: 'flags', label: 'Flags' },
   { id: 'changes', label: 'Changes' },
 ];
 
@@ -61,15 +58,32 @@ function isDataReport(doc: DocumentModel | null): boolean {
   return doc?.filingType === 'DATA_REPORT';
 }
 
+/** True for an EDGAR Filing Detail / accession index page (a directory, not the document). */
+function isFilingIndex(doc: DocumentModel | null): boolean {
+  return doc?.source.category === 'edgar_index';
+}
+
 /**
  * Tabs investor-context features require a company/security — Analyst (investment
  * thesis), Sentiment (read as thesis), and Changes (redline vs. a prior filing).
- * They're hidden for SEC data/report pages, which keep Summary + Flags.
+ * They're hidden for SEC data/report pages, EDGAR index pages, and low-confidence
+ * generic pages (a stock-quote page, a press release — anything that isn't a
+ * filing), all of which keep Summary only.
  */
 const REPORT_DISABLED_TABS: ReadonlySet<TabId> = new Set(['analyst', 'sentiment', 'changes']);
 
+/**
+ * Pages that have no investor thesis to analyze: hide the investor-context tabs
+ * AND skip mounting their panels (see render below), so a non-filing page never
+ * auto-runs the Analyst pipeline — no meaningless deterministic report, and no
+ * way for it to pin the panel on the loading card.
+ */
+function hidesInvestorTabs(doc: DocumentModel | null): boolean {
+  return isDataReport(doc) || isFilingIndex(doc) || (doc !== null && isLowConfidenceGeneric(doc));
+}
+
 function tabsForDoc(doc: DocumentModel | null): Array<{ id: TabId; label: string }> {
-  if (!isDataReport(doc)) return TABS;
+  if (!hidesInvestorTabs(doc)) return TABS;
   return TABS.filter((t) => !REPORT_DISABLED_TABS.has(t.id));
 }
 
@@ -89,6 +103,9 @@ function analyzeFailCopy(response: AnalyzePageResponse | undefined): string {
         return 'Chrome needs a fresh grant — click the FilingLens toolbar icon while on the page you want to analyze, then try again.';
       case 'no_tab':
         return "Couldn't find the current tab — switch to the page you want to analyze and try again.";
+      case 'needs_optional_permission':
+        // Handled by the needsPermission banner; should not reach this path.
+        return 'This site requires a one-time permission grant — use the button below.';
       default:
         return `Analysis failed: ${response.error ?? 'unknown error'}`;
     }
@@ -98,7 +115,7 @@ function analyzeFailCopy(response: AnalyzePageResponse | undefined): string {
 
 // ── header ────────────────────────────────────────────────────────────────────
 
-function Header({ doc, tier }: { doc: DocumentModel | null; tier: GenerationTier | null }) {
+function Header({ doc }: { doc: DocumentModel | null }) {
   const period = fmtDate(doc?.periodOfReport);
   // Don't assert a specific form when detection is low-confidence (e.g. a press
   // release that merely names a form) — the type heuristic can misfire off-EDGAR.
@@ -112,20 +129,19 @@ function Header({ doc, tier }: { doc: DocumentModel | null; tier: GenerationTier
     <header className="border-b border-zinc-800 px-4 py-3">
       <div className="flex items-center gap-2.5">
         <BrandLogo className="h-6 w-6" />
-        <span className="text-sm font-semibold tracking-tight">FilingLens</span>
-        {tier && <span className="ml-1"><TierBadge tier={tier} /></span>}
-        <span className="ml-auto text-[10px] text-zinc-600">v{chrome.runtime.getManifest().version}</span>
+        <span className="text-[19px] font-semibold tracking-tight font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">FilingLens</span>
+        <span className="ml-auto text-[10px] text-zinc-600 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">v{chrome.runtime.getManifest().version}</span>
       </div>
       {doc && (
         <div className="mt-2">
-          <p className="truncate text-xs font-medium text-zinc-200">
+          <p className="truncate text-[15px] font-medium text-zinc-200 font-[Georgia,serif]">
             {doc.companyName ?? 'Unknown company'}
-            {doc.ticker ? <span className="ml-1.5 text-zinc-500">{doc.ticker}</span> : null}
+            {doc.ticker ? <span className="ml-1.5 text-zinc-500 font-['Times_New_Roman',serif]">{doc.ticker}</span> : null}
           </p>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] text-zinc-500">
-            <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-medium text-zinc-300">{typeLabel}</span>
-            {period && <span>· Period {period}</span>}
-            <span>· {doc.sections.length} sections</span>
+            <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-medium text-zinc-300 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">{typeLabel}</span>
+            {period && <span className="font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">· Period {period}</span>}
+            <span className="font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">· {doc.sections.length} sections</span>
           </p>
         </div>
       )}
@@ -138,12 +154,10 @@ function Header({ doc, tier }: { doc: DocumentModel | null; tier: GenerationTier
 function TabBar({
   active,
   onSelect,
-  flagCount,
   tabs = TABS,
 }: {
   active: TabId;
   onSelect: (id: TabId) => void;
-  flagCount: number;
   tabs?: Array<{ id: TabId; label: string }>;
 }) {
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -175,16 +189,11 @@ function TabBar({
             id={`tab-${t.id}`}
             tabIndex={selected ? 0 : -1}
             onClick={() => onSelect(t.id)}
-            className={`relative flex-1 rounded-md px-1 py-1.5 text-[11px] font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 ${
+            className={`relative flex-1 rounded-md px-1 py-1.5 text-[11px] font-medium font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 ${
               selected ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
             {t.label}
-            {t.id === 'flags' && flagCount > 0 && (
-              <span className="ml-1 rounded-full bg-amber-500/20 px-1 text-[9px] font-semibold text-amber-300 tabular-nums">
-                {flagCount}
-              </span>
-            )}
           </button>
         );
       })}
@@ -199,11 +208,19 @@ function NoFiling({
   analyzing,
   analyzeError,
   onAnalyze,
+  needsPermission,
+  onGrantPermission,
+  onDismissPermission,
+  gateState,
 }: {
   caps: ReturnType<typeof useCapabilities>['caps'];
   analyzing: boolean;
   analyzeError: string | null;
   onAnalyze: () => void;
+  needsPermission: { hosts: string[]; label: string } | null;
+  onGrantPermission: () => void;
+  onDismissPermission: () => void;
+  gateState: 'consent_wall' | 'paywall' | null;
 }) {
   return (
     <div className="flex flex-col gap-4">
@@ -220,7 +237,7 @@ function NoFiling({
       <button
         onClick={onAnalyze}
         disabled={analyzing}
-        className="flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-sky-500 disabled:cursor-default disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400"
+        className="flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold font-[Times,serif] text-white transition hover:bg-sky-500 disabled:cursor-default disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400"
       >
         {analyzing ? (
           <>
@@ -236,21 +253,54 @@ function NoFiling({
           {analyzeError}
         </Banner>
       )}
+      {needsPermission && (
+        <Banner tone="info" icon="ℹ">
+          <span className="font-semibold">{needsPermission.label}</span> needs a one-time
+          permission grant before FilingLens can analyze it.{' '}
+          <button
+            onClick={onGrantPermission}
+            className="font-medium text-sky-300 underline decoration-sky-400/50 underline-offset-2 transition hover:text-sky-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+          >
+            Allow access
+          </button>
+          {' · '}
+          <button
+            onClick={onDismissPermission}
+            className="text-zinc-400 underline underline-offset-2 transition hover:text-zinc-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+          >
+            Skip
+          </button>
+        </Banner>
+      )}
+      {gateState === 'consent_wall' && (
+        <Banner tone="warn" icon="⚠">
+          This page is showing a <span className="font-semibold">consent banner</span> that
+          covers the content. Accept or close it in the browser, then click{' '}
+          <span className="font-medium">Analyze this page</span> again.
+        </Banner>
+      )}
+      {gateState === 'paywall' && (
+        <Banner tone="warn" icon="⚠">
+          This page appears to have a{' '}
+          <span className="font-semibold">paywall or registration gate</span>. FilingLens can
+          only analyze content that&rsquo;s visible to you — dismiss the gate and retry.
+        </Banner>
+      )}
       {caps && (
-        <section className="rounded-xl bg-zinc-900 p-4 ring-1 ring-zinc-800">
-          <p className="mb-3 text-[10px] font-medium uppercase tracking-widest text-zinc-500">On-device capabilities</p>
-          <ul className="flex flex-col gap-2 text-xs" role="list">
+        <section className="rounded-xl bg-zinc-900 p-4 ring-1 ring-zinc-800 text-[15px]">
+          <p className="mb-3 text-center text-base font-medium uppercase tracking-widest text-zinc-500 font-[Times,serif]">On-device capabilities</p>
+          <ul className="flex flex-col gap-2" role="list">
             <li className="flex items-center justify-between">
-              <span className="text-zinc-300">Summarizer API</span>
-              <span className={stateColor(caps.summarizer)}>{stateLabel(caps.summarizer)}</span>
+              <span className="text-zinc-300 font-[Georgia,serif]">Summarizer API</span>
+              <span className={`font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif] ${stateColor(caps.summarizer)}`}>{stateLabel(caps.summarizer)}</span>
             </li>
             <li className="flex items-center justify-between">
-              <span className="text-zinc-300">Prompt API (Gemini Nano)</span>
-              <span className={stateColor(caps.promptApi)}>{stateLabel(caps.promptApi)}</span>
+              <span className="text-zinc-300 font-[Georgia,serif]">Prompt API (Gemini Nano)</span>
+              <span className={`font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] ${stateColor(caps.promptApi)}`}>{stateLabel(caps.promptApi)}</span>
             </li>
             <li className="flex items-center justify-between">
-              <span className="text-zinc-300">WebGPU acceleration</span>
-              <span className={caps.webgpu.adapter ? 'text-emerald-400' : 'text-zinc-500'}>
+              <span className="text-zinc-300 font-[Georgia,serif]">WebGPU acceleration</span>
+              <span className={`font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] ${caps.webgpu.adapter ? 'text-emerald-400' : 'text-zinc-500'}`}>
                 {caps.webgpu.adapter ? 'Available' : 'WASM fallback'}
               </span>
             </li>
@@ -265,7 +315,7 @@ function NoFiling({
 // ── main component ────────────────────────────────────────────────────────────
 
 export default function App() {
-  const { caps, error, refresh } = useCapabilities();
+  const { caps, error } = useCapabilities();
   const [currentDoc, setCurrentDoc] = useState<DocumentModel | null>(null);
   const [currentFlags, setCurrentFlags] = useState<LanguageFlag[]>([]);
   const [activeTab, setActiveTab] = useState<TabId>('analyst');
@@ -299,6 +349,15 @@ export default function App() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const analyzeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Group C: optional permission flow.
+  const [needsPermission, setNeedsPermission] = useState<{
+    hosts: string[];
+    label: string;
+  } | null>(null);
+
+  // Group C: gate state reported by the content script (consent wall / paywall).
+  const [gateState, setGateState] = useState<'consent_wall' | 'paywall' | null>(null);
   // Mirror currentDoc into a ref so the analyze-timeout closure can read the
   // latest value without being re-created on every document change.
   const currentDocRef = useRef<DocumentModel | null>(null);
@@ -313,6 +372,8 @@ export default function App() {
 
   const startAnalyze = useCallback(async () => {
     setAnalyzeError(null);
+    setNeedsPermission(null);
+    setGateState(null);
     setAnalyzing(true);
     clearAnalyzeTimer();
     let response: AnalyzePageResponse | undefined;
@@ -326,6 +387,14 @@ export default function App() {
     }
     if (!response?.ok) {
       setAnalyzing(false);
+      // Group C: show the permission grant banner instead of a generic error.
+      if (response?.reason === 'needs_optional_permission') {
+        setNeedsPermission({
+          hosts: response.hosts ?? [],
+          label: response.label ?? 'this site',
+        });
+        return;
+      }
       setAnalyzeError(analyzeFailCopy(response));
       return;
     }
@@ -346,7 +415,28 @@ export default function App() {
     }, 15_000);
   }, [clearAnalyzeTimer]);
 
-  // Subscribe to FILING_READY + FLAG_RESULTS; recover from session storage on open.
+  // Group C: user clicked "Allow access" — request the optional permission in the
+  // user-gesture context of the button click, then retry analysis.
+  const handleGrantPermission = useCallback(() => {
+    if (!needsPermission) return;
+    const { hosts } = needsPermission;
+    chrome.permissions.request({ origins: hosts })
+      .then((granted) => {
+        setNeedsPermission(null);
+        if (granted) {
+          void startAnalyze();
+        } else {
+          setAnalyzeError("Permission denied — FilingLens can't analyze this site.");
+        }
+      })
+      .catch((err: unknown) => {
+        setNeedsPermission(null);
+        setAnalyzeError(`Permission request failed: ${String(err)}`);
+      });
+  }, [needsPermission, startAnalyze]);
+
+  // Subscribe to FILING_READY + FLAG_RESULTS + FILING_GATED;
+  // recover from session storage on open.
   useEffect(() => {
     const listener = (rawMsg: unknown) => {
       const msg = rawMsg as { target?: string; type?: string };
@@ -359,9 +449,18 @@ export default function App() {
         clearAnalyzeTimer();
         setAnalyzing(false);
         setAnalyzeError(null);
+        setNeedsPermission(null);
+        setGateState(null);
       }
       if (msg.type === 'FLAG_RESULTS') {
         setCurrentFlags((msg as FlagResultsMsg).flags);
+      }
+      // Group C: content script bailed because the page is behind a gate.
+      if (msg.type === 'FILING_GATED') {
+        const m = msg as FilingGatedMsg;
+        setGateState(m.reason);
+        clearAnalyzeTimer();
+        setAnalyzing(false);
       }
     };
     chrome.runtime.onMessage.addListener(listener);
@@ -386,11 +485,9 @@ export default function App() {
     return () => chrome.runtime.onMessage.removeListener(listener);
   }, [clearAnalyzeTimer]);
 
-  const tier = caps?.generationTier ?? null;
-
   return (
     <div className="flex h-full min-h-screen flex-col bg-zinc-950 text-zinc-100 selection:bg-sky-500/30">
-      <Header doc={currentDoc} tier={tier} />
+      <Header doc={currentDoc} />
 
       <main className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
         {/* Capability detection states */}
@@ -422,21 +519,49 @@ export default function App() {
               >
                 {/* The panel can outlive the analyzed page (session-storage recovery),
                     so the on-demand entry point must stay reachable here too. */}
-                <div className="flex items-center justify-between gap-2">
-                  <p className="truncate text-[10px] text-zinc-600">
-                    On a different page now? Analysis below is for the last document.
-                  </p>
-                  <button
-                    onClick={() => void startAnalyze()}
-                    disabled={analyzing}
-                    className="shrink-0 rounded px-2 py-0.5 text-[11px] font-medium text-sky-400 transition hover:bg-zinc-800 hover:text-sky-300 disabled:cursor-default disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
-                  >
-                    {analyzing ? 'Analyzing…' : 'Analyze this page'}
-                  </button>
-                </div>
+                <button
+                  onClick={() => void startAnalyze()}
+                  disabled={analyzing}
+                  className="flex w-full items-center justify-center rounded-[4px] border border-sky-500/40 px-3 py-2 text-[13px] font-[Georgia,serif] font-medium text-sky-400 transition hover:border-sky-400/60 hover:bg-zinc-900/50 hover:text-sky-300 disabled:cursor-default disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+                >
+                  {analyzing ? 'Analyzing…' : 'Analyze this page'}
+                </button>
                 {analyzeError && (
                   <Banner tone="warn" icon="⚠">
                     {analyzeError}
+                  </Banner>
+                )}
+                {needsPermission && (
+                  <Banner tone="info" icon="ℹ">
+                    <span className="font-semibold">{needsPermission.label}</span> needs a
+                    one-time permission grant.{' '}
+                    <button
+                      onClick={handleGrantPermission}
+                      className="font-medium text-sky-300 underline decoration-sky-400/50 underline-offset-2 transition hover:text-sky-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+                    >
+                      Allow access
+                    </button>
+                    {' · '}
+                    <button
+                      onClick={() => setNeedsPermission(null)}
+                      className="text-zinc-400 underline underline-offset-2 transition hover:text-zinc-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+                    >
+                      Skip
+                    </button>
+                  </Banner>
+                )}
+                {gateState === 'consent_wall' && (
+                  <Banner tone="warn" icon="⚠">
+                    A <span className="font-semibold">consent banner</span> is covering the
+                    content. Accept or close it in the browser, then click{' '}
+                    <span className="font-medium">Analyze this page</span> again.
+                  </Banner>
+                )}
+                {gateState === 'paywall' && (
+                  <Banner tone="warn" icon="⚠">
+                    This page appears to have a{' '}
+                    <span className="font-semibold">paywall or registration gate</span>. FilingLens
+                    can only analyze content visible to you — dismiss the gate and retry.
                   </Banner>
                 )}
                 {isDataReport(currentDoc) && (
@@ -446,10 +571,19 @@ export default function App() {
                     redline are unavailable; Summary and language flags still apply.
                   </Banner>
                 )}
+                {isFilingIndex(currentDoc) && (
+                  <Banner tone="info" icon="ℹ">
+                    <span className="font-semibold">EDGAR filing index</span> — this is the
+                    submission&rsquo;s document list, not the filing itself. Open the primary
+                    document linked on the page (the main <span className="font-medium">.htm</span>{' '}
+                    file) and analyze that for the full breakdown.
+                  </Banner>
+                )}
                 {isLowConfidenceGeneric(currentDoc) && (
                   <Banner tone="warn" icon="⚠">
                     <span className="font-semibold">This page doesn&rsquo;t look like an SEC filing</span>{' '}
-                    — analysis may be unreliable. On-page flag highlights are off;{' '}
+                    — investor analysis, sentiment, and redline are unavailable. Summary and language
+                    flags still apply; on-page highlights are off,{' '}
                     <button
                       onClick={() => setFlagOverlayPref(true)}
                       className="font-medium text-amber-200 underline decoration-amber-400/50 underline-offset-2 transition hover:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
@@ -460,13 +594,14 @@ export default function App() {
                   </Banner>
                 )}
                 <OverlayControls />
-                <TabBar active={activeTab} onSelect={setActiveTab} flagCount={currentFlags.length} tabs={visibleTabs} />
+                <TabBar active={activeTab} onSelect={setActiveTab} tabs={visibleTabs} />
 
                 {/* Tab panels — kept mounted to preserve async state across switches.
                     Investor-context panels (analyst/sentiment/changes) are not even
-                    mounted for SEC data/report pages, so they never auto-run
-                    investment-thesis analysis or hit EDGAR for a prior filing. */}
-                {!isDataReport(currentDoc) && (
+                    mounted for SEC data/report pages or EDGAR index pages, so they
+                    never auto-run investment-thesis analysis or hit EDGAR for a prior
+                    filing on a page that has no thesis to analyze. */}
+                {!hidesInvestorTabs(currentDoc) && (
                   <div
                     id="panel-analyst"
                     role="tabpanel"
@@ -484,7 +619,7 @@ export default function App() {
                 >
                   <SummaryPanel doc={currentDoc} detectedTier={caps.generationTier} />
                 </div>
-                {!isDataReport(currentDoc) && (
+                {!hidesInvestorTabs(currentDoc) && (
                   <div
                     id="panel-sentiment"
                     role="tabpanel"
@@ -494,30 +629,12 @@ export default function App() {
                     <SentimentPanel doc={currentDoc} />
                   </div>
                 )}
-                <div id="panel-flags" role="tabpanel" aria-labelledby="tab-flags" hidden={activeTab !== 'flags'}>
-                  {currentFlags.length > 0 ? (
-                    <FlagPanel doc={currentDoc} flags={currentFlags} />
-                  ) : (
-                    <EmptyState title="No language flags" body="No hedging, litigious, or uncertainty language was detected in this filing." />
-                  )}
-                </div>
-                {!isDataReport(currentDoc) && (
+                {!hidesInvestorTabs(currentDoc) && (
                   <div id="panel-changes" role="tabpanel" aria-labelledby="tab-changes" hidden={activeTab !== 'changes'}>
                     <RedlinePanel doc={currentDoc} detectedTier={caps.generationTier} />
                   </div>
                 )}
 
-                <PrivacyNote className="mt-1" />
-
-                <div className="flex items-center justify-between pt-1 text-[10px] text-zinc-600">
-                  <span>Detected {new Date(caps.detectedAt).toLocaleTimeString()}</span>
-                  <button
-                    onClick={() => void refresh()}
-                    className="rounded px-2 py-0.5 text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
-                  >
-                    Re-detect
-                  </button>
-                </div>
               </motion.div>
             ) : (
               <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
@@ -526,6 +643,10 @@ export default function App() {
                   analyzing={analyzing}
                   analyzeError={analyzeError}
                   onAnalyze={() => void startAnalyze()}
+                  needsPermission={needsPermission}
+                  onGrantPermission={handleGrantPermission}
+                  onDismissPermission={() => setNeedsPermission(null)}
+                  gateState={gateState}
                 />
               </motion.div>
             )}

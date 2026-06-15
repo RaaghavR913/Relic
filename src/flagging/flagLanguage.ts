@@ -12,12 +12,32 @@
 
 import type { Section, LanguageFlag, PositionMap } from '@/types';
 import { loadCompiledLexicons, type FlagType, type LexiconOverrides } from './lexiconLoader';
+import { splitSentences } from '@/summarizer/extractive';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 /** True when [start, end) falls entirely inside one of the table regions. */
 function inTable(start: number, end: number, tables: ReadonlyArray<[number, number]>): boolean {
   return tables.some(([ts, te]) => start >= ts && end <= te);
+}
+
+// Forward-looking / safe-harbor boilerplate copied into nearly every filing. A
+// match whose sentence reads as this disclaimer carries low marginal signal.
+const BOILERPLATE_RE =
+  /(forward[- ]looking statements?|private securities litigation reform act|safe[- ]harbor|within the meaning of section 27a|undertake no (?:obligation|duty) to (?:update|revise)|actual results (?:could|may|might) differ materially|these forward-looking statements)/i;
+
+/** Section-space char ranges of sentences that read as safe-harbor boilerplate. */
+function boilerplateRanges(text: string): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  for (const s of splitSentences(text)) {
+    if (BOILERPLATE_RE.test(s.text)) ranges.push(s.range);
+  }
+  return ranges;
+}
+
+/** True when `pos` falls inside one of the (section-space) boilerplate ranges. */
+function inBoilerplate(pos: number, ranges: ReadonlyArray<[number, number]>): boolean {
+  return ranges.some(([a, b]) => pos >= a && pos < b);
 }
 
 // ── core ──────────────────────────────────────────────────────────────────────
@@ -47,6 +67,7 @@ export function flagSection(
 
   const lexicons = loadCompiledLexicons(overrides);
   const tables   = section.tables ?? [];
+  const bpRanges = boilerplateRanges(section.text);
   const flags: LanguageFlag[] = [];
 
   for (const type of Object.keys(lexicons) as FlagType[]) {
@@ -70,6 +91,9 @@ export function flagSection(
           sectionId: section.id,
           term:      match[0],
           note:      entry.note,
+          // Marked, not dropped: callers retain boilerplate flags but hide them
+          // from the on-page overlay by default (low marginal signal).
+          ...(inBoilerplate(secStart, bpRanges) ? { boilerplate: true } : {}),
         });
       }
     }

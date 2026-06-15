@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FilingLens",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "On-device SEC filing analysis — summaries, sentiment, redlines, and Q&A, all private.",
   "permissions": [
     "storage",
@@ -14,7 +14,20 @@
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://*.sec.gov"
   },
   "host_permissions": [
-    "https://*.sec.gov/*"
+    "https://*.sec.gov/*",
+    "*://*.annualreports.com/*",
+    "*://*.stockanalysis.com/*",
+    "*://*.fool.com/*",
+    "*://*.benzinga.com/*",
+    "*://*.sec.report/*",
+    "*://finviz.com/*"
+  ],
+  "optional_host_permissions": [
+    "*://finance.yahoo.com/*",
+    "*://*.macrotrends.net/*",
+    "*://*.bamsec.com/*",
+    "*://*.cnbc.com/*",
+    "*://*.reuters.com/*"
   ],
   "background": {
     "service_worker": "src/background/service-worker.ts",
@@ -28,6 +41,24 @@
       "js": ["src/content/index.ts"],
       "run_at": "document_idle",
       "all_frames": true
+    },
+    {
+      "matches": [
+        "*://*.annualreports.com/*",
+        "*://*.stockanalysis.com/*",
+        "*://*.fool.com/*",
+        "*://*.benzinga.com/*"
+      ],
+      "js": ["src/content/index.ts"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://*.sec.report/*",
+        "*://finviz.com/*"
+      ],
+      "js": ["src/content/index.ts"],
+      "run_at": "document_idle"
     }
   ],
   "side_panel": {

@@ -504,5 +504,13 @@ describe('generateFilingAnalysis — extractive tier', () => {
     // (no LM): takeaways come from the document's highest-signal sentences.
     expect(analysis.topTakeaways.length).toBeGreaterThan(0);
     expect(analysis.documentType).toBe('10-K');
+
+    // Deterministic cards carry a jump-to-source range, and their summary is a
+    // verbatim source sentence (so the range can scroll to it) — gap #6.
+    const t0 = analysis.topTakeaways[0]!;
+    expect(t0.evidenceRange).toBeDefined();
+    expect(t0.evidenceRange![1]).toBeGreaterThan(t0.evidenceRange![0]);
+    const sourceText = makeDoc().sections.map((s) => s.text).join(' ');
+    expect(sourceText).toContain(t0.summary);
   });
 });

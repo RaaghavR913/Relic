@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { classifyPage } from '@/content/ingest/classify';
+import { classifyPage, isEdgarIndexUrl } from '@/content/ingest/classify';
 import { ingestDocument } from '@/content/ingest';
 import { detectFilingType } from '@/content/ingest/detect';
 
@@ -54,6 +54,25 @@ describe('classifyPage', () => {
     document.body.innerHTML =
       '<span name="dei:EntityRegistrantName">Acme Corp</span><p>body</p>';
     expect(classifyPage(document, 'https://www.sec.gov/some/info/page')).toBe('edgar_filing');
+  });
+
+  it('classifies an EDGAR Filing Detail index page as edgar_index (a directory, not the filing)', () => {
+    document.body.innerHTML = '<table><tr><td>FORM 3</td></tr></table>';
+    // The real Form 3 index page from the report (Luke Nosek / SpaceX).
+    const indexUrl =
+      'https://www.sec.gov/Archives/edgar/data/1835310/000162828026042636/0001628280-26-042636-index.html';
+    expect(classifyPage(document, indexUrl)).toBe('edgar_index');
+    // The primary document under the SAME accession is still a real filing.
+    const primaryUrl =
+      'https://www.sec.gov/Archives/edgar/data/1835310/000162828026042636/wk-form3_1781226111.html';
+    expect(classifyPage(document, primaryUrl)).toBe('edgar_filing');
+  });
+
+  it('isEdgarIndexUrl matches index pages but not primary documents', () => {
+    expect(isEdgarIndexUrl('https://www.sec.gov/Archives/edgar/data/320193/000032019323000106/0000320193-23-000106-index.html')).toBe(true);
+    expect(isEdgarIndexUrl('https://www.sec.gov/Archives/edgar/data/320193/000032019323000106/0000320193-23-000106-index.htm')).toBe(true);
+    expect(isEdgarIndexUrl('https://www.sec.gov/Archives/edgar/data/320193/000032019323000106/aapl-20230930.htm')).toBe(false);
+    expect(isEdgarIndexUrl('https://investors.acme.com/some-index.html')).toBe(false); // not an EDGAR path
   });
 
   it('classifies the EDGAR browse/search page as sec_search', () => {

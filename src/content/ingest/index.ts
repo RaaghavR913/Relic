@@ -19,6 +19,7 @@ import { buildNormalizedText } from './position-map.js';
 import { detectFilingTypeWithConfidence } from './detect.js';
 import { extractCompanyMeta } from './meta.js';
 import { segmentSections } from './segment.js';
+import { assessSegmentationConfidence } from '../segment.js';
 import { classifyPage, hostForCategory, isReadableNonFiling } from './classify.js';
 import { segmentByHeadings, readablePageName } from './readable.js';
 
@@ -57,6 +58,10 @@ export function ingestDocument(opts: IngestOptions = {}): IngestResult {
 
   const filingTypeConfidence: NonNullable<DocumentModel['filingTypeConfidence']> =
     detection.confidence;
+  // Did the segmenter bound the sections sensibly? A mis-bound filing (e.g. an
+  // empty Risk-Factors section swallowed by a neighbour) must surface the
+  // low-confidence UI even on an authoritative EDGAR page.
+  const segmentationConfidence = assessSegmentationConfidence(sections, filingType);
 
   const meta = extractCompanyMeta(picked.document, url);
 
@@ -72,6 +77,7 @@ export function ingestDocument(opts: IngestOptions = {}): IngestResult {
     ...(meta.companyName ? { companyName: meta.companyName } : {}),
     filingType,
     filingTypeConfidence,
+    segmentationConfidence,
     ...(meta.periodOfReport ? { periodOfReport: meta.periodOfReport } : {}),
     ...(meta.filedAt ? { filedAt: meta.filedAt } : {}),
     sections,

@@ -28,6 +28,7 @@ import type {
 } from '@/types';
 import type { RedlineEntry } from '@/redline/redlineStore';
 import { finalizeInsight } from './evidence';
+import { computeLexiconTone, type ToneSignal } from './lexiconTone';
 import {
   topRelevantSentences,
   sentenceDimensions,
@@ -107,6 +108,8 @@ export interface AuxSignals {
   sentiments?: SentenceSentiment[] | null;
   flags?: LanguageFlag[] | null;
   redline?: RedlineEntry | null;
+  /** Lexicon tone proxy — used when FinBERT sentiment is not yet available. */
+  tone?: ToneSignal | null;
 }
 
 export function buildHints(aux: AuxSignals): string {
@@ -149,9 +152,14 @@ export function buildHints(aux: AuxSignals): string {
 
 // ── degraded (extractive-tier) analysis ──────────────────────────────────────
 
-function overallReadFromSentiment(sentiments: SentenceSentiment[] | null | undefined): OverallRead {
+function overallReadFromSentiment(
+  sentiments: SentenceSentiment[] | null | undefined,
+  tone: ToneSignal | null | undefined,
+): OverallRead {
   const sents = sentiments ?? [];
-  if (sents.length < 10) return 'Neutral';
+  // Below the FinBERT confidence threshold, fall back to the lexicon tone proxy
+  // so the read is not a flat Neutral before sentiment has been computed.
+  if (sents.length < 10) return tone?.overall ?? 'Neutral';
   const pos = sents.filter((s) => s.label === 'positive').length / sents.length;
   const neg = sents.filter((s) => s.label === 'negative').length / sents.length;
   if (pos > neg * 1.5 && pos > 0.1) return 'Bullish';
@@ -194,9 +202,11 @@ const DIM_META: Record<Exclude<Dimension, 'overview'>, DimMeta> = {
 function sectionSkew(
   sectionId: string,
   sentiments: SentenceSentiment[] | null | undefined,
+  tone: ToneSignal | null | undefined,
 ): { label: InsightLabel; net: number; n: number } {
   const s = (sentiments ?? []).filter((x) => x.sectionId === sectionId);
-  if (s.length < 3) return { label: 'Neutral', net: 0, n: s.length };
+  // Too few FinBERT sentences for this section → fall back to the tone proxy.
+  if (s.length < 3) return tone?.bySection.get(sectionId) ?? { label: 'Neutral', net: 0, n: s.length };
   const pos = s.filter((x) => x.label === 'positive').length / s.length;
   const neg = s.filter((x) => x.label === 'negative').length / s.length;
   const net = pos - neg;
@@ -215,13 +225,20 @@ function insightFromSentence(
   aux: AuxSignals,
 ): FilingInsight | null {
   const meta = DIM_META[dim];
-  const skew = sectionSkew(s.sectionId, aux.sentiments);
+  const skew = sectionSkew(s.sectionId, aux.sentiments, aux.tone);
   const label: InsightLabel =
     dim === 'risk' ? (skew.net < -0.2 ? 'Red Flag' : 'Watch Item') : skew.label;
   const investorMeaning =
     skew.n >= 3 && skew.label !== 'Neutral'
       ? `On-device sentiment reads the ${s.sectionLabel} language as net-${skew.net > 0 ? 'positive' : 'negative'}.`
       : '';
+  // The summary IS a verbatim source sentence, so its document-space range gives
+  // the fallback tier a working jump-to-source (the ↗ button) without a separate
+  // quote. finalizeInsight preserves this range.
+  const evidenceRange: [number, number] = [
+    s.sectionCharStart + s.range[0],
+    s.sectionCharStart + s.range[1],
+  ];
   return finalizeInsight(doc, {
     label,
     category: meta.category,
@@ -232,6 +249,7 @@ function insightFromSentence(
     severity: s.hasNumeric ? 'Medium' : 'Low',
     timeHorizon: meta.horizon,
     confidence: 'Medium',
+    evidenceRange,
   });
 }
 
@@ -329,17 +347,23 @@ export function deterministicAnalysis(
   doc: DocumentModel,
   aux: AuxSignals,
 ): FilingAnalysis {
-  const documentType = mapDocumentType(doc.filingType);
-  const overallRead = overallReadFromSentiment(aux.sentiments);
-  const whatChanged = whatChangedFromRedline(doc, aux.redline);
+  // Compute the lexicon tone proxy once and thread it through every builder, so
+  // an analyst launched before FinBERT sentiment exists still gets a real read
+  // and labeled cards rather than a flat Neutral. FinBERT, when present, wins.
+  const tone = aux.tone ?? computeLexiconTone(doc, aux.flags ?? []);
+  const auxT: AuxSignals = { ...aux, tone };
 
-  const topTakeaways = buildTakeaways(doc, aux, 5);
-  const revenueImpact = buildDimInsights(doc, aux, 'revenue', 2);
-  const marginImpact = buildDimInsights(doc, aux, 'margins', 2);
-  const cashFlowImpact = buildDimInsights(doc, aux, 'cashflow', 2);
-  const balanceSheetHealth = buildDimInsights(doc, aux, 'balancesheet', 2);
-  const shareImpact = buildDimInsights(doc, aux, 'shares', 2);
-  const riskSignals = buildRiskSignals(doc, aux, 4);
+  const documentType = mapDocumentType(doc.filingType);
+  const overallRead = overallReadFromSentiment(auxT.sentiments, tone);
+  const whatChanged = whatChangedFromRedline(doc, auxT.redline);
+
+  const topTakeaways = buildTakeaways(doc, auxT, 5);
+  const revenueImpact = buildDimInsights(doc, auxT, 'revenue', 2);
+  const marginImpact = buildDimInsights(doc, auxT, 'margins', 2);
+  const cashFlowImpact = buildDimInsights(doc, auxT, 'cashflow', 2);
+  const balanceSheetHealth = buildDimInsights(doc, auxT, 'balancesheet', 2);
+  const shareImpact = buildDimInsights(doc, auxT, 'shares', 2);
+  const riskSignals = buildRiskSignals(doc, auxT, 4);
 
   const stagesDone: FilingAnalysis['stagesDone'] = ['snapshot'];
   if (topTakeaways.length) stagesDone.push('takeaways');

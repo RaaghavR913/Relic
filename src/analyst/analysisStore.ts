@@ -9,10 +9,13 @@
 // ============================================================
 
 import type { FilingAnalysis } from '@/types';
+import { evictToCap, txComplete } from '@/lib/idbEvict';
 
 const DB_NAME = 'filing-lens-analyses';
 const DB_VERSION = 1;
 const STORE = 'analyses';
+/** Two registers (builtin / extractive) per filing → cap at ~80 filings. */
+const ANALYSIS_CAP = 160;
 
 export interface AnalysisEntry {
   /** Compound key: `${rawTextHash}:${register}` */
@@ -86,7 +89,10 @@ export async function putAnalysis(
     cachedAt: Date.now(),
   };
   const tx = db.transaction(STORE, 'readwrite');
-  await idbReq(tx.objectStore(STORE).put(entry));
+  const store = tx.objectStore(STORE);
+  store.put(entry);
+  evictToCap(store, ANALYSIS_CAP, (r) => (r as AnalysisEntry).cachedAt);
+  await txComplete(tx);
 }
 
 export async function clearAnalysis(rawTextHash: string, register: string): Promise<void> {

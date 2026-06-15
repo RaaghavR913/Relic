@@ -11,12 +11,21 @@
 
 /**
  * Hosts the manifest already auto-injects into (content_scripts matches).
- * Keep in sync with manifest.json. Transcript hosts (fool.com, seekingalpha.com)
- * are NOT listed: they are analyzed on demand like any other page; the ingest
- * pipeline still classifies them as transcripts once injected.
+ * Keep in sync with manifest.json content_scripts entries.
+ * Group C sites are NOT listed — they require optional_host_permissions granted
+ * on demand and are never auto-injected at install.
  */
 const AUTO_HOSTS: ReadonlyArray<RegExp> = [
+  // sec.gov (original)
   /(?:^|\.)sec\.gov$/i,
+  // Group A — static pages, content readable at document_idle
+  /(?:^|\.)annualreports\.com$/i,
+  /(?:^|\.)stockanalysis\.com$/i,
+  /(?:^|\.)fool\.com$/i,
+  /(?:^|\.)benzinga\.com$/i,
+  // Group B — auto-injected; content-gated in waitForContent (interstitials)
+  /(?:^|\.)sec\.report$/i,
+  /^finviz\.com$/i,
 ];
 
 /**

@@ -60,6 +60,16 @@ export interface ScoredSentence {
   sectionLabel: string;
   /** Whether the sentence carries a figure/percentage/$ amount. */
   hasNumeric: boolean;
+  /** Section-space [start, end) char range of the sentence within its section. */
+  range: [number, number];
+  /** Document-space char offset of the sentence's section (lifts `range` to doc space). */
+  sectionCharStart: number;
+}
+
+interface SentenceSpan {
+  text: string;
+  /** [start, end) offsets within the input text. */
+  range: [number, number];
 }
 
 /** Dimensions whose keyword set a sentence matches (used to label insights). */
@@ -69,12 +79,28 @@ export function sentenceDimensions(text: string): Array<Exclude<Dimension, 'over
   );
 }
 
+/** Split into sentence spans, tracking each kept sentence's char range. */
+function splitSentenceSpans(text: string): SentenceSpan[] {
+  const out: SentenceSpan[] = [];
+  const parts = text.split(/(?<=[.!?])\s+(?=[A-Z(“"$\d])/);
+  let cursor = 0;
+  for (const part of parts) {
+    const at = text.indexOf(part, cursor);
+    const start = at >= 0 ? at : cursor;
+    cursor = start + part.length;
+    const lead = part.length - part.replace(/^\s+/, '').length;
+    const trimmed = part.trim();
+    if (trimmed.length >= 30 && trimmed.length <= 600) {
+      const s0 = start + lead;
+      out.push({ text: trimmed, range: [s0, s0 + trimmed.length] });
+    }
+  }
+  return out;
+}
+
 /** Split section text into rough sentences. Keeps it dependency-free. */
 export function splitSentences(text: string): string[] {
-  return text
-    .split(/(?<=[.!?])\s+(?=[A-Z(“"$\d])/)
-    .map((s) => s.trim())
-    .filter((s) => s.length >= 30 && s.length <= 600);
+  return splitSentenceSpans(text).map((s) => s.text);
 }
 
 function sectionPriority(section: Section): number {
@@ -126,24 +152,26 @@ function scoreSentences(
 
   for (const section of sections) {
     const prio = sectionPriority(section);
-    for (const sentence of splitSentences(section.text)) {
+    for (const span of splitSentenceSpans(section.text)) {
       order++;
       let score = 0;
       for (const re of regexes) {
-        if (re.test(sentence)) score += 2;
+        if (re.test(span.text)) score += 2;
       }
       if (score === 0) continue;
-      const hasNumeric = NUMERIC.test(sentence);
+      const hasNumeric = NUMERIC.test(span.text);
       if (hasNumeric) score += 2;
       // Light boost for sentences from priority sections.
       score += prio < PRIORITY_SECTION_PREFIXES.length ? 1 : 0;
       scored.push({
-        text: sentence,
+        text: span.text,
         score,
         order,
         sectionId: section.id,
         sectionLabel: section.label,
         hasNumeric,
+        range: span.range,
+        sectionCharStart: section.charRange[0],
       });
     }
   }

@@ -8,6 +8,7 @@
     "fetch-models": "node scripts/fetch-models.mjs",
     "fetch-lm-dict": "node scripts/fetch-lm-dict.mjs",
     "dev": "vite build --watch --mode development",
+    "dev:ui": "vite --config vite.preview.config.ts",
     "build": "vite build && node scripts/verify-dist.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",

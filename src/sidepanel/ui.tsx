@@ -170,9 +170,8 @@ export function Spinner({ className = 'h-6 w-6 text-sky-500' }: { className?: st
 
 export function PrivacyNote({ className = '' }: { className?: string }) {
   return (
-    <p className={`flex items-center gap-1.5 text-[11px] text-zinc-500 ${className}`}>
-      <LockIcon className="h-3 w-3 shrink-0 text-emerald-400" />
-      <span>100% on-device — no filing text or analysis ever leaves your computer.</span>
+    <p className={`text-[13px] text-zinc-500 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] ${className}`}>
+      100% on-device — no filing text or analysis ever leaves your computer.
     </p>
   );
 }

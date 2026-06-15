@@ -41,7 +41,13 @@ export type AnalyzePageFailReason =
   /** No active tab could be resolved. */
   | 'no_tab'
   /** Unexpected executeScript failure. */
-  | 'error';
+  | 'error'
+  /**
+   * The current page is a group-C site whose optional_host_permission has not been
+   * granted yet. The side panel should offer a "Grant access" button that calls
+   * chrome.permissions.request() and retries on success.
+   */
+  | 'needs_optional_permission';
 
 export interface AnalyzePageOkResponse {
   ok: true;
@@ -52,8 +58,24 @@ export interface AnalyzePageErrResponse {
   ok: false;
   reason: AnalyzePageFailReason;
   error?: string;
+  /** Only present when reason === 'needs_optional_permission'. */
+  hosts?: string[];
+  /** Only present when reason === 'needs_optional_permission'. */
+  label?: string;
 }
 export type AnalyzePageResponse = AnalyzePageOkResponse | AnalyzePageErrResponse;
+
+/**
+ * Content script → side panel: the page content is behind a consent or paywall
+ * gate. Analysis was skipped. The side panel should show a banner explaining why
+ * and ask the user to dismiss the banner in the browser then retry.
+ */
+export interface FilingGatedMsg {
+  target: 'sidepanel';
+  type: 'FILING_GATED';
+  reason: 'consent_wall' | 'paywall';
+  url: string;
+}
 
 // ── Offscreen → Service Worker (events) ──────────────────────────────────────
 
@@ -145,7 +167,7 @@ export type ExtractiveResponse = ExtractiveOkResponse | ExtractiveErrResponse;
 
 /**
  * Broadcast from content script → side panel after flagAllSections() completes.
- * Contains the full LanguageFlag[] for the current document.
+ * Contains the full LanguageFlag[] for the current document (Analyst + overlays).
  * Privacy: flag ranges are document-space offsets + lexicon-matched terms only;
  * no original filing prose is included beyond the matched term itself.
  */
@@ -154,19 +176,6 @@ export interface FlagResultsMsg {
   type: 'FLAG_RESULTS';
   /** All flags for the document, in document order. */
   flags: LanguageFlag[];
-}
-
-/**
- * Sent from the side panel → content script when the user clicks a flag
- * in the FlagPanel to jump to its location in the filing.
- * The content script scrolls the first flagged range into view and briefly
- * applies the 'qa' highlight so the user can locate it.
- */
-export interface ContentScrollToFlagMsg {
-  target: 'content';
-  type: 'SCROLL_TO_FLAG';
-  /** Document-space [start, end) of the target flag. */
-  range: [number, number];
 }
 
 // ── Session 6: Year-over-year redline ─────────────────────────────────────────

@@ -26,6 +26,7 @@ import type {
 } from '@/messages/types';
 import type { DiffStats } from '@/redline/diff';
 import { generateChangeSummary, createChangeSummarySession } from '@/redline/changeSummary';
+import { redlineSupportsForm } from '@/redline/align';
 import { getCachedRedline, putRedline } from '@/redline/redlineStore';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -228,6 +229,13 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
   const [summaries, setSummaries] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
 
+  // The redline only works on forms with mapped focus sections (Risk Factors /
+  // MD&A and equivalents). For anything else — UNKNOWN, an ownership form like
+  // Form 3/4, a 6-K, etc. — there's nothing to diff, so we never resolve a prior
+  // (which would otherwise dead-end at a confusing "No prior comparable UNKNOWN
+  // found" message) and show an honest note instead.
+  const applicable = redlineSupportsForm(doc.filingType);
+
   const sectionById = useMemo(() => {
     const map = new Map<string, Section>();
     for (const s of doc.sections) map.set(s.id, s);
@@ -245,6 +253,10 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
     setError('');
     void clearOnPage().catch(() => {});
 
+    // Non-redline forms never produced a meaningful cache entry; skip the load so
+    // the honest "not available" note is the only thing rendered.
+    if (!applicable) return;
+
     let alive = true;
     getCachedRedline(doc.rawTextHash)
       .then((cached) => {
@@ -261,7 +273,7 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
       })
       .catch(() => {});
     return () => { alive = false; };
-  }, [doc.rawTextHash]);
+  }, [doc.rawTextHash, applicable]);
 
   // Listen for redline progress.
   useEffect(() => {
@@ -307,6 +319,7 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
   );
 
   const run = useCallback(async () => {
+    if (!applicable) return; // no focus sections for this form — nothing to compare
     setState('running');
     setError('');
     setSummaries({});
@@ -356,7 +369,7 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
     } finally {
       setProgress(null);
     }
-  }, [doc, upgradeSummaries]);
+  }, [doc, applicable, upgradeSummaries]);
 
   const totalChanges = useMemo(
     () => diffs.reduce((n, d) => n + d.added.length + d.removed.length, 0),
@@ -366,19 +379,32 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
   return (
     <section aria-labelledby="redline-heading" className="flex flex-col gap-3">
       <div className="flex items-center gap-2">
-        <p id="redline-heading" className="text-[11px] font-medium uppercase tracking-widest text-zinc-500">
+        <p id="redline-heading" className="text-[13px] font-medium uppercase tracking-widest text-zinc-500 font-[Times,serif]">
           What Changed (YoY)
         </p>
-        <span className="ml-auto">
-          <button
-            onClick={() => void run()}
-            disabled={state === 'running'}
-            className="rounded-md bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500"
-          >
-            {state === 'running' ? 'Comparing…' : state === 'done' || state === 'no_prior' || state === 'unsupported_form' ? 'Re-compare' : 'Compare to prior year'}
-          </button>
-        </span>
+        {applicable && (
+          <span className="ml-auto">
+            <button
+              onClick={() => void run()}
+              disabled={state === 'running'}
+              className="rounded-md bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500"
+            >
+              {state === 'running' ? 'Comparing…' : state === 'done' || state === 'no_prior' || state === 'unsupported_form' ? 'Re-compare' : 'Compare to prior year'}
+            </button>
+          </span>
+        )}
       </div>
+
+      {/* Not a redline-capable form (UNKNOWN, ownership form, 6-K, etc.) — be
+          honest rather than dead-ending at "No prior comparable UNKNOWN found". */}
+      {!applicable && (
+        <p className="rounded-lg bg-zinc-900/60 px-3 py-2.5 text-xs leading-relaxed text-zinc-400 ring-1 ring-zinc-800/60">
+          A year-over-year comparison isn’t available for this page. The Changes view diffs the
+          Risk Factors and MD&amp;A of a <span className="font-medium text-zinc-300">10-K, 10-Q, 20-F,
+          S-1, proxy (DEF&nbsp;14A), or 8-K</span> against the prior comparable filing. Open one of
+          those filings to see what changed.
+        </p>
+      )}
 
       {/* progress */}
       {state === 'running' && progress && (
@@ -461,7 +487,7 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
         </div>
       )}
 
-      {state === 'idle' && (
+      {applicable && state === 'idle' && (
         <p className="text-[11px] leading-relaxed text-zinc-600">
           Fetches last year’s comparable filing from EDGAR and shows what changed in the Risk Factors and
           MD&amp;A — all diffing and summarization run on-device.

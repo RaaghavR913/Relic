@@ -375,6 +375,37 @@ describe('(k) ranges are lifted to document space', () => {
   });
 });
 
+// ── (p) boilerplate marking ──────────────────────────────────────────────────
+
+describe('(p) safe-harbor / forward-looking boilerplate marking', () => {
+  const pm = mockPositionMap();
+
+  it('marks flags inside a safe-harbor sentence as boilerplate (but still returns them)', () => {
+    const section = makeSection(
+      'mdna',
+      'This report contains forward-looking statements within the meaning of the Private ' +
+        'Securities Litigation Reform Act; actual results may differ materially from those projected. ' +
+        'We believe our liquidity is sufficient for our operating needs.',
+    );
+    const flags = flagSection(section, pm);
+    // A flag in the disclaimer sentence is marked boilerplate.
+    expect(flags.some((f) => f.boilerplate === true)).toBe(true);
+    // The "we believe" flag in the ordinary sentence is NOT boilerplate.
+    const weBelieve = flags.find((f) => /we believe/i.test(f.term));
+    expect(weBelieve).toBeDefined();
+    expect(weBelieve!.boilerplate).toBeFalsy();
+  });
+
+  it('does not mark ordinary risk-factor language as boilerplate', () => {
+    const section = makeSection(
+      'item_1a_risk_factors',
+      'We depend on a concentrated group of customers. Litigation is pending against the Company.',
+    );
+    const flags = flagSection(section, pm);
+    expect(flags.every((f) => !f.boilerplate)).toBe(true);
+  });
+});
+
 // ── (l.pre) Base-only coverage benchmark (runs before LM is loaded) ──────────
 //
 // This suite deliberately runs BEFORE any awaitLexiconReady() call so it

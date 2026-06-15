@@ -22,7 +22,6 @@ import type {
 } from '@/types';
 import type { GenerationTier } from '@/runtime/capabilities';
 import { generateFilingAnalysis } from '@/analyst/pipeline';
-import { ANALYST_DISCLAIMER } from '@/analyst/prompts';
 import { getCachedAnalysis, putAnalysis, clearAnalysis } from '@/analyst/analysisStore';
 import { getCachedRedline } from '@/redline/redlineStore';
 import { getSentimentCache } from '@/db/sentimentStore';
@@ -73,7 +72,7 @@ const STAGE_ORDER: AnalysisStage[] = [
 
 function LabelChip({ label }: { label: InsightLabel }) {
   return (
-    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9px] font-semibold ring-1 ring-inset ${LABEL_STYLES[label]}`}>
+    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif] ${LABEL_STYLES[label]}`}>
       {label}
     </span>
   );
@@ -96,7 +95,7 @@ async function highlightEvidence(range: [number, number]): Promise<void> {
 
 function InsightCard({ insight }: { insight: FilingInsight }) {
   return (
-    <div className="rounded-lg bg-zinc-900 px-3 py-2.5 ring-1 ring-zinc-800">
+    <div className="rounded-lg bg-zinc-900 px-3 py-2.5 ring-1 ring-zinc-800 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
       <div className="flex items-start gap-2">
         <p className="flex-1 text-xs font-medium leading-snug text-zinc-200">{insight.title}</p>
         <LabelChip label={insight.label} />
@@ -123,7 +122,7 @@ function InsightCard({ insight }: { insight: FilingInsight }) {
             <button
               onClick={() => void highlightEvidence(insight.evidenceRange!).catch(() => {})}
               title="Highlight in document"
-              className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-zinc-500 transition hover:bg-sky-900/20 hover:text-sky-400 focus-visible:outline focus-visible:outline-sky-500"
+              className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] text-zinc-500 transition hover:bg-sky-900/20 hover:text-sky-400 focus-visible:outline focus-visible:outline-sky-500"
               aria-label="Highlight evidence in document"
             >
               ↗
@@ -131,7 +130,18 @@ function InsightCard({ insight }: { insight: FilingInsight }) {
           )}
         </div>
       )}
-      <p className="mt-1.5 text-[9px] text-zinc-600">
+      {/* Deterministic-tier cards carry a source range but no separate quote (the
+          summary IS the verbatim sentence) — surface a standalone jump-to-source. */}
+      {!insight.evidence && insight.evidenceRange && (
+        <button
+          onClick={() => void highlightEvidence(insight.evidenceRange!).catch(() => {})}
+          className="mt-1.5 self-start rounded px-1.5 py-0.5 text-[10px] font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] text-zinc-500 transition hover:bg-sky-900/20 hover:text-sky-400 focus-visible:outline focus-visible:outline-sky-500"
+          aria-label="Show this passage in the document"
+        >
+          ↗ Show in document
+        </button>
+      )}
+      <p className="mt-1.5 text-[9px] text-zinc-600 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
         {insight.category} · severity {insight.severity} · {insight.timeHorizon} · confidence {insight.confidence}
       </p>
     </div>
@@ -172,7 +182,7 @@ function Collapse({
         aria-expanded={open}
         className="flex w-full items-center gap-2 px-3 py-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
       >
-        <span className="flex-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+        <span className="flex-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 font-[Times,serif]">
           {title}
         </span>
         {pending && <span className="animate-pulse text-[10px] text-sky-400">…</span>}
@@ -225,42 +235,20 @@ function ScoreRow({ name, value, inverted = false }: { name: string; value: Scor
 function SnapshotCard({ analysis }: { analysis: FilingAnalysis }) {
   return (
     <div className="rounded-xl bg-zinc-900 p-3.5 ring-1 ring-zinc-800">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className={`rounded-md px-2 py-1 text-[11px] font-bold ring-1 ring-inset ${READ_STYLES[analysis.overallRead]}`}>
+      <div className="flex flex-wrap items-center gap-1.5 font-[Times,serif]">
+        <span className={`rounded-md px-2 py-1 text-[12px] font-bold ring-1 ring-inset ${READ_STYLES[analysis.overallRead]}`}>
           {analysis.overallRead}
         </span>
-        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] font-medium text-zinc-300">
+        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[12px] font-medium text-zinc-300">
           {analysis.documentType}
         </span>
-        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">
+        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[12px] text-zinc-400">
           Confidence: {analysis.confidence}
         </span>
-        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">
+        <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[12px] text-zinc-400">
           {analysis.investorSnapshot.timeHorizon}
         </span>
       </div>
-
-      {analysis.oneSentenceSummary && (
-        <p className="mt-2.5 text-xs font-medium leading-relaxed text-zinc-200">
-          {analysis.oneSentenceSummary}
-        </p>
-      )}
-
-      {analysis.investorSnapshot.mainFinancialTheme && (
-        <p className="mt-2 text-[11px] leading-relaxed text-zinc-400">
-          <span className="font-medium text-zinc-500">Theme: </span>
-          {analysis.investorSnapshot.mainFinancialTheme}
-        </p>
-      )}
-
-      {analysis.investorSnapshot.mostImportantInvestorQuestion && (
-        <div className="mt-2.5 rounded-lg bg-sky-950/40 px-2.5 py-2 ring-1 ring-inset ring-sky-800/30">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-sky-500">Key question</p>
-          <p className="mt-0.5 text-[11px] leading-relaxed text-sky-200">
-            {analysis.investorSnapshot.mostImportantInvestorQuestion}
-          </p>
-        </div>
-      )}
 
       {analysis.scores && (
         <div className="mt-3 flex flex-col gap-1.5 border-t border-zinc-800 pt-2.5">
@@ -295,7 +283,6 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
 
   const acRef = useRef<AbortController | null>(null);
-  const startedForRef = useRef<string | null>(null);
   const flagsRef = useRef(flags);
   flagsRef.current = flags;
 
@@ -365,15 +352,21 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
     }
   }, [doc, analysisTier]);
 
-  // Auto-run once per document.
+  // Auto-run once per document. Keyed on the content hash + tier, NOT on `run`'s
+  // identity: the parent hands down a fresh `doc` object on every re-broadcast of
+  // the SAME page (re-detect, re-analyze, SPA re-injection), which changes `run`
+  // but not the hash. Including `run` here re-fired the effect on those, whose
+  // cleanup aborted the in-flight analysis without restarting it — pinning the
+  // panel on "Reading the document…" forever. Reading `run` from a ref keeps the
+  // latest closure while only genuinely new content/tier triggers a re-run.
+  const runRef = useRef(run);
+  runRef.current = run;
   useEffect(() => {
-    if (startedForRef.current === doc.rawTextHash) return;
-    startedForRef.current = doc.rawTextHash;
     setAnalysis(null);
     setStatus('idle');
-    void run();
+    void runRef.current();
     return () => acRef.current?.abort();
-  }, [doc.rawTextHash, run]);
+  }, [doc.rawTextHash, analysisTier]);
 
   const running = status === 'running';
   const a = analysis;
@@ -381,7 +374,7 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
   return (
     <section aria-labelledby="analyst-heading" className="flex flex-col gap-3">
       <div className="flex items-center gap-2">
-        <p id="analyst-heading" className="text-[11px] font-medium uppercase tracking-widest text-zinc-500">
+        <p id="analyst-heading" className="text-[13px] font-medium uppercase tracking-widest text-zinc-500 font-[Times,serif]">
           Investor Analysis
         </p>
         {running && currentStage && (
@@ -392,29 +385,11 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
         <button
           onClick={() => void run(true)}
           disabled={running}
-          className="ml-auto rounded px-2 py-0.5 text-[10px] font-medium text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-300 disabled:cursor-default disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+          className="ml-auto rounded px-2 py-0.5 text-[13px] font-[Times,serif] font-medium text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-300 disabled:cursor-default disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
         >
           Regenerate
         </button>
       </div>
-
-      {a?.degraded && (
-        <div role="status" className="rounded-lg bg-sky-950/40 px-3 py-2 text-[11px] text-sky-300 ring-1 ring-inset ring-sky-800/30">
-          {gatedToDeterministic ? (
-            <>
-              On-device read — this page didn’t parse as a multi-section SEC filing, so the analysis
-              is built deterministically from sentiment, language flags, and prior-filing changes
-              (no AI model is run). Open a filing on EDGAR for the full narrative analysis.
-            </>
-          ) : (
-            <>
-              On-device read — takeaways, risks, and per-dimension cards are built from sentiment,
-              language flags, and prior-filing changes. Enable Chrome built-in AI (Gemini Nano) for a
-              fuller narrative with bull/bear cases, a management-claim check, and a watch list.
-            </>
-          )}
-        </div>
-      )}
 
       {/* First-use Gemini Nano download — show progress instead of looking frozen. */}
       {downloadProgress !== null && (
@@ -601,7 +576,6 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
             </Collapse>
           )}
 
-          <p className="text-[10px] italic text-zinc-600">{ANALYST_DISCLAIMER}</p>
         </>
       )}
     </section>

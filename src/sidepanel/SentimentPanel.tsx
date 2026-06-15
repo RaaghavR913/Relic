@@ -415,7 +415,7 @@ export function SentimentPanel({ doc }: SentimentPanelProps) {
       <div className="flex items-center gap-2">
         <p
           id="sentiment-heading"
-          className="text-[11px] font-medium uppercase tracking-widest text-zinc-500"
+          className="text-[13px] font-medium uppercase tracking-widest text-zinc-500 font-[Times,serif]"
         >
           Sentiment Heatmap
         </p>
@@ -425,12 +425,6 @@ export function SentimentPanel({ doc }: SentimentPanelProps) {
           </span>
         )}
       </div>
-
-      {/* Model + privacy note */}
-      <p className="text-[11px] text-zinc-600">
-        On-device FinBERT (Transformers.js). Toggle the page heatmap from{' '}
-        <span className="text-zinc-400">Overlays</span> above.
-      </p>
 
       {/* Analyze button */}
       {status !== 'done' && (

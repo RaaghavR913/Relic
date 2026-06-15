@@ -9,9 +9,13 @@
 // PRIVACY: no filing text leaves the device.
 // ============================================================
 
+import { evictToCap, txComplete } from '@/lib/idbEvict';
+
 const DB_NAME = 'filing-lens-summaries';
 const DB_VERSION = 1;
 const STORE = 'summaries';
+/** Higher than the per-filing stores: this store holds one entry PER SECTION. */
+const SUMMARY_CAP = 600;
 
 export interface SummaryEntry {
   /** Compound key: `${rawTextHash}:${sectionId}:${register}` */
@@ -98,7 +102,10 @@ export async function putSummary(entry: Omit<SummaryEntry, 'key'>): Promise<void
     key: makeKey(entry.rawTextHash, entry.sectionId, entry.register),
   };
   const tx = db.transaction(STORE, 'readwrite');
-  await idbReq(tx.objectStore(STORE).put(full));
+  const store = tx.objectStore(STORE);
+  store.put(full);
+  evictToCap(store, SUMMARY_CAP, (r) => (r as SummaryEntry).cachedAt);
+  await txComplete(tx);
 }
 
 /** Remove all cached summaries for a document (e.g. when re-ingesting). */

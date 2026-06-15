@@ -13,6 +13,7 @@
 
 import type { SectionDiff } from '@/types';
 import type { AlignmentSummary, RedlinePriorInfo } from '@/messages/types';
+import { evictToCap, txComplete, DEFAULT_CACHE_CAP } from '@/lib/idbEvict';
 
 const DB_NAME = 'filing-lens-redlines';
 const DB_VERSION = 1;
@@ -71,5 +72,8 @@ export async function getCachedRedline(rawTextHash: string): Promise<RedlineEntr
 export async function putRedline(entry: RedlineEntry): Promise<void> {
   const db = await openDB();
   const tx = db.transaction(STORE, 'readwrite');
-  await idbReq(tx.objectStore(STORE).put(entry));
+  const store = tx.objectStore(STORE);
+  store.put(entry);
+  evictToCap(store, DEFAULT_CACHE_CAP, (r) => (r as RedlineEntry).cachedAt);
+  await txComplete(tx);
 }

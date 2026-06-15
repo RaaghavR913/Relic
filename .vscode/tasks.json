@@ -1,0 +1,42 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "FilingLens: Preview UI in Cursor",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "FilingLens: Start UI dev server",
+        "FilingLens: Open Simple Browser"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "FilingLens: Start UI dev server",
+      "type": "shell",
+      "command": "npm run dev:ui",
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": { "regexp": "^$" },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "VITE",
+          "endsPattern": "ready in"
+        }
+      },
+      "presentation": {
+        "reveal": "silent",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "FilingLens: Open Simple Browser",
+      "command": "simpleBrowser.show",
+      "type": "vscode",
+      "args": ["http://localhost:5173/preview.html"]
+    }
+  ]
+}

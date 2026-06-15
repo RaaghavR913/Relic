@@ -1,9 +1,7 @@
 // ============================================================
 // FilingLens — overlay control surface (Session 7)
 // ------------------------------------------------------------
-// Master on/off toggles for the two page overlays (sentiment heatmap, language
-// flags) plus a combined, accessible legend. Prefs persist via overlayPrefs and
-// are pushed to the content script as pure visibility switches (no re-analysis).
+// Master on/off toggle for the sentiment heatmap overlay plus an accessible legend.
 //
 // WCAG AA: every colour swatch is paired with a non-colour cue (underline style)
 // and a text label; the legend is keyboard-reachable inside a <details>.
@@ -102,26 +100,29 @@ function FlagLegend() {
 
 export function OverlayControls() {
   const reduced = useReducedMotion() ?? false;
-  const { prefs, loaded, setHeatmap, setFlags } = useOverlayPrefs();
+  const { prefs, setHeatmap } = useOverlayPrefs();
   const [legendOpen, setLegendOpen] = useState(false);
-
-  if (!loaded) return null;
 
   return (
     <section
       aria-label="Page overlay controls"
-      className="rounded-xl bg-zinc-900 p-3 ring-1 ring-zinc-800"
+      className="rounded-xl bg-zinc-900 p-3 ring-1 ring-zinc-800 [&_span]:font-['SF_Pro_Display',-apple-system,BlinkMacSystemFont,sans-serif]"
     >
-      <div className="flex items-center gap-4">
-        <p className="text-[10px] font-medium uppercase tracking-widest text-zinc-500">Overlays</p>
-        <div className="ml-auto flex items-center gap-4">
+      <div className="flex items-center justify-between gap-3">
+        <button
+          onClick={() => setLegendOpen((v) => !v)}
+          aria-expanded={legendOpen}
+          className="flex shrink-0 items-center gap-1 text-[11px] text-zinc-500 transition hover:text-zinc-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+        >
+          <span>Legend</span>
+          <svg className={`h-3 w-3 transition-transform ${legendOpen ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z" clipRule="evenodd" />
+          </svg>
+        </button>
+        <div className="flex shrink-0 items-center gap-4">
           <label className="flex items-center gap-2 text-[11px] text-zinc-300">
             Heatmap
             <Switch checked={prefs.heatmap} onChange={setHeatmap} label="Sentiment heatmap" on="bg-green-600" />
-          </label>
-          <label className="flex items-center gap-2 text-[11px] text-zinc-300">
-            Flags
-            <Switch checked={prefs.flags} onChange={setFlags} label="Language flags" on="bg-amber-600" />
           </label>
         </div>
       </div>
@@ -132,17 +133,6 @@ export function OverlayControls() {
         </p>
       )}
 
-      {/* Legend disclosure */}
-      <button
-        onClick={() => setLegendOpen((v) => !v)}
-        aria-expanded={legendOpen}
-        className="mt-2 flex w-full items-center gap-1 text-[11px] text-zinc-500 transition hover:text-zinc-300"
-      >
-        <span>Legend</span>
-        <svg className={`h-3 w-3 transition-transform ${legendOpen ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-          <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z" clipRule="evenodd" />
-        </svg>
-      </button>
       <AnimatePresence initial={false}>
         {legendOpen && (
           <motion.div

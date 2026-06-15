@@ -108,6 +108,20 @@ describe('deterministic Analyst tier (extractive)', () => {
     expect(a.riskSignals.some((r) => /cautionary language density/i.test(r.title))).toBe(true);
   });
 
+  it('derives a non-Neutral read + labeled cards from flags & positive language when FinBERT sentiment is absent (gap #4)', async () => {
+    // The auto-run analyst reads sentiment from cache, but FinBERT is a manual
+    // pass — so on first view there are no sentiments. The lexicon tone proxy must
+    // still produce a real read and skew labels rather than a flat Neutral.
+    const a = await generateFilingAnalysis(richDoc(), {
+      tier: 'extractive',
+      aux: { flags: makeFlags(), redline: REDLINE }, // NO sentiments
+    });
+    expect(a.overallRead).not.toBe('Neutral');
+    // MD&A's positive language → a bullish revenue/margin card.
+    const positiveCards = [...a.revenueImpact, ...a.marginImpact];
+    expect(positiveCards.some((c) => c.label === 'Bullish')).toBe(true);
+  });
+
   it('leaves genuinely LM-only sections empty', async () => {
     const a = await generateFilingAnalysis(richDoc(), { tier: 'extractive', aux });
     expect(a.bullCase).toEqual([]);

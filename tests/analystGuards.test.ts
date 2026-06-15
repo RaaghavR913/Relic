@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { DocumentModel, Section } from '@/types';
-import { verifyEvidence, scrubAdvice } from '@/analyst/evidence';
+import { verifyEvidence, scrubAdvice, scrubUnverifiedFigures, finalizeInsight } from '@/analyst/evidence';
 import { selectRelevantText, selectOverviewText, splitSentences } from '@/analyst/relevance';
 
 function docWith(sections: Array<Pick<Section, 'id' | 'label' | 'text'>>): DocumentModel {
@@ -131,5 +131,64 @@ describe('selectOverviewText / splitSentences', () => {
   it('splitSentences drops fragments and over-long runs', () => {
     const sents = splitSentences('Short. This sentence is comfortably long enough to be kept by the splitter. ' + 'C'.repeat(700) + '.');
     expect(sents).toHaveLength(1);
+  });
+});
+
+// ── number hallucination guard ───────────────────────────────────────────────
+
+describe('scrubUnverifiedFigures', () => {
+  const doc = docWith([
+    {
+      id: 'a', label: 'A',
+      text: 'Revenue increased 15% to $4.2 billion in fiscal 2025. Operating cash flow was $890 million.',
+    },
+  ]);
+
+  it('keeps sentences whose figures appear in source', () => {
+    const out = scrubUnverifiedFigures('Revenue rose 15% on strong demand.', doc);
+    expect(out.stripped).toBe(false);
+    expect(out.text).toMatch(/Revenue rose 15%/);
+  });
+
+  it('drops a sentence with a fabricated figure and flags it', () => {
+    const out = scrubUnverifiedFigures('Revenue reached $99 trillion this quarter.', doc);
+    expect(out.stripped).toBe(true);
+    expect(out.text).toBe('');
+  });
+
+  it('is scale/format tolerant ($4.2 billion ≡ $4.2B, $890 million ≡ $890M)', () => {
+    expect(scrubUnverifiedFigures('Cash flow of $890M and revenue of $4.2B.', doc).stripped).toBe(false);
+  });
+
+  it('passes verbatim source text through unchanged (extractive summaries)', () => {
+    const verbatim = 'Operating cash flow was $890 million.';
+    expect(scrubUnverifiedFigures(verbatim, doc).text).toBe(verbatim);
+  });
+});
+
+describe('finalizeInsight figure verification', () => {
+  const doc = docWith([{ id: 'a', label: 'A', text: 'Gross margin contracted to 41% during the year.' }]);
+  const base = {
+    label: 'Mixed', category: 'Margins', title: 'Margin trend',
+    whyItMatters: '', investorMeaning: '',
+    severity: 'Low', timeHorizon: 'Medium-term', confidence: 'High',
+  } as const;
+
+  it('strips a fabricated figure from the summary and downgrades confidence', () => {
+    const ins = finalizeInsight(doc, { ...base, summary: 'Margins fell to 41%. Revenue hit $50 billion.' });
+    expect(ins).not.toBeNull();
+    expect(ins!.summary).toMatch(/Margins fell to 41%/);
+    expect(ins!.summary).not.toMatch(/\$50 billion/);
+    expect(ins!.confidence).toBe('Low');
+  });
+
+  it('preserves a caller-provided evidenceRange (deterministic tier jump-to-source)', () => {
+    const ins = finalizeInsight(doc, {
+      ...base,
+      summary: 'Gross margin contracted to 41% during the year.',
+      evidenceRange: [3, 20],
+    });
+    expect(ins!.evidenceRange).toEqual([3, 20]);
+    expect(ins!.confidence).toBe('High'); // nothing stripped
   });
 });

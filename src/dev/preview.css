@@ -1,0 +1,4 @@
+@import "tailwindcss";
+/* Vite preview root is src/dev — tell Tailwind to scan the real side panel too. */
+@source "../sidepanel";
+@source ".";

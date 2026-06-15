@@ -6,7 +6,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { segmentSections } from '@/content/segment';
+import { segmentSections, assessSegmentationConfidence } from '@/content/segment';
+import type { Section } from '@/types';
 
 describe('10-K item segmentation', () => {
   it('segments standard ITEM headers into canonical sections', () => {
@@ -275,5 +276,89 @@ describe('fallback segmentation', () => {
     const sections = segmentSections('Just some plain text with no structure.', '10-K', []);
     expect(sections.length).toBe(1);
     expect(sections[0]!.id).toBe('document_body');
+  });
+});
+
+describe('repeated / cross-reference item headers (keep the real body header)', () => {
+  // Bodies must exceed TOC_DEDUPE_WINDOW (2000) chars so the real header and the
+  // later repeat are ISOLATED (non-cluster); that is the case the old keep-last
+  // heuristic mis-bound — it left Risk Factors empty and let Business swallow it.
+  const big = 'The Company operates across multiple segments and geographies. '.repeat(60); // ~3.7k chars
+
+  it('keeps the real Item 1A when a later cross-reference repeats the header', () => {
+    const text =
+      '\n\nITEM 1. BUSINESS\n\n' + 'We design and sell widgets. ' + big +
+      '\n\nITEM 1A. RISK FACTORS\n\n' + 'THE REAL RISK FACTORS begin here and are material to investors. ' + big +
+      "\n\nITEM 7. MANAGEMENT'S DISCUSSION AND ANALYSIS\n\n" + 'Revenue rose 12% to $4.2 billion. ' + big +
+      '\n\nITEM 1A. RISK FACTORS are discussed above and should be read together with this report.\n\n';
+
+    const sections = segmentSections(text, '10-K', []);
+    const risk = sections.find((s) => s.id === 'item_1a_risk_factors');
+    const mdna = sections.find((s) => s.id === 'item_7_mdna');
+
+    expect(risk).toBeDefined();
+    expect(risk!.text).toContain('THE REAL RISK FACTORS');
+    expect(risk!.text.length).toBeGreaterThan(200); // not empty / not the cross-ref tail
+    expect(mdna).toBeDefined();
+    expect(mdna!.text).toContain('Revenue rose 12%');
+    expect(mdna!.text.length).toBeGreaterThan(200); // not truncated at the cross-reference
+
+    // And the document should still read as a confidently-segmented filing.
+    expect(assessSegmentationConfidence(sections, '10-K')).toBe('high');
+  });
+
+  it('ignores a repeated "(continued)" header for the same item', () => {
+    const text =
+      '\n\nITEM 1A. RISK FACTORS\n\n' + 'First risk discussion of material exposures. ' + big +
+      '\n\nITEM 1A. RISK FACTORS (CONTINUED)\n\n' + 'Continued risk discussion. ' + big +
+      "\n\nITEM 7. MANAGEMENT'S DISCUSSION AND ANALYSIS\n\n" + 'MD&A narrative content for the period. ' + big;
+
+    const sections = segmentSections(text, '10-K', []);
+    const risk = sections.find((s) => s.id === 'item_1a_risk_factors');
+    expect(risk).toBeDefined();
+    // The kept header is the FIRST one; the "(continued)" body folds into it.
+    expect(risk!.text).toContain('First risk discussion');
+    expect(risk!.text.length).toBeGreaterThan(200);
+    // Exactly one Risk-Factors section despite two matching headers.
+    expect(sections.filter((s) => s.id === 'item_1a_risk_factors')).toHaveLength(1);
+  });
+});
+
+describe('segmentation confidence', () => {
+  const S = (id: string, text: string): Section => ({
+    id,
+    label: id,
+    order: 1,
+    text,
+    charRange: [0, text.length],
+  });
+
+  it('flags low confidence when a Risk-Factors section is completely empty (swallowed)', () => {
+    const sections = [S('item_1_business', 'x'.repeat(500)), S('item_1a_risk_factors', '')];
+    expect(assessSegmentationConfidence(sections, '10-K')).toBe('low');
+  });
+
+  it('flags low confidence when MD&A is near-empty (truncated)', () => {
+    expect(assessSegmentationConfidence([S('item_7_mdna', 'tiny')], '10-K')).toBe('low');
+  });
+
+  it('flags low confidence when an item form collapses to the document fallback', () => {
+    expect(assessSegmentationConfidence([S('document_body', 'x'.repeat(2000))], '10-K')).toBe('low');
+  });
+
+  it('does NOT flag a legitimately brief 10-Q Item 1A "no material changes"', () => {
+    const sections = [
+      S('item_2_mdna', 'Revenue increased during the quarter. '.repeat(20)),
+      S('part_ii_item_1a_risk_factors', 'There have been no material changes to our risk factors.'),
+    ];
+    expect(assessSegmentationConfidence(sections, '10-Q')).toBe('high');
+  });
+
+  it('reports high confidence for well-bounded sections', () => {
+    const sections = [
+      S('item_1a_risk_factors', 'Our business faces material risks. '.repeat(20)),
+      S('item_7_mdna', 'Revenue increased during the period. '.repeat(20)),
+    ];
+    expect(assessSegmentationConfidence(sections, '10-K')).toBe('high');
   });
 });

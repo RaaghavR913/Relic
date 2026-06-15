@@ -10,9 +10,24 @@
 // covers ALL sections so the UI can surface added/removed sections too.
 // ============================================================
 
-import type { Section } from '@/types';
+import type { FilingType, Section } from '@/types';
 
 export type AlignStatus = 'matched' | 'added' | 'removed';
+
+/**
+ * Filing types the year-over-year redline can actually diff — i.e. those with
+ * focus sections mapped in DEFAULT_FOCUS_IDS (Risk Factors / MD&A and form
+ * equivalents). 6-K (no fixed item structure), DATA_REPORT, and UNKNOWN have no
+ * focus coverage, so the panel pre-empts them with an honest message instead of
+ * resolving a prior filing that can never produce a diff.
+ */
+const REDLINE_SUPPORTED_FORMS: ReadonlySet<FilingType> = new Set<FilingType>([
+  '10-K', '10-Q', '20-F', 'S-1', 'DEF 14A', '8-K',
+]);
+
+export function redlineSupportsForm(filingType: FilingType): boolean {
+  return REDLINE_SUPPORTED_FORMS.has(filingType);
+}
 
 export interface SectionAlignment {
   /** Canonical id of the current section (or the prior section if current-only-removed). */
@@ -83,7 +98,20 @@ function canonicalId(id: string): string {
 export interface AlignOptions {
   /** Restrict the returned alignments to these canonical ids. Default: all. */
   focusIds?: readonly string[];
+  /**
+   * Optional content-similarity matcher (0..1) for a fallback pass: when a section
+   * is present on only one side by id — e.g. it was renumbered or renamed across
+   * years and is not covered by ALIAS_GROUPS — an added current section and a
+   * removed prior section scoring at/above `contentMatchMin` are paired into one
+   * 'matched' alignment instead of reading as added + removed (which the Changes
+   * tab otherwise surfaces as "no changes" for the focus diff).
+   */
+  similarity?: (current: Section, prior: Section) => number;
+  /** Threshold for the content-similarity fallback. Default 0.6 (conservative). */
+  contentMatchMin?: number;
 }
+
+const DEFAULT_CONTENT_MATCH_MIN = 0.6;
 
 /**
  * Align current sections to prior sections. Returns one entry per logical section
@@ -122,9 +150,58 @@ export function alignSections(
     out.push({ id: pri.id, label: pri.label, status: 'removed', prior: pri });
   }
 
-  if (!opts.focusIds) return out;
+  const aligned = opts.similarity
+    ? contentMatchFallback(out, opts.similarity, opts.contentMatchMin ?? DEFAULT_CONTENT_MATCH_MIN)
+    : out;
+
+  if (!opts.focusIds) return aligned;
   const focus = new Set(opts.focusIds.map(canonicalId));
-  return out.filter((a) => focus.has(canonicalId(a.id)));
+  return aligned.filter((a) => focus.has(canonicalId(a.id)));
+}
+
+/**
+ * Content-similarity fallback: greedily pair leftover added (current-only) and
+ * removed (prior-only) sections whose similarity ≥ threshold, turning each pair
+ * into a 'matched' alignment so a renumbered/renamed section is still diffed.
+ * Highest scores pair first; each section is used at most once. Pure — the
+ * similarity function (and any embeddings/work it needs) is supplied by the caller.
+ */
+function contentMatchFallback(
+  out: SectionAlignment[],
+  similarity: (current: Section, prior: Section) => number,
+  threshold: number,
+): SectionAlignment[] {
+  const addedIdx: number[] = [];
+  const removedIdx: number[] = [];
+  out.forEach((a, i) => {
+    if (a.status === 'added' && a.current) addedIdx.push(i);
+    else if (a.status === 'removed' && a.prior) removedIdx.push(i);
+  });
+  if (addedIdx.length === 0 || removedIdx.length === 0) return out;
+
+  const candidates: Array<{ ai: number; ri: number; score: number }> = [];
+  for (const ai of addedIdx) {
+    for (const ri of removedIdx) {
+      const score = similarity(out[ai]!.current!, out[ri]!.prior!);
+      if (score >= threshold) candidates.push({ ai, ri, score });
+    }
+  }
+  if (candidates.length === 0) return out;
+  candidates.sort((x, y) => y.score - x.score);
+
+  const next = out.map((a) => ({ ...a }));
+  const usedA = new Set<number>();
+  const usedR = new Set<number>();
+  const dropped = new Set<number>();
+  for (const c of candidates) {
+    if (usedA.has(c.ai) || usedR.has(c.ri)) continue;
+    usedA.add(c.ai);
+    usedR.add(c.ri);
+    next[c.ai]!.status = 'matched';
+    next[c.ai]!.prior = out[c.ri]!.prior!; // removedIdx guarantees prior is defined
+    dropped.add(c.ri);
+  }
+  return next.filter((_, i) => !dropped.has(i));
 }
 
 /** The matched alignments whose canonical id is in the focus set. */

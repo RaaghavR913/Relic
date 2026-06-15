@@ -49,4 +49,10 @@ describe('isLowConfidenceGeneric', () => {
     expect(isLowConfidenceGeneric(model('edgar', 'UNKNOWN', 1))).toBe(false);
     expect(isLowConfidenceGeneric(model('ir', 'UNKNOWN', 1))).toBe(true);
   });
+
+  it('is false for an EDGAR index page — it gets its own dedicated banner (no double warning)', () => {
+    // A Filing Detail / accession index page (e.g. a Form 3 index) detects as
+    // UNKNOWN with 1 section, but must NOT also trip the low-confidence warning.
+    expect(isLowConfidenceGeneric(model('edgar', 'UNKNOWN', 1, 'edgar_index'))).toBe(false);
+  });
 });

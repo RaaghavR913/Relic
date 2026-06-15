@@ -10,7 +10,7 @@
  *
  * Session 5: run flagAllSections() after ingestion (pure regex, fast), paint
  * per-type CSS Custom Highlight layers, mount a hover tooltip, persist flags to
- * storage, and handle SCROLL_TO_FLAG messages from the side panel.
+ * storage, and handle overlay toggle messages from the side panel.
  *
  * Phase 2.2: LM dictionary is loaded lazily (dynamic import). Pre-warm starts at
  * module load time so JSON chunks are in-flight during the DOM walk; run() awaits
@@ -20,6 +20,7 @@
 import { ingestDocument } from './ingest';
 import { isLowConfidenceGeneric } from './ingest/detect';
 import { waitForContent } from './ingest/ready';
+import { getSiteProfile, detectGateState } from './ingest/siteProfiles';
 import type { IngestResult, LanguageFlag, SentenceSentiment } from '@/types';
 import {
   HighlightController,
@@ -36,12 +37,12 @@ import { awaitLexiconReady } from '@/flagging/lexiconLoader';
 const _lmPrewarm = awaitLexiconReady();
 import type {
   ContentHighlightMsg,
-  ContentScrollToFlagMsg,
   ContentShowRedlineMsg,
   ContentSentimentAddMsg,
   ContentSetSentimentOverlayMsg,
   ContentSetFlagOverlayMsg,
   FilingReadyMsg,
+  FilingGatedMsg,
   FlagResultsMsg,
 } from '@/messages/types';
 
@@ -89,17 +90,56 @@ let _flagsVisible     = true;
 let _flagOptInRequired = false;
 
 async function run(): Promise<FilingLensDevApi> {
+  // Look up any per-site overrides (group, contentSelector, gate hints).
+  const profile = getSiteProfile(window.location.href);
+
   // On-demand injection can fire before a client-rendered (SPA) page has its
   // article text in the DOM. Wait for content to be present/stable first; this
   // resolves immediately on server-rendered pages (EDGAR, static), so it adds
-  // no delay there.
-  await waitForContent();
+  // no delay there. Group B sites also wait for a known content selector to
+  // appear, preventing extraction from running against an interstitial.
+  await waitForContent(
+    profile?.contentSelector ? { contentSelector: profile.contentSelector } : {},
+  );
 
   const result = ingestDocument();
   const { model, positionMap } = result;
 
   const doc = bestDoc(result);
   const controller = new HighlightController(doc);
+
+  // Group C: if the page is behind a consent or paywall gate, bail gracefully.
+  // We do NOT auto-click or dismiss banners. The content script reports the state
+  // to the side panel so the user can act, then retry.
+  if (profile?.group === 'C') {
+    const gateState = detectGateState(profile, document);
+    if (gateState !== 'open') {
+      console.debug(
+        `[FilingLens] ${window.location.hostname}: content gated (${gateState}) — skipping analysis`,
+      );
+      const gatedMsg: FilingGatedMsg = {
+        target: 'sidepanel',
+        type: 'FILING_GATED',
+        reason: gateState,
+        url: window.location.href,
+      };
+      chrome.runtime.sendMessage(gatedMsg).catch(() => {});
+      return {
+        result,
+        reingest: () => ingestDocument(),
+        highlight: (substring) => demoHighlight(positionMap, substring, doc, controller),
+        clearHighlight: () => controller.clear('demo'),
+        demo: () => {
+          const text = positionMap.text;
+          const mid   = Math.floor(text.length / 2);
+          const start = text.lastIndexOf('. ', mid);
+          const end   = text.indexOf('. ', mid);
+          const slice = text.slice(start > 0 ? start + 2 : mid, end > 0 ? end + 1 : mid + 120).trim();
+          return demoHighlight(positionMap, slice, doc, controller);
+        },
+      };
+    }
+  }
 
   console.debug(
     `[FilingLens] ingested ${model.filingType} — ${model.companyName ?? 'unknown company'} ` +
@@ -129,6 +169,9 @@ async function run(): Promise<FilingLensDevApi> {
     // Flag language — regex pass over all sections with full LM coverage.
     const allFlags = flagAllSections(model.sections, positionMap);
     _allFlags = allFlags;
+    // Hide forward-looking / safe-harbor boilerplate flags by default (low signal).
+    // Retained in _allFlags so a future in-page toggle can reveal them.
+    const shownFlags = allFlags.filter((f) => !f.boilerplate);
     // Fresh document → drop any prior sentiment highlights/cache.
     _sentimentCache = [];
 
@@ -142,7 +185,7 @@ async function run(): Promise<FilingLensDevApi> {
 
     // Paint the four typed CSS Custom Highlight layers + mount tooltip.
     const flagOverlay = new FlagOverlayManager(doc, controller);
-    if (_flagsVisible) flagOverlay.activate(allFlags, positionMap);
+    if (_flagsVisible) flagOverlay.activate(shownFlags, positionMap);
     _flagOverlay = flagOverlay;
 
     console.debug(
@@ -151,7 +194,7 @@ async function run(): Promise<FilingLensDevApi> {
 
     // Persist flags so the side panel can recover them when opened after ingestion.
     chrome.storage.session
-      .set({ [`filing:flags:${model.rawTextHash}`]: allFlags })
+      .set({ [`filing:flags:${model.rawTextHash}`]: shownFlags })
       .catch(console.warn);
 
     // Broadcast FILING_READY to any open side panel.
@@ -167,7 +210,7 @@ async function run(): Promise<FilingLensDevApi> {
     const flagMsg: FlagResultsMsg = {
       target: 'sidepanel',
       type: 'FLAG_RESULTS',
-      flags: allFlags,
+      flags: shownFlags,
     };
     chrome.runtime.sendMessage(flagMsg).catch(() => {});
 
@@ -299,26 +342,8 @@ if (!ALREADY_INJECTED) chrome.runtime.onMessage.addListener(
       if (m.explicit) _flagOptInRequired = false;
       _flagsVisible = m.enabled;
       if (_flagOverlay && _positionMap) {
-        if (m.enabled) _flagOverlay.activate(_allFlags, _positionMap);
+        if (m.enabled) _flagOverlay.activate(_allFlags.filter((f) => !f.boilerplate), _positionMap);
         else _flagOverlay.deactivate();
-      }
-      return false;
-    }
-
-    // Session 5: jump to a specific flag from the side panel.
-    if (msg.type === 'SCROLL_TO_FLAG') {
-      const m = rawMsg as ContentScrollToFlagMsg;
-      if (_positionMap && _highlightController) {
-        const domRange = _positionMap.toDomRange(m.range);
-        if (domRange) {
-          domRange.startContainer.parentElement?.scrollIntoView({
-            behavior: 'smooth',
-            block: 'center',
-          });
-          // Flash the qa highlight layer so the user can spot the phrase.
-          _highlightController.setRanges(RAG_HIGHLIGHT_LAYER, [domRange]);
-          setTimeout(() => _highlightController?.clear(RAG_HIGHLIGHT_LAYER), 2500);
-        }
       }
       return false;
     }

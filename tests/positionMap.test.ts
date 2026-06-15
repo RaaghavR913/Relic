@@ -13,7 +13,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { buildNormalizedText } from '@/content/buildNormalized';
+import { buildNormalizedText } from '@/content/ingest/position-map';
 import { segmentSections } from '@/content/segment';
 import type { PositionMap } from '@/types';
 

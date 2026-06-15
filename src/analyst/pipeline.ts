@@ -44,7 +44,7 @@ import {
   narrativeSchema,
   synthesisSchema,
 } from './prompts';
-import { finalizeInsight, scrubAdvice } from './evidence';
+import { finalizeInsight, scrubAdvice, scrubUnverifiedFigures } from './evidence';
 import {
   buildHints,
   deterministicAnalysis,
@@ -439,11 +439,14 @@ export async function generateFilingAnalysis(
         const o = item as Record<string, unknown>;
         const claim = str(o['claim']);
         if (!claim) continue;
+        // The prompt allows the narrative evidence to paraphrase the excerpts, so
+        // it is not verbatim-verified — but any FIGURE it cites must exist in the
+        // source (guards against fabricated numbers in the management-claim check).
         checks.push({
           claim,
-          evidence: scrubAdvice(str(o['evidence'])),
+          evidence: scrubUnverifiedFigures(scrubAdvice(str(o['evidence'])), doc).text,
           assessment: coerce(o['assessment'], ASSESSMENTS, 'Unclear'),
-          investorMeaning: scrubAdvice(str(o['investorMeaning'])),
+          investorMeaning: scrubUnverifiedFigures(scrubAdvice(str(o['investorMeaning'])), doc).text,
         });
       }
       analysis.managementNarrativeCheck = checks;

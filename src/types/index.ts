@@ -22,6 +22,7 @@ export type FilingType =
  */
 export type PageCategory =
   | 'edgar_filing' // /Archives/edgar/data/... or XBRL dei:* facts present
+  | 'edgar_index' // EDGAR Filing Detail / accession index page (…-index.html) — a directory, not the document
   | 'edgar_ixbrl' // inline-XBRL viewer (ix: namespace / contextref present)
   | 'sec_search' // EDGAR full-text / browse-edgar search & company profile pages
   | 'sec_data_report' // www.sec.gov data-research / rules / info pages (readable, not a filing)
@@ -45,6 +46,13 @@ export interface DocumentModel {
   filingType: FilingType;
   /** Confidence of the filingType detection: 'high' (XBRL), 'medium' (URL), 'low' (text). */
   filingTypeConfidence?: 'high' | 'medium' | 'low';
+  /**
+   * Confidence that the segmenter bounded the sections correctly: 'low' when the
+   * structure looks mis-segmented (collapsed/empty focus sections). Drives the
+   * low-confidence UI even on an authoritative EDGAR filing. Only set for filings
+   * (left undefined for readable data/report pages).
+   */
+  segmentationConfidence?: 'high' | 'low';
   periodOfReport?: string; // ISO date
   filedAt?: string;        // ISO date
   sections: Section[];
@@ -88,6 +96,12 @@ export interface LanguageFlag {
   sectionId: string;
   term: string;
   note: string;
+  /**
+   * True when the match sits inside a forward-looking / safe-harbor boilerplate
+   * sentence (copied into nearly every filing). Such matches carry low marginal
+   * signal and are hidden from the on-page overlay by default.
+   */
+  boilerplate?: boolean;
 }
 
 export interface SectionDiff {
