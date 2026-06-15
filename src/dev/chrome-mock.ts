@@ -66,7 +66,7 @@ export function installChromeMock(scenario: PreviewScenario): void {
 
   const chromeMock = {
     runtime: {
-      getManifest: () => ({ version: '0.3.0-preview', name: 'FilingLens' }),
+      getManifest: () => ({ version: '1.2.0', name: 'FilingLens' }),
       sendMessage: async (msg: { type?: string }) => {
         if (msg?.type === 'ANALYZE_PAGE') return { ok: true };
         return undefined;
