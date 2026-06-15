@@ -264,6 +264,20 @@ export function segmentSections(
   filingType: FilingType,
   tableRanges: ReadonlyArray<[number, number]>,
 ): Section[] {
+  const sections = segmentByForm(text, filingType, tableRanges);
+  // Flag load-bearing MD&A / operating-review sections that are mere by-reference
+  // pointers so downstream UI shows a note instead of analysing the pointer text.
+  for (const s of sections) {
+    if (isMdnaByReference(s)) s.incorporatedByReference = true;
+  }
+  return sections;
+}
+
+function segmentByForm(
+  text: string,
+  filingType: FilingType,
+  tableRanges: ReadonlyArray<[number, number]>,
+): Section[] {
   switch (filingType) {
     case '10-K':  return segmentByItems(text, ITEMS_10K, tableRanges);
     case '10-Q':  return segmentByItems(text, ITEMS_10Q, tableRanges);
@@ -507,6 +521,31 @@ const LOAD_BEARING_MDNA = /mdna|operating_review/;
 const LOAD_BEARING_RISK = /risk_factors/;
 /** MD&A / operating-review prose is never this short in a real item filing. */
 const MIN_MDNA_CHARS = 50;
+
+/**
+ * A real inline MD&A / operating-review runs tens of thousands of chars; an
+ * "incorporated by reference" pointer is far shorter. Above this bound we never
+ * treat a section as a pointer, so genuine narratives are never mis-flagged.
+ */
+const MAX_BYREF_POINTER_CHARS = 15_000;
+/** Explicit incorporation language ("…incorporated (herein) by reference…"). */
+const BYREF_INCORP_RE = /incorporat\w*\s+(?:herein\s+)?by reference/i;
+/** Cross-reference pointer ("…appears on pages 46–160", "set forth under the heading…"). */
+const BYREF_POINTER_RE =
+  /\b(?:appears|set forth|included|contained)\b[^.]{0,80}\b(?:on pages?|under the heading|as exhibit|in exhibit|in (?:the|its) annual report)/i;
+
+/**
+ * True when a load-bearing MD&A / operating-review section is a short
+ * "incorporated by reference" pointer rather than the analysable narrative (the
+ * real prose lives in an exhibit or an un-numbered block elsewhere). BOTH signals
+ * are required — short AND by-reference phrasing — so a legitimately brief item is
+ * not mis-flagged. Detection only: the narrative is not recovered (S2 carry-over).
+ */
+export function isMdnaByReference(section: Section): boolean {
+  if (!LOAD_BEARING_MDNA.test(section.id)) return false;
+  if (section.text.length >= MAX_BYREF_POINTER_CHARS) return false;
+  return BYREF_INCORP_RE.test(section.text) || BYREF_POINTER_RE.test(section.text);
+}
 
 function isItemForm(t: FilingType): boolean {
   return t === '10-K' || t === '10-Q' || t === '8-K' || t === '20-F';

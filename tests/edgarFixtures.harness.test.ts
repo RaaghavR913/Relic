@@ -15,15 +15,16 @@
  * is the key regression guard: its Item 2 (MD&A) and Part II Item 1A (Risk Factors)
  * must bind to the real bodies, which the previous keep-last de-dup got wrong.
  *
- * ── KNOWN LIMITATION surfaced by these fixtures (pre-existing; not in scope here) ──
- * Large/foreign issuers (JPMorgan 10-K, AstraZeneca 20-F) incorporate their MD&A /
- * operating review BY REFERENCE: the formal "Item 7" / "Item 5" header is a short
- * pointer and the real narrative lives in an un-numbered block. The segmenter (which
- * keys off item headers) therefore under-bounds those sections. Business and Risk
- * Factors still bind correctly, so the document stays high-confidence rather than
- * hiding all investor analysis. Recovering incorporation-by-reference narratives is a
- * separate future improvement; the assertions below pin the CURRENT behaviour so a
- * future fix is noticed.
+ * ── INCORPORATION BY REFERENCE (JPMorgan 10-K, AstraZeneca 20-F) ──
+ * Large/foreign issuers incorporate their MD&A / operating review BY REFERENCE: the
+ * formal "Item 7" / "Item 5" header is a short pointer and the real narrative lives
+ * in an exhibit or an un-numbered block. The segmenter (which keys off item headers)
+ * therefore under-bounds those sections. As of S2 we DETECT this (the pointer section
+ * is flagged `incorporatedByReference`) so the UI can note it and the analyst skips
+ * the pointer text instead of presenting it as the MD&A — but we do NOT recover the
+ * narrative (it may live in a separate exhibit file). The assertions below pin both
+ * the still-short bounds AND the detection flag. Business and Risk Factors bind
+ * correctly, so the document stays high-confidence rather than hiding all analysis.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -133,11 +134,12 @@ describe('real-EDGAR segmentation', () => {
     // must not hide all investor analysis for an otherwise well-segmented filing).
     expect(assessSegmentationConfidence(sections, '10-K')).toBe('high');
 
-    // KNOWN LIMITATION: MD&A is incorporated by reference → Item 7 is a short
-    // pointer. If a future change recovers the real MD&A narrative, raise this.
+    // MD&A is incorporated by reference → Item 7 is a short pointer. We do not
+    // recover the narrative, but we DETECT and flag it so the UI can note it.
     const mdna = byId(sections, 'item_7_mdna');
     expect(mdna).toBeDefined();
     expect(mdna!.text.length).toBeLessThan(1_000);
+    expect(mdna!.incorporatedByReference).toBe(true);
   });
 
   it('AstraZeneca 20-F: Key Information and Company Information bind correctly', () => {
@@ -153,10 +155,11 @@ describe('real-EDGAR segmentation', () => {
 
     expect(assessSegmentationConfidence(sections, '20-F')).toBe('high');
 
-    // KNOWN LIMITATION: the Operating & Financial Review (20-F MD&A equivalent) is
-    // incorporated by reference → Item 5 is a short pointer.
+    // The Operating & Financial Review (20-F MD&A equivalent) is incorporated by
+    // reference (Exhibit 15.1) → Item 5 is a short pointer. Detected and flagged.
     const opReview = byId(sections, '20f_item_5_operating_review');
     expect(opReview).toBeDefined();
     expect(opReview!.text.length).toBeLessThan(8_000);
+    expect(opReview!.incorporatedByReference).toBe(true);
   });
 });
