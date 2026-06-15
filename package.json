@@ -2,7 +2,7 @@
   "name": "filing-lens",
   "version": "1.2.0",
   "private": true,
-  "description": "On-device SEC filing analysis — summaries, sentiment, redlines, and Q&A, all private.",
+  "description": "On-Device SEC & Investor filing analysis - summaries, sentiment, redlines, YoY changes, and Q&A. 100% Private.",
   "type": "module",
   "scripts": {
     "fetch-models": "node scripts/fetch-models.mjs",

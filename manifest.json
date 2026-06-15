@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "FilingLens",
   "version": "1.2.0",
-  "description": "On-device SEC filing analysis — summaries, sentiment, redlines, and Q&A, all private.",
+  "description": "On-Device SEC & Investor filing analysis - summaries, sentiment, redlines, YoY changes, and Q&A. 100% Private.",
   "permissions": [
     "storage",
     "sidePanel",

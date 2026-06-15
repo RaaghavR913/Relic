@@ -75,6 +75,15 @@ async function highlightDocRange(anchor: [number, number], section: Section): Pr
   });
 }
 
+async function clearDocHighlights(): Promise<void> {
+  const tabId = await getActiveTabId();
+  if (tabId === undefined) return;
+  await chrome.tabs.sendMessage(tabId, {
+    target: 'content',
+    type: 'CLEAR_HIGHLIGHTS',
+  });
+}
+
 // ── SectionCard ───────────────────────────────────────────────────────────────
 
 function SectionCard({
@@ -194,13 +203,22 @@ function SectionCard({
                   <div className="flex flex-col gap-2">
                     <MarkdownText md={displayText ?? ''} />
                     {anchors[0] !== undefined && (
-                      <button
-                        onClick={() => onJumpTo(anchors[0]!)}
-                        className="self-start text-[11px] font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] text-sky-500 hover:text-sky-300 transition focus-visible:outline focus-visible:outline-sky-500"
-                        aria-label="Jump to section in filing"
-                      >
-                        ↗ Jump to section
-                      </button>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          onClick={() => onJumpTo(anchors[0]!)}
+                          className="self-start text-[11px] font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] text-sky-500 hover:text-sky-300 transition focus-visible:outline focus-visible:outline-sky-500"
+                          aria-label="Jump to section in filing"
+                        >
+                          ↗ Jump to section
+                        </button>
+                        <button
+                          onClick={() => void clearDocHighlights()}
+                          className="self-start text-[11px] font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] text-zinc-500 hover:text-zinc-300 transition focus-visible:outline focus-visible:outline-sky-500"
+                          aria-label="Remove highlight from filing"
+                        >
+                          Remove highlight
+                        </button>
+                      </div>
                     )}
                   </div>
                 )}
