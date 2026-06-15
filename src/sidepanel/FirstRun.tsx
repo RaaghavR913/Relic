@@ -125,7 +125,7 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
         onClick={onDone}
         className="w-full rounded-lg bg-sky-600 py-2.5 text-base font-semibold font-[Georgia,serif] text-white transition hover:bg-sky-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500"
       >
-        Get started
+        Get Started
       </button>
     </motion.div>
   );
