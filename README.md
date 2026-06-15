@@ -116,7 +116,9 @@ npm install
 # Download on-device model weights (~134 MB, build-time only)
 npm run fetch-models
 
-# Download LM dictionary shards for language flagging
+# (Optional) Regenerate LM dictionary shards for language flagging.
+# Lists are committed, so this is only needed to refresh from a new LM release.
+# Source: Loughran-McDonald Master Dictionary (free for academic research).
 npm run fetch-lm-dict
 
 # Production build → dist/
@@ -142,7 +144,7 @@ npm run dev
 | `npm run build` | Production build to `dist/` |
 | `npm run dev` | Watch build for development |
 | `npm run fetch-models` | Download FinBERT + mxbai-embed ONNX weights |
-| `npm run fetch-lm-dict` | Download LM dictionary for flagging |
+| `npm run fetch-lm-dict` | Regenerate LM dictionary shards (academic-research license) |
 | `npm run typecheck` | TypeScript check (`tsc --noEmit`) |
 | `npm test` | Run Vitest unit tests |
 | `npm run test:watch` | Vitest in watch mode |

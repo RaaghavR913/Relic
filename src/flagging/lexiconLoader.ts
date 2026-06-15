@@ -4,11 +4,13 @@
 // Two-layer lexicon:
 //   Layer 1 (base)  — 118-entry curated multi-word phrases with analyst notes.
 //                     Imported statically; compiled once on first call.
-//   Layer 2 (LM)    — curated Loughran-McDonald subset (2018): 566 single words
-//                     (neg 275 / unc 126 / lit 139 / wm 26), not the full ~3.9k set.
+//   Layer 2 (LM)    — curated/capped Loughran-McDonald subset: 1426 single words
+//                     (neg 700 / unc 250 / lit 450 / wm 26), capped from the full
+//                     ~3.5k set to balance coverage vs flag noise & bundle size.
 //                     Loaded lazily via dynamic import; merged into cache on first
 //                     call to awaitLexiconReady(). Run `npm run fetch-lm-dict` to
-//                     refresh from the authoritative Notre Dame CSV.
+//                     refresh from the authoritative Notre Dame CSV (caps/curation
+//                     live in scripts/fetch-lm-dict.mjs).
 //
 // Public API:
 //   loadCompiledLexicons()  – synchronous; returns whatever is in cache (layer 1
