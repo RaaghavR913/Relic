@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { segmentSections, assessSegmentationConfidence } from '@/content/segment';
+import { segmentSections, assessSegmentationConfidence, isMdnaByReference } from '@/content/segment';
 import type { Section } from '@/types';
 
 describe('10-K item segmentation', () => {
@@ -360,5 +360,85 @@ describe('segmentation confidence', () => {
       S('item_7_mdna', 'Revenue increased during the period. '.repeat(20)),
     ];
     expect(assessSegmentationConfidence(sections, '10-K')).toBe('high');
+  });
+});
+
+describe('incorporation-by-reference detection (S2)', () => {
+  const S = (id: string, text: string): Section => ({
+    id,
+    label: id,
+    order: 1,
+    text,
+    charRange: [0, text.length],
+  });
+
+  it('flags a short Item 7 MD&A pointer with explicit incorporation language', () => {
+    const ptr = S(
+      'item_7_mdna',
+      'Management’s discussion and analysis is incorporated herein by reference ' +
+        'to Exhibit 13 of this Annual Report on Form 10-K.',
+    );
+    expect(isMdnaByReference(ptr)).toBe(true);
+  });
+
+  it('flags a short pointer that cross-references page numbers ("appears on pages")', () => {
+    const ptr = S(
+      'item_7_mdna',
+      'Management’s discussion and analysis appears on pages 46–160. Such information ' +
+        'should be read in conjunction with the Consolidated Financial Statements.',
+    );
+    expect(isMdnaByReference(ptr)).toBe(true);
+  });
+
+  it('flags a 20-F operating-review pointer', () => {
+    const ptr = S(
+      '20f_item_5_operating_review',
+      'The information set forth under the heading “Financial Review” on pages 50 to 64 ' +
+        'of the Annual Report is incorporated herein by reference.',
+    );
+    expect(isMdnaByReference(ptr)).toBe(true);
+  });
+
+  it('does NOT flag a genuine, long MD&A narrative (length guard)', () => {
+    const narrative =
+      'Revenue increased 12% year over year, driven by volume and pricing. ' +
+      'Operating margin expanded as cost of sales grew slower than revenue. '.repeat(400);
+    expect(narrative.length).toBeGreaterThan(15_000);
+    expect(isMdnaByReference(S('item_7_mdna', narrative))).toBe(false);
+  });
+
+  it('does NOT flag a non-MD&A item even with by-reference phrasing (id guard)', () => {
+    const ptr = S(
+      'item_10_directors',
+      'Information about our directors is incorporated herein by reference to our proxy statement.',
+    );
+    expect(isMdnaByReference(ptr)).toBe(false);
+  });
+
+  it('does NOT flag a short MD&A with no by-reference phrasing', () => {
+    expect(isMdnaByReference(S('item_2_mdna', 'Revenue increased during the quarter.'))).toBe(false);
+  });
+
+  it('end-to-end: segmentSections sets the flag on an Item 7 pointer', () => {
+    const text = [
+      'ITEM 1. BUSINESS',
+      'We make widgets and sell them worldwide. '.repeat(20),
+      '',
+      'ITEM 1A. RISK FACTORS',
+      'Our business is subject to numerous risks. '.repeat(20),
+      '',
+      'ITEM 7. MANAGEMENT’S DISCUSSION AND ANALYSIS',
+      'Management’s discussion and analysis is incorporated herein by reference to Exhibit 13.',
+      '',
+      'ITEM 8. FINANCIAL STATEMENTS',
+      'See the consolidated financial statements. '.repeat(20),
+    ].join('\n');
+
+    const sections = segmentSections(text, '10-K', []);
+    const mdna = sections.find((s) => s.id === 'item_7_mdna')!;
+    expect(mdna.incorporatedByReference).toBe(true);
+    // A normal section is never flagged.
+    const biz = sections.find((s) => s.id === 'item_1_business')!;
+    expect(biz.incorporatedByReference).toBeUndefined();
   });
 });

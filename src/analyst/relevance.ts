@@ -151,6 +151,9 @@ function scoreSentences(
   );
 
   for (const section of sections) {
+    // A by-reference MD&A pointer is not the narrative — skip it so the pointer
+    // text ("…appears on pages 46–160") never feeds the analysis.
+    if (section.incorporatedByReference) continue;
     const prio = sectionPriority(section);
     for (const span of splitSentenceSpans(section.text)) {
       order++;
@@ -204,6 +207,7 @@ export function selectOverviewText(doc: DocumentModel, maxChars: number): string
   const parts: string[] = [];
   let used = 0;
   for (const section of sections) {
+    if (section.incorporatedByReference) continue;
     const body = section.text.trim();
     if (!body) continue;
     const budget = Math.min(Math.floor(maxChars / 3), maxChars - used);

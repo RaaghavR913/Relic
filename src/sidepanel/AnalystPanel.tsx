@@ -294,6 +294,12 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
   const gatedToDeterministic = isLowConfidenceGeneric(doc) || doc.sections.length <= 1;
   const analysisTier: GenerationTier = gatedToDeterministic ? 'extractive' : detectedTier;
 
+  // A load-bearing MD&A / operating-review section that is only a by-reference
+  // pointer: the narrative lives elsewhere (exhibit or un-numbered block), so the
+  // analysis below cannot cover it. Surface a note instead of silently analysing
+  // the pointer text. (S2 carry-over: detection only.)
+  const byRefSection = doc.sections.find((s) => s.incorporatedByReference);
+
   const run = useCallback(async (force = false) => {
     acRef.current?.abort();
     const ac = new AbortController();
@@ -418,6 +424,14 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
       {error && (
         <div role="alert" className="rounded-lg bg-red-950/40 px-3 py-2 text-[11px] text-red-300 ring-1 ring-inset ring-red-800/40">
           Analysis failed: {error}
+        </div>
+      )}
+
+      {byRefSection && (
+        <div className="rounded-lg bg-amber-950/30 px-3 py-2 text-[11px] text-amber-200/90 ring-1 ring-inset ring-amber-800/40">
+          <span className="font-medium">{byRefSection.label}</span> is incorporated by
+          reference — its narrative isn’t included in this document (it lives in an
+          exhibit or annual report), so the analysis below doesn’t cover it.
         </div>
       )}
 

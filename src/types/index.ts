@@ -72,6 +72,14 @@ export interface Section {
    * EXCLUDE tabular text. positionMap itself stays pure text<->DOM (Session 1 spec §4).
    */
   tables?: Array<[number, number]>;
+  /**
+   * Set on a load-bearing MD&A / operating-review section when its body is a short
+   * "incorporated by reference" pointer (the real narrative lives in an exhibit or an
+   * un-numbered block elsewhere), not the analysable prose. Downstream UI surfaces a
+   * note instead of presenting the pointer text as analysis. See segment.ts
+   * isMdnaByReference. (S2 carry-over: detection only, no narrative recovery.)
+   */
+  incorporatedByReference?: boolean;
 }
 
 export interface AnalysisArtifacts {
