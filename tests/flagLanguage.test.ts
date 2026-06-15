@@ -506,9 +506,11 @@ describe('(m) LM expansion: individual litigious words', () => {
     expect(flagSection(section, pm).some((f) => f.type === 'litigious' && /testimony/i.test(f.term))).toBe(true);
   });
 
-  it('flags "sanction" (LM litigious)', () => {
-    const section = makeSection('legal', 'The regulator may impose a sanction for non-disclosure.');
-    expect(flagSection(section, pm).some((f) => f.type === 'litigious' && /sanction/i.test(f.term))).toBe(true);
+  it('flags "litigation" (LM litigious)', () => {
+    // NB: "sanction" (singular) is no longer litigious-tagged in the current LM
+    // Master Dictionary; "litigation" is a stable high-frequency litigious term.
+    const section = makeSection('legal', 'The Company is subject to ongoing litigation in multiple jurisdictions.');
+    expect(flagSection(section, pm).some((f) => f.type === 'litigious' && /litigation/i.test(f.term))).toBe(true);
   });
 });
 
