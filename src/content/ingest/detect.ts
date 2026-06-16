@@ -151,3 +151,24 @@ export function isLowConfidenceGeneric(model: {
   // Recognized a form but it didn't actually segment into items → misdetection.
   return model.sections.length <= 1;
 }
+
+/**
+ * True for an EDGAR document that is part of a filing submission but is NOT the
+ * primary filing — e.g. an exhibit such as EX-21 (subsidiaries), EX-23 (consent),
+ * or a certification page. These live under /Archives/edgar/ (so the category is
+ * an authoritative `edgar_filing`/`edgar_ixbrl`, and `isLowConfidenceGeneric`
+ * deliberately trusts them), but they never classify as a recognized form and
+ * carry no real section structure. They have no MD&A / Risk Factors / multi-item
+ * body for investor analysis, so the side panel routes them to Summary-only with
+ * a banner pointing at the primary document.
+ */
+export function isEdgarExhibit(model: {
+  source: { category?: PageCategory };
+  filingType: FilingType;
+  sections: ReadonlyArray<unknown>;
+} | null): boolean {
+  if (!model) return false;
+  const category = model.source.category;
+  const isEdgarDoc = category === 'edgar_filing' || category === 'edgar_ixbrl';
+  return isEdgarDoc && model.filingType === 'UNKNOWN' && model.sections.length <= 1;
+}

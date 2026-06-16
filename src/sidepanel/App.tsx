@@ -21,7 +21,7 @@ import type {
   AnalyzePageMsg,
   AnalyzePageResponse,
 } from '@/messages/types';
-import { isLowConfidenceGeneric } from '@/content/ingest/detect';
+import { isLowConfidenceGeneric, isEdgarExhibit } from '@/content/ingest/detect';
 import { setFlags as setFlagOverlayPref } from './overlayPrefs';
 import { AnalystPanel } from './AnalystPanel';
 import { SummaryPanel } from './SummaryPanel';
@@ -79,7 +79,12 @@ const REPORT_DISABLED_TABS: ReadonlySet<TabId> = new Set(['analyst', 'sentiment'
  * way for it to pin the panel on the loading card.
  */
 function hidesInvestorTabs(doc: DocumentModel | null): boolean {
-  return isDataReport(doc) || isFilingIndex(doc) || (doc !== null && isLowConfidenceGeneric(doc));
+  return (
+    isDataReport(doc) ||
+    isFilingIndex(doc) ||
+    isEdgarExhibit(doc) ||
+    (doc !== null && isLowConfidenceGeneric(doc))
+  );
 }
 
 function tabsForDoc(doc: DocumentModel | null): Array<{ id: TabId; label: string }> {
@@ -122,9 +127,11 @@ function Header({ doc }: { doc: DocumentModel | null }) {
   // SEC data/report pages get an honest, non-filing label.
   const typeLabel = isDataReport(doc)
     ? 'SEC Data Report'
-    : doc && isLowConfidenceGeneric(doc)
-      ? 'Document'
-      : doc?.filingType;
+    : isEdgarExhibit(doc)
+      ? 'Exhibit'
+      : doc && isLowConfidenceGeneric(doc)
+        ? 'Document'
+        : doc?.filingType;
   return (
     <header className="border-b border-zinc-800 px-4 py-3">
       <div className="flex items-center gap-2.5">
@@ -376,31 +383,11 @@ export default function App() {
     setGateState(null);
     setAnalyzing(true);
     clearAnalyzeTimer();
-    let response: AnalyzePageResponse | undefined;
-    try {
-      const msg: AnalyzePageMsg = { target: 'sw', type: 'ANALYZE_PAGE' };
-      response = (await chrome.runtime.sendMessage(msg)) as AnalyzePageResponse | undefined;
-    } catch (err) {
-      setAnalyzing(false);
-      setAnalyzeError(`Couldn't reach the extension background: ${String(err)}`);
-      return;
-    }
-    if (!response?.ok) {
-      setAnalyzing(false);
-      // Group C: show the permission grant banner instead of a generic error.
-      if (response?.reason === 'needs_optional_permission') {
-        setNeedsPermission({
-          hosts: response.hosts ?? [],
-          label: response.label ?? 'this site',
-        });
-        return;
-      }
-      setAnalyzeError(analyzeFailCopy(response));
-      return;
-    }
-    // Injected — wait for FILING_READY (handled by the message listener). The
-    // content script waits for client-rendered (SPA) pages to render before
-    // ingesting (up to ~8s), so allow headroom beyond that before giving up.
+    // Arm the recovery timer BEFORE awaiting the background. If the message ever
+    // hangs (e.g. the service worker was replaced on an extension reload, or no
+    // FILING_READY arrives), this guarantees the button leaves the "Analyzing…"
+    // state instead of staying permanently disabled / dead. The success path and
+    // the error paths below clear it explicitly.
     analyzeTimer.current = setTimeout(() => {
       setAnalyzing(false);
       // If a document is already loaded for this page (e.g. the auto-injected
@@ -413,6 +400,33 @@ export default function App() {
         );
       }
     }, 15_000);
+
+    let response: AnalyzePageResponse | undefined;
+    try {
+      const msg: AnalyzePageMsg = { target: 'sw', type: 'ANALYZE_PAGE' };
+      response = (await chrome.runtime.sendMessage(msg)) as AnalyzePageResponse | undefined;
+    } catch (err) {
+      clearAnalyzeTimer();
+      setAnalyzing(false);
+      setAnalyzeError(`Couldn't reach the extension background: ${String(err)}`);
+      return;
+    }
+    if (!response?.ok) {
+      clearAnalyzeTimer();
+      setAnalyzing(false);
+      // Group C: show the permission grant banner instead of a generic error.
+      if (response?.reason === 'needs_optional_permission') {
+        setNeedsPermission({
+          hosts: response.hosts ?? [],
+          label: response.label ?? 'this site',
+        });
+        return;
+      }
+      setAnalyzeError(analyzeFailCopy(response));
+      return;
+    }
+    // Injected — the already-armed timer is cleared by the FILING_READY listener
+    // once the content script reports back (or fires as the recovery fallback).
   }, [clearAnalyzeTimer]);
 
   // Group C: user clicked "Allow access" — request the optional permission in the
@@ -577,6 +591,18 @@ export default function App() {
                     submission&rsquo;s document list, not the filing itself. Open the primary
                     document linked on the page (the main <span className="font-medium">.htm</span>{' '}
                     file) and analyze that for the full breakdown.
+                  </Banner>
+                )}
+                {isEdgarExhibit(currentDoc) && (
+                  <Banner tone="info" icon="ℹ">
+                    <span className="font-semibold">This looks like an exhibit</span>, not the full
+                    filing — exhibits (e.g.{' '}
+                    <span className="font-medium">EX-21</span> subsidiaries,{' '}
+                    <span className="font-medium">EX-23</span> consents) have no MD&amp;A or risk
+                    factors to analyze. Open the primary{' '}
+                    <span className="font-medium">10-K</span>/<span className="font-medium">10-Q</span>{' '}
+                    document (the main <span className="font-medium">.htm</span> in the filing, without
+                    an <span className="font-medium">exNN</span> suffix) for full investor analysis.
                   </Banner>
                 )}
                 {isLowConfidenceGeneric(currentDoc) && (

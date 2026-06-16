@@ -9,6 +9,7 @@ import type { GenerationTier } from '@/runtime/capabilities';
 import { summarizeSection, DISCLAIMER } from '@/summarizer/summarize';
 import { getCachedSummary } from '@/summarizer/summaryStore';
 import type { EmbedProgressMsg } from '@/messages/types';
+import { isLowConfidenceGeneric, isEdgarExhibit } from '@/content/ingest/detect';
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
@@ -375,15 +376,36 @@ export function SummaryPanel({ doc, detectedTier }: SummaryPanelProps) {
     }
   }, [sections, states, summarize]);
 
-  // Auto-trigger: when a new filing loads, immediately summarize the top 2–3
-  // priority sections so the user sees results with zero manual clicks.
-  // Runs once per doc hash; IDB-cached sections are skipped to avoid the
-  // idle→loading→done flash on re-open.
+  // Auto-trigger: when a new filing loads, immediately summarize sections so the
+  // user sees results with zero manual clicks. Runs once per doc hash;
+  // IDB-cached sections are skipped to avoid the idle→loading→done flash on re-open.
   useEffect(() => {
     if (!forceModeReady) return;
     if (autoTriggeredForRef.current === doc.rawTextHash) return;
     autoTriggeredForRef.current = doc.rawTextHash;
 
+    // Summary-only pages — SEC data/report, EDGAR filing index, or low-confidence
+    // generic — have no investor sections to prioritize, so summarize every
+    // section and the user never has to click "Summarize All" after "Analyze this
+    // page". Mirrors hidesInvestorTabs() in App.tsx; keep the two in sync.
+    const summaryOnlyPage =
+      doc.filingType === 'DATA_REPORT' ||
+      doc.source.category === 'edgar_index' ||
+      isEdgarExhibit(doc) ||
+      isLowConfidenceGeneric(doc);
+    if (summaryOnlyPage) {
+      void (async () => {
+        for (const section of sections) {
+          if (acRefs.current[section.id] !== undefined) continue;
+          const cached = await getCachedSummary(doc.rawTextHash, section.id, effectiveTier);
+          if (cached) continue;
+          await summarize(section);
+        }
+      })();
+      return;
+    }
+
+    // SEC filings: auto-summarize the top 2–3 priority sections only.
     const prioritySections = PRIORITY_IDS
       .map((id) => sections.find((s) => s.id === id || s.id.startsWith(id)))
       .filter((s): s is Section => s !== undefined)
@@ -401,7 +423,7 @@ export function SummaryPanel({ doc, detectedTier }: SummaryPanelProps) {
         await summarize(section);
       }
     })();
-  }, [doc.rawTextHash, effectiveTier, forceModeReady, sections, summarize]);
+  }, [doc, effectiveTier, forceModeReady, sections, summarize]);
 
   // ── jump to source ─────────────────────────────────────────────────────────
 

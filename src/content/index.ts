@@ -59,13 +59,16 @@ const RAG_HIGHLIGHT_LAYER = 'qa' as const;
 // ── Re-injection guard ────────────────────────────────────────────────────────
 // The script is delivered two ways: manifest content_scripts on EDGAR, and
 // chrome.scripting.executeScript for on-demand "Analyze this page". A second
-// injection into the same frame must not re-ingest or attach duplicate
-// listeners — it only re-broadcasts the existing results so a freshly opened
-// side panel syncs up. The flag and the rebroadcast hook live on globalThis
-// because each injection gets a fresh module scope in the same isolated world.
+// injection into the same frame is always an explicit user re-analyze. Because
+// each injection gets a fresh module scope in the same isolated world — while the
+// message listeners and highlight state from the FIRST injection stay live — a
+// re-analyze must re-run ingestion inside that original scope, not the new one.
+// We expose a re-ingest closure (bound to the first scope) on globalThis for the
+// new injection to call; it re-runs run(), which tears down the prior overlay
+// first so no duplicate tooltip / mouse listeners leak.
 interface FilingLensGlobal {
   __filingLensInjected?: boolean;
-  __filingLensRebroadcast?: () => void;
+  __filingLensReingest?: () => void;
 }
 const FL_GLOBAL = globalThis as FilingLensGlobal;
 const ALREADY_INJECTED = FL_GLOBAL.__filingLensInjected === true;
@@ -90,6 +93,13 @@ let _flagsVisible     = true;
 let _flagOptInRequired = false;
 
 async function run(): Promise<FilingLensDevApi> {
+  // Re-analyze (run() called a second time in this scope): tear down the prior
+  // ingestion's overlay so we don't leak a duplicate hover tooltip / mouse
+  // listeners, and clear any stale highlight layers before re-ingesting.
+  _flagOverlay?.deactivate();
+  _flagOverlay = null;
+  _highlightController?.clear();
+
   // Look up any per-site overrides (group, contentSelector, gate hints).
   const profile = getSiteProfile(window.location.href);
 
@@ -213,12 +223,6 @@ async function run(): Promise<FilingLensDevApi> {
       flags: shownFlags,
     };
     chrome.runtime.sendMessage(flagMsg).catch(() => {});
-
-    // A repeat injection re-broadcasts these results instead of re-ingesting.
-    FL_GLOBAL.__filingLensRebroadcast = () => {
-      chrome.runtime.sendMessage(readyMsg).catch(() => {});
-      chrome.runtime.sendMessage(flagMsg).catch(() => {});
-    };
   }
 
   return {
@@ -369,17 +373,27 @@ function shouldIngestThisFrame(): boolean {
 }
 
 if (ALREADY_INJECTED) {
-  // Second delivery (e.g. "Analyze this page" clicked twice, or a page that
-  // already ran the manifest script). If the first attempt produced results,
-  // just resync the side panel. If it did NOT (rebroadcast unset — e.g. a slow
-  // SPA had no content yet on the first try), re-run ingestion now that the page
-  // may have rendered. run() adds no listeners, so a re-run is safe.
-  if (FL_GLOBAL.__filingLensRebroadcast) {
-    FL_GLOBAL.__filingLensRebroadcast();
+  // Second delivery — always an explicit user action: the "Analyze this page"
+  // button, or a toolbar re-click. Re-run ingestion via the first injection's
+  // closure so a page that was mis-parsed or still loading on the first pass gets
+  // a fresh analysis and re-broadcast, instead of being a silent no-op. Running
+  // in the original scope keeps the live message listeners and highlight state
+  // consistent.
+  if (FL_GLOBAL.__filingLensReingest) {
+    FL_GLOBAL.__filingLensReingest();
   } else {
+    // Hook unset — e.g. the first pass never reached ingestion, or a content
+    // script from a previous extension version is still resident in this tab
+    // (content scripts don't hot-update until the page reloads). Fall back to
+    // ingesting in this scope so the panel still gets a fresh FILING_READY
+    // broadcast and "Analyze this page" is never a silent no-op.
     run().catch((err) => console.error('[FilingLens] re-ingestion failed', err));
   }
 } else if (shouldIngestThisFrame()) {
+  // Expose the re-ingest closure (bound to this scope) for a later re-analyze.
+  FL_GLOBAL.__filingLensReingest = () => {
+    run().catch((err) => console.error('[FilingLens] re-ingestion failed', err));
+  };
   run().then((api) => {
     (globalThis as unknown as { __FilingLens?: FilingLensDevApi }).__FilingLens = api;
     console.debug('[FilingLens] dev API ready: __FilingLens.demo() / .highlight(text)');
