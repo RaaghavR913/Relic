@@ -8,9 +8,11 @@
 // ============================================================
 
 import type { ReactNode } from 'react';
-import { motion, useReducedMotion } from 'framer-motion';
+import { m, useReducedMotion } from 'framer-motion';
 import type { AvailabilityState, GenerationTier } from '@/runtime/capabilities';
-import brandLogoUrl from '@/assets/brand-logo.png';
+
+/** Stable extension-root path — emitted to dist/ at build time, not inlined in JS. */
+const brandLogoUrl = chrome.runtime.getURL('brand-logo.png');
 
 // ── tier + availability presentation ──────────────────────────────────────────
 
@@ -120,7 +122,7 @@ export function ProgressBar({
         <span className="tabular-nums">{pct}%</span>
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
-        <motion.div
+        <m.div
           className={`h-full rounded-full ${color}`}
           animate={{ width: `${pct}%` }}
           transition={reduced ? { duration: 0 } : { duration: 0.3 }}

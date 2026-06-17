@@ -3,7 +3,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import type { DocumentModel, Section } from '@/types';
 import type { GenerationTier } from '@/runtime/capabilities';
 import { summarizeSection, DISCLAIMER } from '@/summarizer/summarize';
@@ -167,7 +167,7 @@ function SectionCard({
       {/* Expanded summary */}
       <AnimatePresence>
         {isDone && expanded && (
-          <motion.div
+          <m.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -228,7 +228,7 @@ function SectionCard({
                 <p className="mt-2.5 text-[10px] text-zinc-600 italic">{DISCLAIMER}</p>
               </div>
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>
@@ -487,7 +487,7 @@ export function SummaryPanel({ doc, detectedTier }: SummaryPanelProps) {
             <span>{Math.round(downloadProgress * 100)}%</span>
           </div>
           <div className="h-1 w-full overflow-hidden rounded-full bg-zinc-800">
-            <motion.div
+            <m.div
               className="h-full rounded-full bg-sky-500"
               animate={{ width: `${downloadProgress * 100}%` }}
               transition={{ duration: 0.3 }}
@@ -592,7 +592,7 @@ function DevSettings({
 
       <AnimatePresence>
         {open && (
-          <motion.div
+          <m.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -623,7 +623,7 @@ function DevSettings({
                 </p>
               )}
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

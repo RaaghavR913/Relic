@@ -13,7 +13,11 @@
 // ============================================================
 
 import type { Section, DocumentModel } from '@/types';
-import type { GenerationTier } from '@/runtime/capabilities';
+import {
+  LANGUAGE_MODEL_LANGUAGE,
+  SUMMARIZER_LANGUAGE,
+  type GenerationTier,
+} from '@/runtime/capabilities';
 import type { SummarizeSectionMsg, ExtractiveResponse } from '@/messages/types';
 import { getCachedSummary, putSummary } from './summaryStore';
 import { splitTextForSummarization } from '@/offscreen/chunker';
@@ -76,6 +80,7 @@ interface LMSession {
 
 interface LMCtor {
   create(opts: {
+    outputLanguage?: string;
     initialPrompts?: Array<{ role: string; content: string }>;
     monitor?: (m: SummarizerMonitor) => void;
     signal?: AbortSignal;
@@ -178,11 +183,7 @@ async function runBuiltin(
     type: 'key-points',
     format: 'markdown',
     length,
-    // SEC filings are English. Declaring the I/O languages satisfies Chrome's
-    // Summarizer output-safety attestation and silences the "No output language
-    // was specified" warning (surfaced during live extension testing).
-    outputLanguage: 'en',
-    expectedInputLanguages: ['en'],
+    ...SUMMARIZER_LANGUAGE,
     monitor,
     ...(sig !== undefined ? { signal: sig } : {}),
   });
@@ -208,6 +209,7 @@ async function runBuiltin(
   if (LM) {
     try {
       const session = await LM.create({
+        ...LANGUAGE_MODEL_LANGUAGE,
         initialPrompts: [{ role: 'system', content: ANALYST_SYSTEM_PROMPT }],
         monitor,
         ...(sig !== undefined ? { signal: sig } : {}),

@@ -7,7 +7,7 @@
 // and a text label; the legend is keyboard-reachable inside a <details>.
 // ============================================================
 
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { m, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useState } from 'react';
 import { useOverlayPrefs } from './overlayPrefs';
 
@@ -135,7 +135,7 @@ export function OverlayControls() {
 
       <AnimatePresence initial={false}>
         {legendOpen && (
-          <motion.div
+          <m.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -146,7 +146,7 @@ export function OverlayControls() {
               <SentimentLegend />
               <FlagLegend />
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </section>

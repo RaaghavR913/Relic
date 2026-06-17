@@ -12,7 +12,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { m, AnimatePresence, useReducedMotion } from 'framer-motion';
 import type { DocumentModel, Section, SentenceSentiment } from '@/types';
 import type {
   AnalyzeSentimentMsg,
@@ -103,7 +103,7 @@ function SentimentBar({
         aria-label={`Sentiment: ${pct(positive, total)}% positive, ${pct(negative, total)}% negative, ${pct(neutral, total)}% neutral`}
       >
         {posP > 0 && (
-          <motion.div
+          <m.div
             className="h-full bg-green-500/70"
             initial={{ width: 0 }}
             animate={{ width: `${posP}%` }}
@@ -111,7 +111,7 @@ function SentimentBar({
           />
         )}
         {neuP > 0 && (
-          <motion.div
+          <m.div
             className="h-full bg-zinc-600/60"
             initial={{ width: 0 }}
             animate={{ width: `${neuP}%` }}
@@ -119,7 +119,7 @@ function SentimentBar({
           />
         )}
         {negP > 0 && (
-          <motion.div
+          <m.div
             className="h-full bg-red-500/70"
             initial={{ width: 0 }}
             animate={{ width: `${negP}%` }}
@@ -243,7 +243,7 @@ function SectionSentimentRow({
 
       <AnimatePresence>
         {expanded && (
-          <motion.div
+          <m.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -253,7 +253,7 @@ function SectionSentimentRow({
             <div className="border-t border-zinc-800/60 px-3 pb-3 pt-2.5">
               <SentimentBar agg={agg} reducedMotion={reducedMotion} />
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>
@@ -441,7 +441,7 @@ export function SentimentPanel({ doc }: SentimentPanelProps) {
       {/* Progress bar */}
       <AnimatePresence>
         {progress && (
-          <motion.div
+          <m.div
             key="progress"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
@@ -459,13 +459,13 @@ export function SentimentPanel({ doc }: SentimentPanelProps) {
               <span>{Math.round(progress.value * 100)}%</span>
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
-              <motion.div
+              <m.div
                 className="h-full rounded-full bg-green-500"
                 animate={{ width: `${progress.value * 100}%` }}
                 transition={reducedMotion ? { duration: 0 } : { duration: 0.3 }}
               />
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
 

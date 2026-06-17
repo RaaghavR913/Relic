@@ -9,7 +9,7 @@
 //   • Progressive enablement note: sentiment/flags work before generation is ready.
 // ============================================================
 
-import { motion, useReducedMotion } from 'framer-motion';
+import { m, useReducedMotion } from 'framer-motion';
 import type { Capabilities } from '@/runtime/capabilities';
 import { TierBadge, Banner, BrandLogo, LockIcon, stateLabel, stateColor } from './ui';
 
@@ -32,7 +32,7 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
   const nanoState = caps.promptApi;
 
   return (
-    <motion.div
+    <m.div
       initial={reduced ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
@@ -127,6 +127,6 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
       >
         Get Started
       </button>
-    </motion.div>
+    </m.div>
   );
 }

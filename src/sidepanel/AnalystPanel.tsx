@@ -10,7 +10,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import type {
   AnalysisStage,
   DocumentModel,
@@ -198,7 +198,7 @@ function Collapse({
       </button>
       <AnimatePresence initial={false}>
         {open && (
-          <motion.div
+          <m.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -206,7 +206,7 @@ function Collapse({
             className="overflow-hidden"
           >
             <div className="px-2.5 pb-2.5">{children}</div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>
@@ -412,7 +412,7 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
             <span>{Math.round(downloadProgress * 100)}%</span>
           </div>
           <div className="h-1 w-full overflow-hidden rounded-full bg-zinc-800">
-            <motion.div
+            <m.div
               className="h-full rounded-full bg-sky-500"
               animate={{ width: `${downloadProgress * 100}%` }}
               transition={{ duration: 0.3 }}

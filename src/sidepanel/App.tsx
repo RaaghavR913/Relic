@@ -11,7 +11,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import { useCapabilities } from '../runtime/useCapabilities';
 import type { DocumentModel, LanguageFlag } from '@/types';
 import type {
@@ -120,7 +120,7 @@ function analyzeFailCopy(response: AnalyzePageResponse | undefined): string {
 
 // ── header ────────────────────────────────────────────────────────────────────
 
-function Header({ doc }: { doc: DocumentModel | null }) {
+function Header({ doc, hideDocMeta = false }: { doc: DocumentModel | null; hideDocMeta?: boolean }) {
   const period = fmtDate(doc?.periodOfReport);
   // Don't assert a specific form when detection is low-confidence (e.g. a press
   // release that merely names a form) — the type heuristic can misfire off-EDGAR.
@@ -139,7 +139,7 @@ function Header({ doc }: { doc: DocumentModel | null }) {
         <span className="text-[19px] font-semibold tracking-tight font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">FilingLens</span>
         <span className="ml-auto text-[10px] text-zinc-600 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">v{chrome.runtime.getManifest().version}</span>
       </div>
-      {doc && (
+      {doc && !hideDocMeta && (
         <div className="mt-2">
           <p className="truncate text-[15px] font-medium text-zinc-200 font-[Georgia,serif]">
             {doc.companyName ?? 'Unknown company'}
@@ -501,7 +501,7 @@ export default function App() {
 
   return (
     <div className="flex h-full min-h-screen flex-col bg-zinc-950 text-zinc-100 selection:bg-sky-500/30">
-      <Header doc={currentDoc} />
+      <Header doc={currentDoc} hideDocMeta={onboarded === false} />
 
       <main className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
         {/* Capability detection states */}
@@ -525,7 +525,7 @@ export default function App() {
         {caps && onboarded === true && (
           <AnimatePresence mode="wait">
             {currentDoc ? (
-              <motion.div
+              <m.div
                 key="filing"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -661,9 +661,9 @@ export default function App() {
                   </div>
                 )}
 
-              </motion.div>
+              </m.div>
             ) : (
-              <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <m.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                 <NoFiling
                   caps={caps}
                   analyzing={analyzing}
@@ -674,7 +674,7 @@ export default function App() {
                   onDismissPermission={() => setNeedsPermission(null)}
                   gateState={gateState}
                 />
-              </motion.div>
+              </m.div>
             )}
           </AnimatePresence>
         )}

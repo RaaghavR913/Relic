@@ -10,7 +10,7 @@
 // Privacy: only short on-device snippets are sent to the on-device model.
 // ============================================================
 
-import type { GenerationTier } from '@/runtime/capabilities';
+import { LANGUAGE_MODEL_LANGUAGE, type GenerationTier } from '@/runtime/capabilities';
 import type { SectionDiff } from '@/types';
 import { templatedChangeSummary, type DiffStats } from './diff';
 
@@ -23,6 +23,7 @@ interface LMMonitor {
 }
 interface LMCtor {
   create(opts: {
+    outputLanguage?: string;
     initialPrompts?: Array<{ role: string; content: string }>;
     monitor?: (m: LMMonitor) => void;
     signal?: AbortSignal;
@@ -51,6 +52,7 @@ export async function createChangeSummarySession(signal?: AbortSignal): Promise<
   if (!LM) return null;
   try {
     return await LM.create({
+      ...LANGUAGE_MODEL_LANGUAGE,
       initialPrompts: [{ role: 'system', content: REDLINE_SYSTEM_PROMPT }],
       ...(signal !== undefined ? { signal } : {}),
     });
@@ -117,6 +119,7 @@ export async function generateChangeSummary(
     try {
       const t0 = performance.now();
       session = await LM.create({
+        ...LANGUAGE_MODEL_LANGUAGE,
         initialPrompts: [{ role: 'system', content: REDLINE_SYSTEM_PROMPT }],
         ...(sig !== undefined ? { signal: sig } : {}),
       });

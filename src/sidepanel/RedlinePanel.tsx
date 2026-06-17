@@ -12,7 +12,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence } from 'framer-motion';
 import type { DocumentModel, SectionDiff, Section } from '@/types';
 import type { GenerationTier } from '@/runtime/capabilities';
 import type {
@@ -171,7 +171,7 @@ function DiffCard({
 
       <AnimatePresence initial={false}>
         {expanded && (
-          <motion.div
+          <m.div
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
@@ -179,7 +179,7 @@ function DiffCard({
             className="overflow-hidden"
           >
             <SpanList diff={diff} />
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>
@@ -414,7 +414,7 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
             <span>{Math.round(progress.progress * 100)}%</span>
           </div>
           <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
-            <motion.div
+            <m.div
               className="h-full rounded-full bg-violet-500"
               animate={{ width: `${progress.progress * 100}%` }}
               transition={{ duration: 0.3 }}

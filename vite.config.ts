@@ -5,6 +5,23 @@ import webExtension from 'vite-plugin-web-extension';
 import path from 'path';
 import fs from 'fs';
 
+function copyBrandLogoPlugin(): Plugin {
+  const SRC = path.resolve(__dirname, 'src/assets/brand-logo.png');
+  const DEST = path.resolve(__dirname, 'dist/brand-logo.png');
+
+  return {
+    name: 'copy-brand-logo',
+    apply: 'build',
+    closeBundle() {
+      if (!fs.existsSync(SRC)) {
+        this.warn(`copy-brand-logo: ${SRC} missing — run \`npm run generate-icons\`.`);
+        return;
+      }
+      fs.copyFileSync(SRC, DEST);
+    },
+  };
+}
+
 // ── Custom plugin: copy ONNX Runtime WASM binaries to dist/wasm/ (flat) ────────
 // vite-plugin-static-copy preserves nested directory structure; this plugin does
 // a direct fs.copyFile into the flat dest directory instead.
@@ -160,6 +177,7 @@ export default defineConfig(({ mode }) => ({
           // encoder worker can load them via chrome.runtime.getURL('wasm/').
           // Missing assets fail the build in production (see plugin).
           copyWasmPlugin(mode === 'production'),
+          copyBrandLogoPlugin(),
           // Bundle the quantized model weights so nothing is fetched at runtime.
           copyModelsPlugin(mode === 'production'),
           // Keep shared chunks out of the dist root (see plugin comment).
@@ -169,7 +187,8 @@ export default defineConfig(({ mode }) => ({
   ],
   build: {
     target: 'es2022',
-    minify: false,
+    // Minify production builds only — dev/watch keeps readable output for debugging.
+    minify: mode === 'production',
     // Sourcemaps in dev only. Production (CWS) builds ship no .map files: this
     // keeps the upload smaller, avoids shipping original source to the store, and
     // ensures stripped code (e.g. the dev-only DevSettings UI) leaves no trace in

@@ -32,6 +32,17 @@ export interface Capabilities {
 // A generative API counts toward the 'builtin' tier if it is usable now or can be downloaded.
 const OBTAINABLE: ReadonlyArray<AvailabilityState> = ['available', 'downloadable', 'downloading'];
 
+/** SEC filings are English. Chrome requires this on availability() and create() for output-safety attestation. */
+export const SUMMARIZER_LANGUAGE = {
+  outputLanguage: 'en',
+  expectedInputLanguages: ['en'],
+} as const;
+
+/** Same attestation for the Prompt API (Gemini Nano). */
+export const LANGUAGE_MODEL_LANGUAGE = {
+  outputLanguage: 'en',
+} as const;
+
 function getGlobal<T = unknown>(name: string): T | undefined {
   // Works across content script (window), side panel (window), and service worker (self).
   return (globalThis as Record<string, unknown>)[name] as T | undefined;
@@ -51,10 +62,11 @@ async function probeWebGPU(): Promise<Capabilities['webgpu']> {
 }
 
 async function probeBuiltin(name: 'Summarizer' | 'LanguageModel'): Promise<AvailabilityState> {
-  const api = getGlobal<{ availability?: () => Promise<string> }>(name);
+  const api = getGlobal<{ availability?: (opts?: unknown) => Promise<string> }>(name);
   if (!api || typeof api.availability !== 'function') return 'unsupported';
+  const langOpts = name === 'Summarizer' ? SUMMARIZER_LANGUAGE : LANGUAGE_MODEL_LANGUAGE;
   try {
-    const state = await api.availability();
+    const state = await api.availability(langOpts);
     switch (state) {
       // Current standardized values (Chrome 138+, MDN):
       case 'available':
@@ -128,6 +140,7 @@ export async function createSummarizer(opts: CreateOptions = {}): Promise<unknow
     type: 'key-points',
     format: 'markdown',
     length: 'short',
+    ...SUMMARIZER_LANGUAGE,
     monitor(m: { addEventListener(t: string, cb: (e: { loaded: number }) => void): void }) {
       m.addEventListener('downloadprogress', (e) => opts.onDownloadProgress?.(e.loaded));
     },
@@ -142,6 +155,7 @@ export async function createPromptSession(
   const LanguageModel = getGlobal<{ create(o: unknown): Promise<unknown> }>('LanguageModel');
   if (!LanguageModel) throw new Error('Prompt API unsupported on this device');
   return LanguageModel.create({
+    ...LANGUAGE_MODEL_LANGUAGE,
     initialPrompts: opts.systemPrompt
       ? [{ role: 'system', content: opts.systemPrompt }]
       : undefined,

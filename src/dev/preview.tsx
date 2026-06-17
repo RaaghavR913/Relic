@@ -1,5 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { LazyMotion, domMax } from 'framer-motion';
 import './preview.css';
 import { installChromeMock } from './chrome-mock';
 import { scenarioFromSearch, type PreviewScenario } from './mock-data';
@@ -50,8 +51,10 @@ const root = document.getElementById('root');
 if (!root) throw new Error('FilingLens preview: #root missing');
 
 createRoot(root).render(
-  <StrictMode>
-    <DevToolbar active={scenario} />
-    <App />
-  </StrictMode>,
+  <LazyMotion features={domMax} strict>
+    <StrictMode>
+      <DevToolbar active={scenario} />
+      <App />
+    </StrictMode>
+  </LazyMotion>,
 );

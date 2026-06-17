@@ -27,7 +27,7 @@ import type {
   ScorePoint,
   WatchItem,
 } from '@/types';
-import type { GenerationTier } from '@/runtime/capabilities';
+import { LANGUAGE_MODEL_LANGUAGE, type GenerationTier } from '@/runtime/capabilities';
 import {
   SYSTEM_PROMPT,
   LABELS,
@@ -80,6 +80,7 @@ interface LMMonitor {
 
 interface LMCtor {
   create(opts: {
+    outputLanguage?: string;
     initialPrompts?: Array<{ role: string; content: string }>;
     monitor?: (m: LMMonitor) => void;
     signal?: AbortSignal;
@@ -91,6 +92,7 @@ const defaultLMFactory: AnalystLMFactory = async (systemPrompt, signal, onDownlo
   if (!LM) return null;
   try {
     return await LM.create({
+      ...LANGUAGE_MODEL_LANGUAGE,
       initialPrompts: [{ role: 'system', content: systemPrompt }],
       // Mirror summarize.ts / capabilities.ts: surface the first-use model
       // download so the UI shows progress instead of looking frozen.
