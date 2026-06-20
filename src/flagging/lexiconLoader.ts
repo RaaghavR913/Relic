@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — Lexicon loader + regex compiler
+// Disclora — Lexicon loader + regex compiler
 // ------------------------------------------------------------
 // Two-layer lexicon:
 //   Layer 1 (base)  — 118-entry curated multi-word phrases with analyst notes.

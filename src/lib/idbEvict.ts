@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — shared IndexedDB LRU eviction
+// Disclora — shared IndexedDB LRU eviction
 // ------------------------------------------------------------
 // The on-device caches (sentiment, redline, summaries, analyses) were unbounded:
 // every distinct filing added a record that persisted forever. This caps each

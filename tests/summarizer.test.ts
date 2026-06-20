@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — Session 3 tests: extractive algorithm + builtin multi-chunk
+// Disclora — Session 3 tests: extractive algorithm + builtin multi-chunk
 // ============================================================
 
 import { describe, it, expect, vi } from 'vitest';

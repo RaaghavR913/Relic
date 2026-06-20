@@ -1,5 +1,5 @@
 /**
- * FilingLens — Analyst pipeline tests.
+ * Disclora — Analyst pipeline tests.
  *
  * Covers the investor-analysis pipeline without a real Chrome Prompt API:
  * the LM factory seam returns canned JSON per stage (dispatched off the

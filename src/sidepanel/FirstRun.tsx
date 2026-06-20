@@ -1,7 +1,7 @@
 // ============================================================
-// FilingLens — first-run experience (Session 7, light)
+// Disclora — first-run experience (Session 7, light)
 // ------------------------------------------------------------
-// Shown once (gated by chrome.storage.local 'filinglens:onboarded'):
+// Shown once (gated by chrome.storage.local 'disclora:onboarded'):
 //   • Privacy explainer — 100% on-device.
 //   • Bundled models: embeddings + FinBERT ship inside the extension (no network
 //     fetch at runtime). Gemini Nano is downloaded + managed by Chrome itself.
@@ -41,7 +41,7 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
       {/* Hero */}
       <div className="flex flex-col items-center gap-2 pt-2 text-center">
         <BrandLogo className="h-12 w-12" />
-        <h1 className="text-base font-semibold text-zinc-100 font-[Georgia,serif]">Welcome to FilingLens</h1>
+        <h1 className="text-base font-semibold text-zinc-100 font-[Georgia,serif]">Welcome to Disclora</h1>
         <p className="max-w-xs text-xs leading-relaxed text-zinc-400 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">
           Plain-English summaries of Investor Sentiment Analysis &amp; Year-over-Year changes.
           Analyzed entirely on your device.
@@ -107,7 +107,7 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
           </>
         ) : (
           <Banner tone="positive" icon="✓">
-            Built-in AI isn’t available on this device, so FilingLens runs in <strong>extractive mode</strong>:
+            Built-in AI isn’t available on this device, so Disclora runs in <strong>extractive mode</strong>:
             summaries become the filing’s most important sentences. Sentiment, flags, and year-over-year
             changes are fully available — all on-device.
           </Banner>

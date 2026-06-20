@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — encoder Web Worker (Session 2)
+// Disclora — encoder Web Worker (Session 2)
 // ------------------------------------------------------------
 // RULES:
 //   - MUST NEVER reference chrome.* (this is a plain Web Worker).

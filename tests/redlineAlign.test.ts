@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — Session 6 tests: section alignment
+// Disclora — Session 6 tests: section alignment
 // ============================================================
 
 import { describe, it, expect } from 'vitest';

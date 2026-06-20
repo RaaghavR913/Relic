@@ -1,8 +1,8 @@
-# FilingLens
+# Disclora
 
-On-device SEC filing analysis for Chrome. FilingLens runs entirely on your machine — summaries, sentiment, language flags, and year-over-year redlines never leave your device.
+On-device SEC filing analysis for Chrome. Disclora runs entirely on your machine — summaries, sentiment, language flags, and year-over-year redlines never leave your device.
 
-Open any filing on [EDGAR](https://www.sec.gov/edgar) and FilingLens activates in the side panel with overlays painted directly on the filing page.
+Open any filing on [EDGAR](https://www.sec.gov/edgar) and Disclora activates in the side panel with overlays painted directly on the filing page.
 
 ## Features
 
@@ -18,7 +18,7 @@ Additional UI: section navigator, master overlay toggles, first-run onboarding, 
 
 ## Privacy
 
-FilingLens is built around a zero-egress guarantee:
+Disclora is built around a zero-egress guarantee:
 
 - **No telemetry, no cloud APIs** — analysis runs locally in the extension.
 - **No runtime model downloads** — ONNX weights ship inside the build; workers set `allowRemoteModels = false`.
@@ -64,7 +64,7 @@ service worker ──► message router, EDGAR queue, offscreen document lifecyc
 offscreen document ──► ONNX encoder/sentiment Web Workers (FinBERT + mxbai-embed)
 ```
 
-**Generation tiers.** At startup, FilingLens probes Chrome's built-in AI APIs (Summarizer, Prompt API / Gemini Nano) and classifies the device as `builtin` or `extractive`:
+**Generation tiers.** At startup, Disclora probes Chrome's built-in AI APIs (Summarizer, Prompt API / Gemini Nano) and classifies the device as `builtin` or `extractive`:
 
 - **builtin** — Chrome Summarizer + Prompt API for summaries, analyst notes, and change narratives.
 - **extractive** — embedding-centrality sentence selection for summaries; all other analysis (sentiment, flags, redline) is identical.
@@ -134,7 +134,7 @@ npm run dev
 
 1. Open `chrome://extensions` and enable **Developer mode**.
 2. Click **Load unpacked** and select the `dist/` folder.
-3. Pin FilingLens and open the side panel from the toolbar icon.
+3. Pin Disclora and open the side panel from the toolbar icon.
 4. Navigate to any `https://*.sec.gov` filing page.
 
 ## Scripts
@@ -160,7 +160,7 @@ Tests cover core modules: `positionMap`, section segmentation, redline alignment
 
 ## Models
 
-FilingLens bundles two quantized ONNX models (int8, ~134 MB total):
+Disclora bundles two quantized ONNX models (int8, ~134 MB total):
 
 | Model | Role |
 |-------|------|

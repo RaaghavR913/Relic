@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — Session 6 tests: prior parse → align → diff (integration)
+// Disclora — Session 6 tests: prior parse → align → diff (integration)
 // ------------------------------------------------------------
 // Exercises the real ingest pipeline on two synthetic 10-K documents and
 // confirms a new risk factor is detected as added and a dropped one as removed.

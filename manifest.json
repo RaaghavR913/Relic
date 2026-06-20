@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "FilingLens",
+  "name": "Disclora",
   "version": "1.2.0",
   "description": "On-Device SEC & Investor filing analysis - summaries, sentiment, redlines, YoY changes, and Q&A. 100% Private.",
   "permissions": [
@@ -65,7 +65,7 @@
     "default_path": "src/sidepanel/index.html"
   },
   "action": {
-    "default_title": "FilingLens",
+    "default_title": "Disclora",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",

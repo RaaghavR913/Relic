@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens service worker (MV3) — Session 2
+// Disclora service worker (MV3) — Session 2
 // ------------------------------------------------------------
 // Responsibilities:
 //   - Side-panel setup.
@@ -65,11 +65,11 @@ chrome.action.onClicked.addListener((tab) => {
   // that depends on the grant still being live. The content script's
   // re-injection guard keeps a redundant inject harmless.
   const injectability = classifyInjectability(tab.url);
-  console.debug(`[FilingLens] action click — ${injectability} — ${tab.url ?? '(url hidden)'}`);
+  console.debug(`[Disclora] action click — ${injectability} — ${tab.url ?? '(url hidden)'}`);
   if (tab.id !== undefined && injectability === 'injectable') {
     chrome.scripting
       .executeScript({ target: { tabId: tab.id }, files: [CONTENT_SCRIPT_FILE] })
-      .catch((err) => console.warn('[FilingLens] auto-inject on action click failed', err));
+      .catch((err) => console.warn('[Disclora] auto-inject on action click failed', err));
   }
 });
 

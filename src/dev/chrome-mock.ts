@@ -45,7 +45,7 @@ function seedForScenario(scenario: PreviewScenario): {
   const session: Record<string, unknown> = {};
 
   if (scenario !== 'onboarding') {
-    local['filinglens:onboarded'] = true;
+    local['disclora:onboarded'] = true;
   }
 
   if (scenario === 'filing') {
@@ -66,7 +66,7 @@ export function installChromeMock(scenario: PreviewScenario): void {
 
   const chromeMock = {
     runtime: {
-      getManifest: () => ({ version: '1.2.0', name: 'FilingLens' }),
+      getManifest: () => ({ version: '1.2.0', name: 'Disclora' }),
       getURL: (resource: string) =>
         resource === 'brand-logo.png' ? '/brand-logo.png' : `chrome-extension://mock/${resource}`,
       sendMessage: async (msg: { type?: string }) => {

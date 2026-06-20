@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — EDGAR fetch queue (Session 6)
+// Disclora — EDGAR fetch queue (Session 6)
 // ------------------------------------------------------------
 // Lives in the service worker. Two responsibilities:
 //   1. RateLimitedQueue: serialize all EDGAR requests with ≥125 ms spacing so we

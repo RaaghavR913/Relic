@@ -10,7 +10,7 @@
  * the live site works.
  *
  * Mark a site as supported only after:
- *   1. Running FilingLens on the real page and opening DevTools.
+ *   1. Running Disclora on the real page and opening DevTools.
  *   2. Copying true outerHTML via: document.documentElement.outerHTML
  *   3. Replacing the stub fixture with that capture.
  *   4. This harness passing on the real capture.

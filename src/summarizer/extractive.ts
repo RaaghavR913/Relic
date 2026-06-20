@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — Extractive summarization algorithm (Session 3)
+// Disclora — Extractive summarization algorithm (Session 3)
 // ------------------------------------------------------------
 // Pure functions — no Chrome APIs, no Workers, no IndexedDB.
 // Imported by offscreen.ts (which supplies the embeddings) and

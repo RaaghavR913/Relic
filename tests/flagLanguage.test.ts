@@ -1,5 +1,5 @@
 /**
- * FilingLens — Session 5 acceptance tests for hedging/uncertainty language flagging.
+ * Disclora — Session 5 acceptance tests for hedging/uncertainty language flagging.
  *
  * Coverage:
  *   (a) Canonical uncertainty phrases: "may adversely affect", "no assurance"

@@ -1,5 +1,5 @@
 /**
- * FilingLens ingestion orchestrator (Session 1).
+ * Disclora ingestion orchestrator (Session 1).
  *
  * ingestDocument({ document?, url? }) ties together:
  *   frame/root selection → normalized text + PositionMap → filing-type detection →

@@ -1,5 +1,5 @@
 /**
- * FilingLens — Phase 2.5: LM session pooling tests.
+ * Disclora — Phase 2.5: LM session pooling tests.
  *
  * Covers the session-lifecycle contracts in changeSummary.ts without requiring a
  * real Chrome Prompt API — every LM call is replaced with a lightweight in-memory
@@ -94,6 +94,21 @@ describe('generateChangeSummary — pooled session', () => {
 
     expect(createSpy).toHaveBeenCalledOnce();
     expect(session.destroyCount).toBe(1); // function-owned session is destroyed
+  });
+
+  it('passes LanguageModel language attestation when creating a session', async () => {
+    const session = makeMockSession('Standalone answer.');
+    const createSpy = vi.fn().mockResolvedValue(session);
+    (globalThis as Record<string, unknown>)['LanguageModel'] = { create: createSpy };
+
+    const { hasLanguageModelOutputAttestation } = await import('@/runtime/capabilities');
+
+    await generateChangeSummary('Risk Factors', makeMinimalDiff(), makeStats(), {
+      tier: 'builtin',
+    });
+
+    expect(createSpy).toHaveBeenCalledOnce();
+    expect(hasLanguageModelOutputAttestation(createSpy.mock.calls[0]![0])).toBe(true);
   });
 
   it('returns the templated summary on the extractive tier without touching the session', async () => {

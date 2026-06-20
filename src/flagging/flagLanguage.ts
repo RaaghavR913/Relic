@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — Hedging/uncertainty language flagging (Session 5)
+// Disclora — Hedging/uncertainty language flagging (Session 5)
 // ------------------------------------------------------------
 // flagSection()     → scan one section's normalised text → LanguageFlag[]
 // flagAllSections() → scan all sections, return in document order

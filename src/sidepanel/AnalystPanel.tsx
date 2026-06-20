@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — Analyst tab: investor-focused document analysis
+// Disclora — Analyst tab: investor-focused document analysis
 // ------------------------------------------------------------
 // Renders the staged FilingAnalysis in the spec order:
 //   Snapshot → Takeaways → What Changed → What This Means

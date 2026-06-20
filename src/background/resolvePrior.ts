@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — Prior comparable filing resolver (Session 6)
+// Disclora — Prior comparable filing resolver (Session 6)
 // ------------------------------------------------------------
 // Given a CIK, filing type, and period-of-report, find the most recent EARLIER
 // filing of the same form via the EDGAR submissions JSON

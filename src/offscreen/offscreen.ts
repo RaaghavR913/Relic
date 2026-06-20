@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — offscreen document main thread (Session 2)
+// Disclora — offscreen document main thread (Session 2)
 // ------------------------------------------------------------
 // Responsibilities:
 //   1. Encoder Web Worker lifecycle (lazy init, idle-unload).
@@ -804,4 +804,4 @@ chrome.runtime.onMessage.addListener(
   },
 );
 
-console.debug('[FilingLens offscreen] ready — device will be selected on first embed request');
+console.debug('[Disclora offscreen] ready — device will be selected on first embed request');

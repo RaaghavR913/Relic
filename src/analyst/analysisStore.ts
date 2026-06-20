@@ -1,7 +1,7 @@
 // ============================================================
-// FilingLens — Analyst analysis IndexedDB store
+// Disclora — Analyst analysis IndexedDB store
 // ------------------------------------------------------------
-// One database ('filing-lens-analyses'), one object store ('analyses').
+// One database ('disclora-analyses'), one object store ('analyses').
 // Cache key: `${rawTextHash}:${register}` — re-opening the panel for the
 // same filing replays the full investor analysis without re-prompting.
 //
@@ -11,7 +11,7 @@
 import type { FilingAnalysis } from '@/types';
 import { evictToCap, txComplete } from '@/lib/idbEvict';
 
-const DB_NAME = 'filing-lens-analyses';
+const DB_NAME = 'disclora-analyses';
 const DB_VERSION = 1;
 const STORE = 'analyses';
 /** Two registers (builtin / extractive) per filing → cap at ~80 filings. */

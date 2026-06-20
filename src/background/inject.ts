@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — programmatic-injection URL classification
+// Disclora — programmatic-injection URL classification
 // ------------------------------------------------------------
 // The "Analyze this page" action injects the content script into the active
 // tab via chrome.scripting.executeScript (authorized by the activeTab grant

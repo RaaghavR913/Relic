@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — overlay control surface (Session 7)
+// Disclora — overlay control surface (Session 7)
 // ------------------------------------------------------------
 // Master on/off toggle for the sentiment heatmap overlay plus an accessible legend.
 //

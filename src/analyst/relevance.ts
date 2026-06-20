@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — Analyst pipeline: relevance-driven excerpt selection
+// Disclora — Analyst pipeline: relevance-driven excerpt selection
 // ------------------------------------------------------------
 // Gemini Nano's context window is small, so each analysis stage gets a
 // keyword-targeted excerpt budget instead of the whole filing. Sentences are

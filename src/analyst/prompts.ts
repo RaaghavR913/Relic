@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — Analyst pipeline: prompts + responseConstraint schemas
+// Disclora — Analyst pipeline: prompts + responseConstraint schemas
 // ------------------------------------------------------------
 // Every LM stage is a single Prompt API call with a JSON-schema
 // responseConstraint, so Gemini Nano emits parseable structured output.

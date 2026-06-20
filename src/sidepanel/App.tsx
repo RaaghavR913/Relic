@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — unified side panel shell (Session 7)
+// Disclora — unified side panel shell (Session 7)
 // ------------------------------------------------------------
 // Composes Sessions 1–6 into one polished surface:
 //   • Header: company · filing type · period + generation-tier badge.
@@ -40,7 +40,7 @@ import {
   stateLabel,
 } from './ui';
 
-const ONBOARDED_KEY = 'filinglens:onboarded';
+const ONBOARDED_KEY = 'disclora:onboarded';
 
 // ── tabs ──────────────────────────────────────────────────────────────────────
 
@@ -105,7 +105,7 @@ function analyzeFailCopy(response: AnalyzePageResponse | undefined): string {
       case 'unsupported_url':
         return "This page can't be analyzed — browser pages, the Chrome Web Store, and local files (including PDFs) aren't supported.";
       case 'no_permission':
-        return 'Chrome needs a fresh grant — click the FilingLens toolbar icon while on the page you want to analyze, then try again.';
+        return 'Chrome needs a fresh grant — click the Disclora toolbar icon while on the page you want to analyze, then try again.';
       case 'no_tab':
         return "Couldn't find the current tab — switch to the page you want to analyze and try again.";
       case 'needs_optional_permission':
@@ -136,8 +136,8 @@ function Header({ doc, hideDocMeta = false }: { doc: DocumentModel | null; hideD
     <header className="border-b border-zinc-800 px-4 py-3">
       <div className="flex items-center gap-2.5">
         <BrandLogo className="h-6 w-6" />
-        <span className="text-[19px] font-semibold tracking-tight font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">FilingLens</span>
-        <span className="ml-auto text-[10px] text-zinc-600 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">v{chrome.runtime.getManifest().version}</span>
+        <span className="text-[19px] font-semibold tracking-tight font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">Disclora</span>
+        <span className="ml-auto text-xs text-zinc-600 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">v{chrome.runtime.getManifest().version}</span>
       </div>
       {doc && !hideDocMeta && (
         <div className="mt-2">
@@ -244,7 +244,7 @@ function NoFiling({
       <button
         onClick={onAnalyze}
         disabled={analyzing}
-        className="flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold font-[Times,serif] text-white transition hover:bg-sky-500 disabled:cursor-default disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400"
+        className="flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-[15px] font-semibold font-[Times,serif] text-white transition hover:bg-sky-500 disabled:cursor-default disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400"
       >
         {analyzing ? (
           <>
@@ -263,7 +263,7 @@ function NoFiling({
       {needsPermission && (
         <Banner tone="info" icon="ℹ">
           <span className="font-semibold">{needsPermission.label}</span> needs a one-time
-          permission grant before FilingLens can analyze it.{' '}
+          permission grant before Disclora can analyze it.{' '}
           <button
             onClick={onGrantPermission}
             className="font-medium text-sky-300 underline decoration-sky-400/50 underline-offset-2 transition hover:text-sky-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
@@ -289,7 +289,7 @@ function NoFiling({
       {gateState === 'paywall' && (
         <Banner tone="warn" icon="⚠">
           This page appears to have a{' '}
-          <span className="font-semibold">paywall or registration gate</span>. FilingLens can
+          <span className="font-semibold">paywall or registration gate</span>. Disclora can
           only analyze content that&rsquo;s visible to you — dismiss the gate and retry.
         </Banner>
       )}
@@ -440,7 +440,7 @@ export default function App() {
         if (granted) {
           void startAnalyze();
         } else {
-          setAnalyzeError("Permission denied — FilingLens can't analyze this site.");
+          setAnalyzeError("Permission denied — Disclora can't analyze this site.");
         }
       })
       .catch((err: unknown) => {
@@ -574,7 +574,7 @@ export default function App() {
                 {gateState === 'paywall' && (
                   <Banner tone="warn" icon="⚠">
                     This page appears to have a{' '}
-                    <span className="font-semibold">paywall or registration gate</span>. FilingLens
+                    <span className="font-semibold">paywall or registration gate</span>. Disclora
                     can only analyze content visible to you — dismiss the gate and retry.
                   </Banner>
                 )}
@@ -606,7 +606,7 @@ export default function App() {
                   </Banner>
                 )}
                 {isLowConfidenceGeneric(currentDoc) && (
-                  <Banner tone="warn" icon="⚠">
+                  <Banner tone="warn" icon={<span className="text-base">⚠</span>} className="gap-2.5 px-4 py-3 text-[13px]">
                     <span className="font-semibold">This page doesn&rsquo;t look like an SEC filing</span>{' '}
                     — investor analysis, sentiment, and redline are unavailable. Summary and language
                     flags still apply; on-page highlights are off,{' '}

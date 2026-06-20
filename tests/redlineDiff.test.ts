@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — Session 6 tests: section diff engine
+// Disclora — Session 6 tests: section diff engine
 // ============================================================
 
 import { describe, it, expect } from 'vitest';

@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — Tier-aware change summary (Session 6)
+// Disclora — Tier-aware change summary (Session 6)
 // ------------------------------------------------------------
 // Runs in the SIDE PANEL (has Chrome AI APIs). The offscreen diff already
 // attached a TEMPLATED summary to every SectionDiff; on the 'builtin' tier we
@@ -23,7 +23,8 @@ interface LMMonitor {
 }
 interface LMCtor {
   create(opts: {
-    outputLanguage?: string;
+    expectedInputs?: Array<{ type: string; languages: readonly string[] }>;
+    expectedOutputs?: Array<{ type: string; languages: readonly string[] }>;
     initialPrompts?: Array<{ role: string; content: string }>;
     monitor?: (m: LMMonitor) => void;
     signal?: AbortSignal;
@@ -123,7 +124,7 @@ export async function generateChangeSummary(
         initialPrompts: [{ role: 'system', content: REDLINE_SYSTEM_PROMPT }],
         ...(sig !== undefined ? { signal: sig } : {}),
       });
-      console.debug(`[FilingLens] changeSummary: session created in ${Math.round(performance.now() - t0)}ms`);
+      console.debug(`[Disclora] changeSummary: session created in ${Math.round(performance.now() - t0)}ms`);
     } catch {
       return templated;
     }
@@ -136,7 +137,7 @@ export async function generateChangeSummary(
       ...(sig !== undefined ? [{ signal: sig }] : []),
     );
     console.debug(
-      `[FilingLens] changeSummary prompt (${ownSession ? 'new session' : 'pooled'}): ${Math.round(performance.now() - t1)}ms`,
+      `[Disclora] changeSummary prompt (${ownSession ? 'new session' : 'pooled'}): ${Math.round(performance.now() - t1)}ms`,
     );
     const cleaned = out.trim();
     return cleaned.length > 0 ? cleaned : templated;

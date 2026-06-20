@@ -1,5 +1,5 @@
 /**
- * FilingLens capability detection — the linchpin of the lean (built-in-AI-only) build.
+ * Disclora capability detection — the linchpin of the lean (built-in-AI-only) build.
  *
  * getCapabilities() classifies the device into a generationTier ('builtin' | 'extractive')
  * that drives the entire tier-aware UX: summaries (Session 3) and change summaries
@@ -38,10 +38,36 @@ export const SUMMARIZER_LANGUAGE = {
   expectedInputLanguages: ['en'],
 } as const;
 
-/** Same attestation for the Prompt API (Gemini Nano). */
+/** English text I/O for the Prompt API (Gemini Nano). SEC filings are English-only. */
+const ENGLISH_TEXT = { type: 'text' as const, languages: ['en'] as const };
+
+/**
+ * Language attestation for LanguageModel.availability() and LanguageModel.create().
+ * Chrome 147+ requires expectedOutputs (not Summarizer-style outputLanguage) or it
+ * logs: "No output language was specified in a LanguageModel API request."
+ */
 export const LANGUAGE_MODEL_LANGUAGE = {
-  outputLanguage: 'en',
+  expectedInputs: [ENGLISH_TEXT],
+  expectedOutputs: [ENGLISH_TEXT],
 } as const;
+
+export type LanguageModelLanguageOptions = typeof LANGUAGE_MODEL_LANGUAGE;
+
+/** True when opts include English text in expectedOutputs (Prompt API attestation). */
+export function hasLanguageModelOutputAttestation(opts: unknown): boolean {
+  if (opts == null || typeof opts !== 'object') return false;
+  const outs = (opts as { expectedOutputs?: unknown }).expectedOutputs;
+  if (!Array.isArray(outs) || outs.length === 0) return false;
+  return outs.some((item) => {
+    if (item == null || typeof item !== 'object') return false;
+    const { type, languages } = item as { type?: string; languages?: unknown };
+    return (
+      type === 'text' &&
+      Array.isArray(languages) &&
+      languages.some((lang) => lang === 'en')
+    );
+  });
+}
 
 function getGlobal<T = unknown>(name: string): T | undefined {
   // Works across content script (window), side panel (window), and service worker (self).

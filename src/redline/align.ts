@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — Section alignment (Session 6)
+// Disclora — Section alignment (Session 6)
 // ------------------------------------------------------------
 // Pure functions — no Chrome APIs. Matches sections of the CURRENT filing to the
 // PRIOR comparable filing by canonical id, tolerating cross-year renumbering and

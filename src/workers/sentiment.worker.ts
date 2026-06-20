@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — FinBERT sentiment Web Worker (Session 4)
+// Disclora — FinBERT sentiment Web Worker (Session 4)
 // ------------------------------------------------------------
 // RULES (same as encoder.worker.ts):
 //   - MUST NEVER reference chrome.* (plain Web Worker).

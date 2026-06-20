@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — Session 4 tests: FinBERT sentiment heatmap
+// Disclora — Session 4 tests: FinBERT sentiment heatmap
 // ============================================================
 //
 // Tests cover:
@@ -305,7 +305,7 @@ describe('Risk Factors negative-skew sanity (heuristic)', () => {
 // To run manually after loading the extension in Chrome:
 //   1. Open any SEC 10-K Risk Factors section.
 //   2. Open DevTools console and run:
-//        const rf = __FilingLens.result.model.sections
+//        const rf = __Disclora.result.model.sections
 //          .find(s => s.id.includes('risk'));
 //        // Then check sentiment highlights painted on the page.
 //   3. Expected: Risk Factors section shows predominantly red (negative) highlights.

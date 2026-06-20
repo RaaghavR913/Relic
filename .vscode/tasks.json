@@ -2,11 +2,11 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "FilingLens: Preview UI in Cursor",
+      "label": "Disclora: Preview UI in Cursor",
       "dependsOrder": "sequence",
       "dependsOn": [
-        "FilingLens: Start UI dev server",
-        "FilingLens: Open Simple Browser"
+        "Disclora: Start UI dev server",
+        "Disclora: Open Simple Browser"
       ],
       "group": {
         "kind": "build",
@@ -15,7 +15,7 @@
       "problemMatcher": []
     },
     {
-      "label": "FilingLens: Start UI dev server",
+      "label": "Disclora: Start UI dev server",
       "type": "shell",
       "command": "npm run dev:ui",
       "isBackground": true,
@@ -33,7 +33,7 @@
       }
     },
     {
-      "label": "FilingLens: Open Simple Browser",
+      "label": "Disclora: Open Simple Browser",
       "command": "simpleBrowser.show",
       "type": "vscode",
       "args": ["http://localhost:5173/preview.html"]

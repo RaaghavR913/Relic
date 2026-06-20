@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — Session 6 tests: EDGAR prior resolver + rate-limit queue
+// Disclora — Session 6 tests: EDGAR prior resolver + rate-limit queue
 // ============================================================
 
 import { describe, it, expect, beforeEach } from 'vitest';

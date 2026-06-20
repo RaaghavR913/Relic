@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — Sentiment Heatmap side-panel component (Session 4)
+// Disclora — Sentiment Heatmap side-panel component (Session 4)
 // ------------------------------------------------------------
 // Features:
 //   • On/off toggle (persisted to chrome.storage.local).

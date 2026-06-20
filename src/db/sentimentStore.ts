@@ -1,7 +1,7 @@
 // ============================================================
-// FilingLens — IndexedDB cache for FinBERT sentiment results (Session 4)
+// Disclora — IndexedDB cache for FinBERT sentiment results (Session 4)
 // ------------------------------------------------------------
-// Store: 'filing-lens-sentiment'  key: rawTextHash
+// Store: 'disclora-sentiment'  key: rawTextHash
 // Results include DOCUMENT-space SentenceSentiment[] so they can be replayed
 // immediately from cache without re-running the model.
 // ============================================================
@@ -9,7 +9,7 @@
 import type { SentenceSentiment } from '@/types';
 import { evictToCap, txComplete, DEFAULT_CACHE_CAP } from '@/lib/idbEvict';
 
-const DB_NAME = 'filing-lens-sentiment';
+const DB_NAME = 'disclora-sentiment';
 const DB_VERSION = 1;
 const SENTIMENT_STORE = 'sentiments';
 

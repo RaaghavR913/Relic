@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — Analyst pipeline: evidence verification + advice scrubbing
+// Disclora — Analyst pipeline: evidence verification + advice scrubbing
 // ------------------------------------------------------------
 // Two hallucination/compliance guards applied to every model output:
 //

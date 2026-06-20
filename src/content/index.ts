@@ -1,5 +1,5 @@
 /**
- * FilingLens content script — injected on EDGAR / IR filing pages.
+ * Disclora content script — injected on EDGAR / IR filing pages.
  *
  * Session 1: pick the filing frame, build the DocumentModel + PositionMap, and
  * expose a dev demo proving multi-node range mapping.
@@ -46,7 +46,7 @@ import type {
   FlagResultsMsg,
 } from '@/messages/types';
 
-interface FilingLensDevApi {
+interface DiscloraDevApi {
   result: IngestResult | null;
   reingest: () => IngestResult;
   highlight: (substring: string) => DemoResult;
@@ -66,13 +66,13 @@ const RAG_HIGHLIGHT_LAYER = 'qa' as const;
 // We expose a re-ingest closure (bound to the first scope) on globalThis for the
 // new injection to call; it re-runs run(), which tears down the prior overlay
 // first so no duplicate tooltip / mouse listeners leak.
-interface FilingLensGlobal {
-  __filingLensInjected?: boolean;
-  __filingLensReingest?: () => void;
+interface DiscloraGlobal {
+  __discloraInjected?: boolean;
+  __discloraReingest?: () => void;
 }
-const FL_GLOBAL = globalThis as FilingLensGlobal;
-const ALREADY_INJECTED = FL_GLOBAL.__filingLensInjected === true;
-FL_GLOBAL.__filingLensInjected = true;
+const DL_GLOBAL = globalThis as DiscloraGlobal;
+const ALREADY_INJECTED = DL_GLOBAL.__discloraInjected === true;
+DL_GLOBAL.__discloraInjected = true;
 
 /** Minimum normalised-text length for a frame to be treated as the filing frame. */
 const MIN_FILING_CHARS = 500;
@@ -92,7 +92,7 @@ let _flagsVisible     = true;
 // explicitly opts in (the panel's passive pref sync must not enable it).
 let _flagOptInRequired = false;
 
-async function run(): Promise<FilingLensDevApi> {
+async function run(): Promise<DiscloraDevApi> {
   // Re-analyze (run() called a second time in this scope): tear down the prior
   // ingestion's overlay so we don't leak a duplicate hover tooltip / mouse
   // listeners, and clear any stale highlight layers before re-ingesting.
@@ -125,7 +125,7 @@ async function run(): Promise<FilingLensDevApi> {
     const gateState = detectGateState(profile, document);
     if (gateState !== 'open') {
       console.debug(
-        `[FilingLens] ${window.location.hostname}: content gated (${gateState}) — skipping analysis`,
+        `[Disclora] ${window.location.hostname}: content gated (${gateState}) — skipping analysis`,
       );
       const gatedMsg: FilingGatedMsg = {
         target: 'sidepanel',
@@ -152,7 +152,7 @@ async function run(): Promise<FilingLensDevApi> {
   }
 
   console.debug(
-    `[FilingLens] ingested ${model.filingType} — ${model.companyName ?? 'unknown company'} ` +
+    `[Disclora] ingested ${model.filingType} — ${model.companyName ?? 'unknown company'} ` +
       `(${model.sections.length} sections, ${positionMap.text.length} chars, hash ${model.rawTextHash})`,
   );
 
@@ -199,7 +199,7 @@ async function run(): Promise<FilingLensDevApi> {
     _flagOverlay = flagOverlay;
 
     console.debug(
-      `[FilingLens] flagged ${allFlags.length} language markers across ${model.sections.length} sections`,
+      `[Disclora] flagged ${allFlags.length} language markers across ${model.sections.length} sections`,
     );
 
     // Persist flags so the side panel can recover them when opened after ingestion.
@@ -379,25 +379,25 @@ if (ALREADY_INJECTED) {
   // a fresh analysis and re-broadcast, instead of being a silent no-op. Running
   // in the original scope keeps the live message listeners and highlight state
   // consistent.
-  if (FL_GLOBAL.__filingLensReingest) {
-    FL_GLOBAL.__filingLensReingest();
+  if (DL_GLOBAL.__discloraReingest) {
+    DL_GLOBAL.__discloraReingest();
   } else {
     // Hook unset — e.g. the first pass never reached ingestion, or a content
     // script from a previous extension version is still resident in this tab
     // (content scripts don't hot-update until the page reloads). Fall back to
     // ingesting in this scope so the panel still gets a fresh FILING_READY
     // broadcast and "Analyze this page" is never a silent no-op.
-    run().catch((err) => console.error('[FilingLens] re-ingestion failed', err));
+    run().catch((err) => console.error('[Disclora] re-ingestion failed', err));
   }
 } else if (shouldIngestThisFrame()) {
   // Expose the re-ingest closure (bound to this scope) for a later re-analyze.
-  FL_GLOBAL.__filingLensReingest = () => {
-    run().catch((err) => console.error('[FilingLens] re-ingestion failed', err));
+  DL_GLOBAL.__discloraReingest = () => {
+    run().catch((err) => console.error('[Disclora] re-ingestion failed', err));
   };
   run().then((api) => {
-    (globalThis as unknown as { __FilingLens?: FilingLensDevApi }).__FilingLens = api;
-    console.debug('[FilingLens] dev API ready: __FilingLens.demo() / .highlight(text)');
+    (globalThis as unknown as { __Disclora?: DiscloraDevApi }).__Disclora = api;
+    console.debug('[Disclora] dev API ready: __Disclora.demo() / .highlight(text)');
   }).catch((err) => {
-    console.error('[FilingLens] ingestion failed', err);
+    console.error('[Disclora] ingestion failed', err);
   });
 }

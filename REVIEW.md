@@ -1,4 +1,4 @@
-# FilingLens — Independent Pre-Release Review
+# Disclora — Independent Pre-Release Review
 
 **Reviewer:** automated independent verification pass (read-only).
 **Date:** 2026-06-09

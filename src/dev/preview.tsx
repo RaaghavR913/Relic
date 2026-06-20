@@ -4,7 +4,6 @@ import { LazyMotion, domMax } from 'framer-motion';
 import './preview.css';
 import { installChromeMock } from './chrome-mock';
 import { scenarioFromSearch, type PreviewScenario } from './mock-data';
-import App from '@/sidepanel/App';
 
 const SCENARIOS: Array<{ id: PreviewScenario; label: string }> = [
   { id: 'filing', label: 'Filing loaded' },
@@ -48,7 +47,10 @@ const scenario = scenarioFromSearch(window.location.search);
 installChromeMock(scenario);
 
 const root = document.getElementById('root');
-if (!root) throw new Error('FilingLens preview: #root missing');
+if (!root) throw new Error('Disclora preview: #root missing');
+
+// ui.tsx reads chrome.runtime at module scope — load App only after the mock is installed.
+const { default: App } = await import('@/sidepanel/App');
 
 createRoot(root).render(
   <LazyMotion features={domMax} strict>

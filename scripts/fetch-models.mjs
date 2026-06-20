@@ -1,7 +1,7 @@
 // ============================================================
-// FilingLens — bundle on-device model weights (zero-egress build step)
+// Disclora — bundle on-device model weights (zero-egress build step)
 // ------------------------------------------------------------
-// Downloads the open-source ONNX model files FilingLens runs locally into
+// Downloads the open-source ONNX model files Disclora runs locally into
 // `models/<repo>/…` so the build can bundle them into the shipped extension.
 // This is a BUILD-TIME developer step on your machine — the extension itself
 // makes no Hugging Face request at runtime (env.allowRemoteModels = false).

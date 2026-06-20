@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — overlay preferences store (Session 7)
+// Disclora — overlay preferences store (Session 7)
 // ------------------------------------------------------------
 // Single source of truth for the two master on-page overlay toggles
 // (sentiment heatmap, language flags). Persisted to chrome.storage.local and
@@ -23,8 +23,8 @@ export interface OverlayPrefs {
   flags: boolean;
 }
 
-const HEATMAP_KEY = 'filinglens:sentimentEnabled';
-const FLAGS_KEY = 'filinglens:flagsEnabled';
+const HEATMAP_KEY = 'disclora:sentimentEnabled';
+const FLAGS_KEY = 'disclora:flagsEnabled';
 
 const DEFAULTS: OverlayPrefs = { heatmap: false, flags: true };
 

@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — section/sentence → DOCUMENT-space range lift.
+// Disclora — section/sentence → DOCUMENT-space range lift.
 // ------------------------------------------------------------
 // The single sanctioned way to convert a [start, end) range that is relative to a
 // Section (or any base offset) into DOCUMENT space (offsets into positionMap.text),

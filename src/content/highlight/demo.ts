@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — CSS Custom Highlight API controller + Session 1 dev demo.
+// Disclora — CSS Custom Highlight API controller + Session 1 dev demo.
 // ------------------------------------------------------------
 // Rendering contract (spec §5): overlays are painted with the CSS Custom Highlight API
 // (ONE Highlight per overlay type, styled via ::highlight()), NEVER by wrapping ranges

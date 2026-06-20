@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — shared side-panel UI atoms (Session 7)
+// Disclora — shared side-panel UI atoms (Session 7)
 // ------------------------------------------------------------
 // Small, accessible, dependency-light building blocks reused across every tab:
 // tier badge, degradation banner, progress bar, loading skeletons, spinner,
@@ -76,16 +76,18 @@ export function Banner({
   tone = 'info',
   icon,
   children,
+  className = '',
 }: {
   tone?: BannerTone;
   icon?: ReactNode;
   children: ReactNode;
+  className?: string;
 }) {
   return (
     <div
       role="status"
       aria-live="polite"
-      className={`flex items-start gap-2 rounded-lg px-3 py-2 text-[11px] leading-relaxed ring-1 ring-inset ${BANNER_TONE[tone]}`}
+      className={`flex items-start gap-2 rounded-lg px-3 py-2 text-[11px] leading-relaxed ring-1 ring-inset ${BANNER_TONE[tone]} ${className}`}
     >
       {icon && <span aria-hidden="true" className="mt-px shrink-0">{icon}</span>}
       <span>{children}</span>
@@ -203,8 +205,8 @@ export function LockIcon({ className = 'h-4 w-4' }: { className?: string }) {
 export function EmptyState({ title, body }: { title: string; body: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-2 rounded-xl bg-zinc-900/50 px-4 py-8 text-center ring-1 ring-dashed ring-zinc-800">
-      <p className="text-xs font-medium text-zinc-400">{title}</p>
-      <p className="max-w-xs text-[11px] leading-relaxed text-zinc-600">{body}</p>
+      <p className="text-[13px] font-medium text-zinc-400 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">{title}</p>
+      <p className="max-w-xs text-[13px] leading-relaxed text-zinc-600 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">{body}</p>
     </div>
   );
 }

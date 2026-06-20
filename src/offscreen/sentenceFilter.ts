@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — table-aware sentence filtering for sentiment scoring
+// Disclora — table-aware sentence filtering for sentiment scoring
 // ------------------------------------------------------------
 // Pure, side-effect-free so it is unit-testable without the offscreen document's
 // chrome/worker runtime. Splitting tables out of the prose stream must NOT

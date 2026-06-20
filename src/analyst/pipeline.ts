@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — Analyst pipeline orchestrator
+// Disclora — Analyst pipeline orchestrator
 // ------------------------------------------------------------
 // Runs in the SIDE PANEL (has Chrome AI APIs). Builds a FilingAnalysis through
 // staged Prompt API calls — Gemini Nano's context is too small for one-shot
@@ -80,7 +80,8 @@ interface LMMonitor {
 
 interface LMCtor {
   create(opts: {
-    outputLanguage?: string;
+    expectedInputs?: Array<{ type: string; languages: readonly string[] }>;
+    expectedOutputs?: Array<{ type: string; languages: readonly string[] }>;
     initialPrompts?: Array<{ role: string; content: string }>;
     monitor?: (m: LMMonitor) => void;
     signal?: AbortSignal;
@@ -337,7 +338,7 @@ export async function generateFilingAnalysis(
         return parseJson(raw);
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') throw err;
-        console.warn(`[FilingLens] analyst stage "${stage}" failed:`, err);
+        console.warn(`[Disclora] analyst stage "${stage}" failed:`, err);
         return null;
       } finally {
         session.destroy();

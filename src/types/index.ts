@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — canonical data model (source of truth)
+// Disclora — canonical data model (source of truth)
 // All other modules must import from here; never redefine locally.
 // ============================================================
 

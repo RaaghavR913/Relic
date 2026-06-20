@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — production dist sanity gate (runs after `vite build`)
+// Disclora — production dist sanity gate (runs after `vite build`)
 // ------------------------------------------------------------
 // Catches "builds clean but ships broken" classes of failure before a zip is
 // ever uploaded: missing manifest entry files, missing/empty model weights,

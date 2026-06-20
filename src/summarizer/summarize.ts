@@ -1,5 +1,5 @@
 // ============================================================
-// FilingLens — Section summarization orchestrator (Session 3)
+// Disclora — Section summarization orchestrator (Session 3)
 // ------------------------------------------------------------
 // Runs in the SIDE PANEL context (has access to Chrome AI APIs
 // and chrome.runtime.sendMessage).
@@ -80,7 +80,8 @@ interface LMSession {
 
 interface LMCtor {
   create(opts: {
-    outputLanguage?: string;
+    expectedInputs?: Array<{ type: string; languages: readonly string[] }>;
+    expectedOutputs?: Array<{ type: string; languages: readonly string[] }>;
     initialPrompts?: Array<{ role: string; content: string }>;
     monitor?: (m: SummarizerMonitor) => void;
     signal?: AbortSignal;
