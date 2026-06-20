@@ -14,8 +14,8 @@ import type { Capabilities } from '@/runtime/capabilities';
 import { TierBadge, Banner, BrandLogo, LockIcon, stateLabel, stateColor } from './ui';
 
 const ENCODER_MODELS = [
-  { name: 'mxbai-embed-xsmall', role: 'Extractive summary & redline embeddings', size: '~23 MB' },
-  { name: 'FinBERT', role: 'Sentence-level financial sentiment', size: '~106 MB' },
+  { name: 'Encoder', role: 'Extractive summary & redline matching', size: '~23 MB' },
+  { name: 'FinBERT', role: 'Financial sentiment & tone analysis', size: '~106 MB' },
 ];
 
 function Check() {
@@ -41,60 +41,56 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
       {/* Hero */}
       <div className="flex flex-col items-center gap-2 pt-2 text-center">
         <BrandLogo className="h-12 w-12" />
-        <h1 className="text-base font-semibold text-zinc-100 font-[Georgia,serif]">Welcome to Disclora</h1>
-        <p className="max-w-xs text-xs leading-relaxed text-zinc-400 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">
-          Plain-English summaries of Investor Sentiment Analysis &amp; Year-over-Year changes.
-          Analyzed entirely on your device.
+        <h1 className="text-[17px] font-semibold text-zinc-100 font-[Georgia,serif]">Welcome to Disclora</h1>
+        <p className="max-w-xs text-base leading-relaxed text-zinc-400 font-[Georgia,serif]">
+          The story behind every SEC filing.
         </p>
       </div>
 
       {/* Privacy explainer */}
-      <section className="rounded-xl bg-zinc-900 p-4 ring-1 ring-zinc-800 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
-        <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-zinc-200 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
+      <section className="rounded-xl bg-zinc-900 p-4 ring-1 ring-zinc-800 text-[13px] font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
+        <p className="mb-2 flex items-center gap-1.5 font-semibold uppercase text-zinc-200">
           <LockIcon className="h-3.5 w-3.5 text-emerald-400" /> Private by design
         </p>
-        <ul className="flex flex-col gap-1.5 text-[11px] leading-relaxed text-zinc-400">
-          <li className="flex gap-2"><Check /> No filing text or analysis ever leaves your computer.</li>
-          <li className="flex gap-2"><Check /> The only network calls are to SEC EDGAR — the filings you’re already viewing.</li>
-          <li className="flex gap-2"><Check /> The AI models ship inside the extension — nothing is fetched from third parties.</li>
+        <ul className="flex flex-col gap-1.5 text-xs leading-relaxed text-zinc-400">
+          <li className="flex gap-2"><Check /> Your research stays on your computer.</li>
+          <li className="flex gap-2"><Check /> No filing text, summaries, or notes are uploaded.</li>
+          <li className="flex gap-2"><Check /> Disclora only connects to SEC EDGAR for the filings you are already viewing.</li>
         </ul>
       </section>
 
       {/* Downloads */}
-      <section className="rounded-xl bg-zinc-900 p-4 ring-1 ring-zinc-800 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
-        <p className="mb-2 text-[10px] font-medium uppercase tracking-widest text-zinc-500">
+      <section className="rounded-xl bg-zinc-900 p-4 ring-1 ring-zinc-800 text-[13px] font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
+        <p className="mb-2 font-semibold uppercase text-zinc-200">
           Models bundled with the extension
         </p>
         <ul className="flex flex-col gap-2">
           {ENCODER_MODELS.map((m) => (
-            <li key={m.name} className="flex items-center gap-2 text-[11px]">
+            <li key={m.name} className="flex items-center gap-2 text-xs">
               <span className="flex-1">
                 <span className="font-medium text-zinc-200">{m.name}</span>
                 <span className="block text-zinc-500">{m.role}</span>
               </span>
-              <span className="shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-[10px] text-zinc-400">{m.size}</span>
+              <span className="shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-400 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">{m.size}</span>
             </li>
           ))}
         </ul>
-        <p className="mt-2 text-[10px] leading-relaxed text-zinc-600">
-          Included in the extension and loaded locally the first time you use sentiment or extractive summaries — no download, no network request.
-        </p>
       </section>
 
       {/* Generation tier */}
-      <section className="rounded-xl bg-zinc-900 p-4 ring-1 ring-zinc-800">
+      <section className="rounded-xl bg-zinc-900 p-4 ring-1 ring-zinc-800 text-[13px] font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
         <div className="mb-2 flex items-center gap-2">
-          <p className="text-[10px] font-medium uppercase tracking-widest text-zinc-500">Generation mode</p>
+          <p className="font-semibold uppercase text-zinc-200">Generation mode</p>
           <span className="ml-auto"><TierBadge tier={caps.generationTier} /></span>
         </div>
 
         {builtin ? (
           <>
-            <p className="text-[11px] leading-relaxed text-zinc-400">
-              Chrome’s built-in AI is available — summaries, analyst notes, and change narratives are
-              synthesized on-device by Gemini Nano.
+            <p className="text-xs leading-relaxed text-zinc-400 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
+              Disclora analyzes SEC filings privately on your device, turning them into clear summaries,
+              analyst notes, and change narratives powered by Gemini Nano with zero cloud.
             </p>
-            <div className="mt-2 flex items-center justify-between rounded-lg bg-zinc-800/50 px-3 py-2 text-[11px]">
+            <div className="mt-2 flex items-center justify-between rounded-lg bg-zinc-800/50 px-3 py-2 text-xs">
               <span className="text-zinc-300">Gemini Nano</span>
               <span className={stateColor(nanoState)}>{stateLabel(nanoState)}</span>
             </div>
@@ -115,9 +111,9 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
       </section>
 
       {/* Progressive enablement note */}
-      <p className="px-1 text-[10px] leading-relaxed text-zinc-600">
-        Tip: Sentiment and language flags are available immediately. Generative features switch on
-        automatically once their model is ready.
+      <p className="px-1 text-[13px] leading-relaxed text-emerald-400 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">
+        Info: Sentiment and language flags are available immediately on any site. Generative features switch on
+        automatically once the model is ready.
       </p>
 
       {/* CTA */}

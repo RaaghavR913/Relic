@@ -66,7 +66,7 @@ export function installChromeMock(scenario: PreviewScenario): void {
 
   const chromeMock = {
     runtime: {
-      getManifest: () => ({ version: '1.2.0', name: 'Disclora' }),
+      getManifest: () => ({ version: '1.2.7', name: 'Disclora' }),
       getURL: (resource: string) =>
         resource === 'brand-logo.png' ? '/brand-logo.png' : `chrome-extension://mock/${resource}`,
       sendMessage: async (msg: { type?: string }) => {

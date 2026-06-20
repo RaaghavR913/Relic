@@ -33,7 +33,6 @@ import {
   Spinner,
   SkeletonCard,
   Banner,
-  PrivacyNote,
   EmptyState,
   BrandLogo,
   stateColor,
@@ -137,7 +136,7 @@ function Header({ doc, hideDocMeta = false }: { doc: DocumentModel | null; hideD
       <div className="flex items-center gap-2.5">
         <BrandLogo className="h-6 w-6" />
         <span className="text-[19px] font-semibold tracking-tight font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">Disclora</span>
-        <span className="ml-auto text-xs text-zinc-600 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">v{chrome.runtime.getManifest().version}</span>
+        <span className="ml-auto text-xs text-[#39FF14] font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">v{chrome.runtime.getManifest().version}</span>
       </div>
       {doc && !hideDocMeta && (
         <div className="mt-2">
@@ -314,7 +313,6 @@ function NoFiling({
           </ul>
         </section>
       )}
-      <PrivacyNote />
     </div>
   );
 }

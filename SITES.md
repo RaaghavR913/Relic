@@ -147,5 +147,5 @@ When demoted, on-page highlights are off by default but can be turned on manuall
 
 ---
 
-*This document reflects the codebase as of Disclora v1.2.0. It is reference
+*This document reflects the codebase as of Disclora v1.2.7. It is reference
 material, not user-facing copy — adapt wording before shipping it in-product.*

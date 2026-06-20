@@ -72,7 +72,7 @@ const STAGE_ORDER: AnalysisStage[] = [
 
 function LabelChip({ label }: { label: InsightLabel }) {
   return (
-    <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif] ${LABEL_STYLES[label]}`}>
+    <span className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold ring-1 ring-inset font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif] ${LABEL_STYLES[label]}`}>
       {label}
     </span>
   );
@@ -91,6 +91,16 @@ async function highlightEvidence(range: [number, number]): Promise<void> {
   });
 }
 
+async function clearDocHighlights(): Promise<void> {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tabId = tabs[0]?.id;
+  if (tabId === undefined) return;
+  await chrome.tabs.sendMessage(tabId, {
+    target: 'content',
+    type: 'CLEAR_HIGHLIGHTS',
+  });
+}
+
 // ── insight card ──────────────────────────────────────────────────────────────
 
 function InsightCard({ insight }: { insight: FilingInsight }) {
@@ -102,13 +112,13 @@ function InsightCard({ insight }: { insight: FilingInsight }) {
       </div>
       <p className="mt-1.5 text-xs leading-relaxed text-zinc-300">{insight.summary}</p>
       {insight.whyItMatters && (
-        <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-400">
+        <p className="mt-1.5 text-xs leading-relaxed text-zinc-400">
           <span className="font-medium text-zinc-500">Why it matters: </span>
           {insight.whyItMatters}
         </p>
       )}
       {insight.investorMeaning && (
-        <p className="mt-1 text-[11px] leading-relaxed text-zinc-400">
+        <p className="mt-1 text-xs leading-relaxed text-zinc-400">
           <span className="font-medium text-zinc-500">Investor view: </span>
           {insight.investorMeaning}
         </p>
@@ -133,13 +143,22 @@ function InsightCard({ insight }: { insight: FilingInsight }) {
       {/* Deterministic-tier cards carry a source range but no separate quote (the
           summary IS the verbatim sentence) — surface a standalone jump-to-source. */}
       {!insight.evidence && insight.evidenceRange && (
-        <button
-          onClick={() => void highlightEvidence(insight.evidenceRange!).catch(() => {})}
-          className="mt-1.5 self-start rounded px-1.5 py-0.5 text-[10px] font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] text-zinc-500 transition hover:bg-sky-900/20 hover:text-sky-400 focus-visible:outline focus-visible:outline-sky-500"
-          aria-label="Show this passage in the document"
-        >
-          ↗ Show in document
-        </button>
+        <div className="mt-1.5 flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => void highlightEvidence(insight.evidenceRange!).catch(() => {})}
+            className="rounded px-1.5 py-0.5 text-[10px] font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] text-sky-500 transition hover:text-sky-300 focus-visible:outline focus-visible:outline-sky-500"
+            aria-label="Show this passage in the document"
+          >
+            ↗ Show in document
+          </button>
+          <button
+            onClick={() => void clearDocHighlights().catch(() => {})}
+            className="rounded px-1.5 py-0.5 text-[10px] font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] text-zinc-500 transition hover:bg-zinc-900/20 hover:text-zinc-300 focus-visible:outline focus-visible:outline-sky-500"
+            aria-label="Remove highlight from filing"
+          >
+            Remove highlight
+          </button>
+        </div>
       )}
       <p className="mt-1.5 text-[9px] text-zinc-600 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
         {insight.category} · severity {insight.severity} · {insight.timeHorizon} · confidence {insight.confidence}
@@ -182,7 +201,7 @@ function Collapse({
         aria-expanded={open}
         className="flex w-full items-center gap-2 px-3 py-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
       >
-        <span className="flex-1 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 font-[Times,serif]">
+        <span className="flex-1 text-xs font-semibold uppercase tracking-wider text-zinc-400 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">
           {title}
         </span>
         {pending && <span className="animate-pulse text-[10px] text-sky-400">…</span>}
@@ -391,7 +410,7 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
         <button
           onClick={() => void run(true)}
           disabled={running}
-          className="ml-auto rounded px-2 py-0.5 text-[13px] font-[Times,serif] font-medium text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-300 disabled:cursor-default disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+          className="ml-auto rounded px-2 py-0.5 text-sm font-[Times,serif] font-medium text-zinc-500 transition hover:bg-zinc-800 hover:text-zinc-300 disabled:cursor-default disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
         >
           Regenerate
         </button>

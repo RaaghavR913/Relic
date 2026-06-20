@@ -40,7 +40,7 @@ export function TierBadge({ tier }: { tier: GenerationTier }) {
   if (tier === 'builtin') {
     return (
       <span
-        className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300 ring-1 ring-inset ring-emerald-500/30"
+        className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-300 ring-1 ring-inset ring-emerald-500/30 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]"
         title="Chrome built-in AI (Gemini Nano) is available — generative summaries and analyst notes run on-device."
       >
         Built-in AI
@@ -49,7 +49,7 @@ export function TierBadge({ tier }: { tier: GenerationTier }) {
   }
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full bg-zinc-700/60 px-2.5 py-0.5 text-[11px] font-semibold text-zinc-300 ring-1 ring-inset ring-zinc-600/40"
+      className="inline-flex items-center gap-1 rounded-full bg-zinc-700/60 px-2.5 py-0.5 text-xs font-semibold text-zinc-300 ring-1 ring-inset ring-zinc-600/40 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]"
       title="Extractive mode — key-sentence summaries run fully on-device."
     >
       Extractive
@@ -167,16 +167,6 @@ export function Spinner({ className = 'h-6 w-6 text-sky-500' }: { className?: st
       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
     </svg>
-  );
-}
-
-// ── privacy note ──────────────────────────────────────────────────────────────
-
-export function PrivacyNote({ className = '' }: { className?: string }) {
-  return (
-    <p className={`text-[13px] text-zinc-500 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] ${className}`}>
-      100% on-device — no filing text or analysis ever leaves your computer.
-    </p>
   );
 }
 
