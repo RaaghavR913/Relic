@@ -43,7 +43,7 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
         <BrandLogo className="h-12 w-12" />
         <h1 className="text-[17px] font-semibold text-zinc-100 font-[Georgia,serif]">Welcome to Disclora</h1>
         <p className="max-w-xs text-base leading-relaxed text-zinc-400 font-[Georgia,serif]">
-          The story behind every SEC filing.
+          Understand company filings like an investor.
         </p>
       </div>
 
