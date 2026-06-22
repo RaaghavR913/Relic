@@ -15,12 +15,13 @@
 //   - Full 10-K sentiment pass < 30 s with WebGPU
 // ============================================================
 
-import { pipeline, env } from '@huggingface/transformers';
+import { pipeline } from '@huggingface/transformers';
 import type {
   SentimentWorkerOutbound,
   WorkerProgressMsg,
   SentimentWorkerClassifyResultMsg,
 } from '@/messages/types';
+import { configureBundledModelEnv } from '@/workers/transformersEnv';
 
 // The text-classification pipeline is callable: (texts, opts) => Promise<result>.
 // Transformers.js v4: array input with topk=1 returns Array<{label, score}>.
@@ -70,18 +71,7 @@ async function init(
   forceWasm = false,
 ): Promise<void> {
   initParams = { wasmPaths, modelBasePath, modelId, numThreads };
-  // Configure ONNX Runtime WASM paths — must be set before any pipeline is created.
-  // ORT resolves both the backend glue (.mjs) and binary (.wasm) under this prefix;
-  // the build copies every ort-wasm-* glue+binary into dist/wasm/ to match.
-  (env.backends.onnx.wasm as Record<string, unknown>).wasmPaths = wasmPaths;
-  (env.backends.onnx.wasm as Record<string, unknown>).numThreads = numThreads;
-
-  // Zero-egress: load weights ONLY from the bundled extension files — never the
-  // Hugging Face Hub. `modelBasePath` = chrome.runtime.getURL('models/'); the
-  // FinBERT weights live at `${modelBasePath}${modelId}/`.
-  env.allowRemoteModels = false;
-  env.allowLocalModels = true;
-  env.localModelPath = modelBasePath;
+  configureBundledModelEnv(wasmPaths, modelBasePath, numThreads);
 
   const t0 = performance.now();
 

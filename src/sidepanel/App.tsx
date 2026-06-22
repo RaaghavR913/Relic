@@ -4,14 +4,13 @@
 // Composes Sessions 1–6 into one polished surface:
 //   • Header: company · filing type · period + generation-tier badge.
 //   • First-run onboarding (privacy + downloads + tier), shown once.
-//   • Section navigator + master overlay controls (heatmap / flags + legend).
+//   • Section navigator + tab panels (Analyst · Summary · Sentiment · Changes).
 //   • Tabs: Analyst · Summary · Sentiment · Changes — all kept mounted so
 //     async analysis (sentiment streaming, redline) survives tab switches.
 //   • Loading skeletons, empty states, degradation banners; WCAG AA; reduced-motion.
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { ReactNode } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
 import { useCapabilities } from '../runtime/useCapabilities';
 import type { DocumentModel, LanguageFlag } from '@/types';
@@ -29,7 +28,7 @@ import { SummaryPanel } from './SummaryPanel';
 import { SentimentPanel } from './SentimentPanel';
 import { RedlinePanel } from './RedlinePanel';
 import { FirstRun } from './FirstRun';
-import { OverlayControls } from './OverlayControls';
+import { Switch } from './OverlayControls';
 import {
   Spinner,
   SkeletonCard,
@@ -118,77 +117,71 @@ function analyzeFailCopy(response: AnalyzePageResponse | undefined): string {
   return 'Analysis failed: no response from the extension background.';
 }
 
-// ── "where Disclora works best" guide ───────────────────────────────────────────
+// ── filing support info guide ─────────────────────────────────────────────────
+
+const INFO_OPEN_KEY = 'disclora:infoOpen';
 
 /**
- * Digestible companion to the "not an SEC filing" notice: a three-tier cheat
- * sheet telling users where Disclora does the most, so they know where to point
- * it next. Purely explanatory — it changes no analysis behaviour and reads from
- * no document, it's a static UI affordance shown only beside that notice.
+ * Static cheat sheet for where Disclora works best. Shown on every page;
+ * the Info toggle persists across sessions via chrome.storage.local.
  */
-const WORKS_TIERS: ReadonlyArray<{ medal: string; label: string; detail: ReactNode }> = [
+const WORKS_TIERS: ReadonlyArray<{ label: string; detail: string }> = [
   {
-    medal: '🥇',
-    label: 'Best',
-    detail: (
-      <>
-        <span className="font-medium text-zinc-200">sec.gov</span> EDGAR filing pages — a{' '}
-        <span className="font-medium text-zinc-300">10-K / 10-Q / 8-K / 20-F / S-1 / proxy</span>{' '}
-        primary <span className="rounded bg-zinc-800 px-1 py-px font-mono text-[10px] text-zinc-300">.htm</span>{' '}
-        document. Full investor analysis, sentiment, and year-over-year redline.
-      </>
-    ),
+    label: 'Best: SEC EDGAR filings',
+    detail:
+      '10-K, 10-Q, 8-K, 20-F, S-1, and proxy .htm filings on sec.gov. Full analysis, sentiment, and year-over-year redlines.',
   },
   {
-    medal: '🥈',
-    label: 'Good',
-    detail: (
-      <>
-        annualreports.com · stockanalysis.com · fool.com · benzinga.com — full features when the
-        page is an actual filing.
-      </>
-    ),
+    label: 'Supported: Filing pages',
+    detail:
+      'AnnualReports, StockAnalysis, Fool, and Benzinga pages with actual filing content.',
   },
   {
-    medal: '📄',
-    label: 'Anywhere',
-    detail: (
-      <>
-        Any other readable page —{' '}
-        <span className="font-medium text-zinc-300">Summary + language flags</span> only, like this
-        one.
-      </>
-    ),
+    label: 'Basic: Any website',
+    detail: 'Summary and language flags only.',
   },
 ];
 
-/** Three-tier "where it works best" guide, rendered beneath the low-confidence notice. */
+/** Three-tier support guide — always available; visibility controlled by the Info toggle. */
 function WhereItWorks() {
+  const [infoOpen, setInfoOpen] = useState(true);
+
+  useEffect(() => {
+    chrome.storage.local
+      .get(INFO_OPEN_KEY)
+      .then((data: Record<string, unknown>) => {
+        const stored = data[INFO_OPEN_KEY];
+        if (typeof stored === 'boolean') setInfoOpen(stored);
+      })
+      .catch(() => {});
+  }, []);
+
+  const onInfoToggle = useCallback((open: boolean) => {
+    setInfoOpen(open);
+    chrome.storage.local.set({ [INFO_OPEN_KEY]: open }).catch(() => {});
+  }, []);
+
   return (
     <section
       aria-label="Where Disclora works best"
-      className="rounded-lg bg-zinc-900/60 px-3 py-2.5 ring-1 ring-inset ring-zinc-800"
+      className="rounded-lg bg-zinc-900/60 px-3 py-2.5 ring-1 ring-inset ring-zinc-800 text-[12px] font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]"
     >
-      <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
-        Where Disclora works best
-      </p>
-      <ul className="mt-2 flex flex-col gap-2">
-        {WORKS_TIERS.map((t) => (
-          <li
-            key={t.label}
-            className="flex items-start gap-2.5 text-[11px] leading-relaxed text-zinc-400"
-          >
-            <span aria-hidden="true" className="mt-px shrink-0 text-sm leading-none">
-              {t.medal}
-            </span>
-            <span>
-              <span className="font-semibold text-zinc-200">{t.label}</span>
-              <span className="text-zinc-600"> — </span>
-              {t.detail}
-            </span>
-          </li>
-        ))}
-      </ul>
+      <div className="flex items-center justify-between gap-3">
+        <span className="font-semibold text-zinc-200">Info</span>
+        <Switch checked={infoOpen} onChange={onInfoToggle} label="Info" on="bg-sky-600" />
+      </div>
+      {infoOpen && (
+        <ul className="mt-2 flex flex-col gap-2">
+          {WORKS_TIERS.map((t) => (
+            <li key={t.label} className="leading-relaxed text-zinc-400">
+              <span className="flex flex-col gap-0.5">
+                <span className="font-semibold text-zinc-200">{t.label}</span>
+                <span>{t.detail}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }
@@ -597,7 +590,9 @@ export default function App() {
 
         {/* Main app */}
         {caps && onboarded === true && (
-          <AnimatePresence mode="wait">
+          <div className="flex flex-col gap-3">
+            <WhereItWorks />
+            <AnimatePresence mode="wait">
             {currentDoc ? (
               <m.div
                 key="filing"
@@ -607,6 +602,22 @@ export default function App() {
               >
                 {/* The panel can outlive the analyzed page (session-storage recovery),
                     so the on-demand entry point must stay reachable here too. */}
+                {isLowConfidenceGeneric(currentDoc) && (
+                  <Banner tone="warn" className="px-4 py-3 text-[11px]">
+                    <span className="font-semibold">This page doesn&rsquo;t look like an SEC filing</span>
+                    {' — investor analysis, sentiment, and redline are unavailable. Summary and language flags still apply; on-page highlights are off, '}
+                    <span className="whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => setFlagOverlayPref(true)}
+                        className="inline font-medium text-amber-200 underline decoration-amber-400/50 underline-offset-2 transition hover:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+                      >
+                        show them anyway
+                      </button>
+                      .
+                    </span>
+                  </Banner>
+                )}
                 <button
                   onClick={() => void startAnalyze()}
                   disabled={analyzing}
@@ -679,22 +690,6 @@ export default function App() {
                     an <span className="font-medium">exNN</span> suffix) for full investor analysis.
                   </Banner>
                 )}
-                {isLowConfidenceGeneric(currentDoc) && (
-                  <Banner tone="warn" icon={<span className="text-base">⚠</span>} className="gap-2.5 px-4 py-3 text-[13px]">
-                    <span className="font-semibold">This page doesn&rsquo;t look like an SEC filing</span>{' '}
-                    — investor analysis, sentiment, and redline are unavailable. Summary and language
-                    flags still apply; on-page highlights are off,{' '}
-                    <button
-                      onClick={() => setFlagOverlayPref(true)}
-                      className="font-medium text-amber-200 underline decoration-amber-400/50 underline-offset-2 transition hover:text-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
-                    >
-                      show them anyway
-                    </button>
-                    .
-                  </Banner>
-                )}
-                {isLowConfidenceGeneric(currentDoc) && <WhereItWorks />}
-                <OverlayControls />
                 <TabBar active={activeTab} onSelect={setActiveTab} tabs={visibleTabs} />
 
                 {/* Tab panels — kept mounted to preserve async state across switches.
@@ -752,6 +747,7 @@ export default function App() {
               </m.div>
             )}
           </AnimatePresence>
+          </div>
         )}
 
         {/* Onboarding still loading */}

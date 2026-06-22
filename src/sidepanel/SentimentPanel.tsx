@@ -306,7 +306,7 @@ export function SentimentPanel({ doc }: SentimentPanelProps) {
         }));
 
         // Progressive highlight — always push to the page; the content script
-        // paints only when the master heatmap overlay is on (OverlayControls).
+        // paints only when the master heatmap overlay is on.
         if (m.results.length > 0) {
           void sendSentimentToContent(m.results);
         }
@@ -521,7 +521,7 @@ export function SentimentPanel({ doc }: SentimentPanelProps) {
       {isDone && (
         <button
           onClick={() => void analyze()}
-          className="w-full rounded-md bg-zinc-800/50 py-1.5 text-[11px] text-zinc-500 ring-1 ring-zinc-800 hover:bg-zinc-800 hover:text-zinc-300 transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+          className="flex w-full items-center justify-center rounded-[4px] border border-sky-500/40 px-3 py-2 text-[13px] font-[Georgia,serif] font-medium text-sky-400 transition hover:border-sky-400/60 hover:bg-zinc-900/50 hover:text-sky-300 disabled:cursor-default disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
           aria-label="Re-run sentiment analysis"
         >
           Re-analyze

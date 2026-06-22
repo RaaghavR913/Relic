@@ -12,8 +12,9 @@
 //   → stored dot-product is equivalent to cosine similarity.
 // ============================================================
 
-import { pipeline, env } from '@huggingface/transformers';
+import { pipeline } from '@huggingface/transformers';
 import type { WorkerOutbound, WorkerProgressMsg } from '@/messages/types';
+import { configureBundledModelEnv } from '@/workers/transformersEnv';
 
 // The feature-extraction pipeline is callable: (texts, opts) => Tensor. The broad union
 // type returned by pipeline() is not directly callable, so we model the call signature.
@@ -49,18 +50,7 @@ async function init(
   forceWasm = false,
 ): Promise<void> {
   initParams = { wasmPaths, modelBasePath, modelId, numThreads };
-  // Configure ONNX Runtime WASM paths — must be set before any pipeline is created.
-  // ORT resolves both the backend glue (.mjs) and binary (.wasm) under this prefix;
-  // the build copies every ort-wasm-* glue+binary into dist/wasm/ to match.
-  (env.backends.onnx.wasm as Record<string, unknown>).wasmPaths = wasmPaths;
-  (env.backends.onnx.wasm as Record<string, unknown>).numThreads = numThreads;
-
-  // Zero-egress: load weights ONLY from the bundled extension files. Never reach
-  // out to the Hugging Face Hub at runtime. `modelBasePath` is the extension URL
-  // chrome.runtime.getURL('models/'); weights live at `${modelBasePath}${modelId}/`.
-  env.allowRemoteModels = false;
-  env.allowLocalModels = true;
-  env.localModelPath = modelBasePath;
+  configureBundledModelEnv(wasmPaths, modelBasePath, numThreads);
 
   const progressCallback = (progress: unknown) => {
     const p = progress as { status?: string; progress?: number; file?: string };

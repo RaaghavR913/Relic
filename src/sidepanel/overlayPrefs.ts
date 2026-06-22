@@ -5,7 +5,7 @@
 // (sentiment heatmap, language flags). Persisted to chrome.storage.local and
 // pushed to the active tab's content script as pure visibility switches.
 //
-// Several components subscribe (OverlayControls + SentimentPanel), so a tiny
+// Several components subscribe (SentimentPanel), so a tiny
 // in-module emitter keeps every useOverlayPrefs() instance in sync without a
 // global React context.
 // ============================================================
