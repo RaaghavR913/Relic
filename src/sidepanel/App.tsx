@@ -11,6 +11,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import type { ReactNode } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
 import { useCapabilities } from '../runtime/useCapabilities';
 import type { DocumentModel, LanguageFlag } from '@/types';
@@ -115,6 +116,81 @@ function analyzeFailCopy(response: AnalyzePageResponse | undefined): string {
     }
   }
   return 'Analysis failed: no response from the extension background.';
+}
+
+// ── "where Disclora works best" guide ───────────────────────────────────────────
+
+/**
+ * Digestible companion to the "not an SEC filing" notice: a three-tier cheat
+ * sheet telling users where Disclora does the most, so they know where to point
+ * it next. Purely explanatory — it changes no analysis behaviour and reads from
+ * no document, it's a static UI affordance shown only beside that notice.
+ */
+const WORKS_TIERS: ReadonlyArray<{ medal: string; label: string; detail: ReactNode }> = [
+  {
+    medal: '🥇',
+    label: 'Best',
+    detail: (
+      <>
+        <span className="font-medium text-zinc-200">sec.gov</span> EDGAR filing pages — a{' '}
+        <span className="font-medium text-zinc-300">10-K / 10-Q / 8-K / 20-F / S-1 / proxy</span>{' '}
+        primary <span className="rounded bg-zinc-800 px-1 py-px font-mono text-[10px] text-zinc-300">.htm</span>{' '}
+        document. Full investor analysis, sentiment, and year-over-year redline.
+      </>
+    ),
+  },
+  {
+    medal: '🥈',
+    label: 'Good',
+    detail: (
+      <>
+        annualreports.com · stockanalysis.com · fool.com · benzinga.com — full features when the
+        page is an actual filing.
+      </>
+    ),
+  },
+  {
+    medal: '📄',
+    label: 'Anywhere',
+    detail: (
+      <>
+        Any other readable page —{' '}
+        <span className="font-medium text-zinc-300">Summary + language flags</span> only, like this
+        one.
+      </>
+    ),
+  },
+];
+
+/** Three-tier "where it works best" guide, rendered beneath the low-confidence notice. */
+function WhereItWorks() {
+  return (
+    <section
+      aria-label="Where Disclora works best"
+      className="rounded-lg bg-zinc-900/60 px-3 py-2.5 ring-1 ring-inset ring-zinc-800"
+    >
+      <p className="text-[10px] font-medium uppercase tracking-wider text-zinc-500">
+        Where Disclora works best
+      </p>
+      <ul className="mt-2 flex flex-col gap-2">
+        {WORKS_TIERS.map((t) => (
+          <li
+            key={t.label}
+            className="flex items-start gap-2.5 text-[11px] leading-relaxed text-zinc-400"
+          >
+            <span aria-hidden="true" className="mt-px shrink-0 text-sm leading-none">
+              {t.medal}
+            </span>
+            <span>
+              <span className="font-semibold text-zinc-200">{t.label}</span>
+              <span className="text-zinc-600"> — </span>
+              {t.detail}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 // ── header ────────────────────────────────────────────────────────────────────
@@ -617,6 +693,7 @@ export default function App() {
                     .
                   </Banner>
                 )}
+                {isLowConfidenceGeneric(currentDoc) && <WhereItWorks />}
                 <OverlayControls />
                 <TabBar active={activeTab} onSelect={setActiveTab} tabs={visibleTabs} />
 
