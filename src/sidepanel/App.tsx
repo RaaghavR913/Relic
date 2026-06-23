@@ -29,12 +29,15 @@ import { SentimentPanel } from './SentimentPanel';
 import { RedlinePanel } from './RedlinePanel';
 import { FirstRun } from './FirstRun';
 import { Switch } from './OverlayControls';
+import { WORKS_TIERS } from '@/shared/worksTiers';
 import {
   Spinner,
   SkeletonCard,
   Banner,
   EmptyState,
   BrandLogo,
+  SettingsButton,
+  VERSION_ACCENT,
   stateColor,
   stateLabel,
 } from './ui';
@@ -125,23 +128,6 @@ const INFO_OPEN_KEY = 'disclora:infoOpen';
  * Static cheat sheet for where Disclora works best. Shown on every page;
  * the Info toggle persists across sessions via chrome.storage.local.
  */
-const WORKS_TIERS: ReadonlyArray<{ label: string; detail: string }> = [
-  {
-    label: 'Best: SEC EDGAR filings',
-    detail:
-      '10-K, 10-Q, 8-K, 20-F, S-1, and proxy .htm filings on sec.gov. Full analysis, sentiment, and year-over-year redlines.',
-  },
-  {
-    label: 'Supported: Filing pages',
-    detail:
-      'AnnualReports, StockAnalysis, Fool, and Benzinga pages with actual filing content.',
-  },
-  {
-    label: 'Basic: Any website',
-    detail: 'Summary and language flags only.',
-  },
-];
-
 /** Three-tier support guide — always available; visibility controlled by the Info toggle. */
 function WhereItWorks() {
   const [infoOpen, setInfoOpen] = useState(true);
@@ -205,7 +191,15 @@ function Header({ doc, hideDocMeta = false }: { doc: DocumentModel | null; hideD
       <div className="flex items-center gap-2.5">
         <BrandLogo className="h-6 w-6" />
         <span className="text-[19px] font-semibold tracking-tight font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">Disclora</span>
-        <span className="ml-auto text-xs text-[#39FF14] font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">v{chrome.runtime.getManifest().version}</span>
+        <div className="ml-auto flex items-center gap-1.5">
+          <SettingsButton />
+          <span
+            className="text-xs font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]"
+            style={{ color: VERSION_ACCENT }}
+          >
+            v{chrome.runtime.getManifest().version}
+          </span>
+        </div>
       </div>
       {doc && !hideDocMeta && (
         <div className="mt-2">

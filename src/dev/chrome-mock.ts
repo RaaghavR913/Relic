@@ -69,6 +69,9 @@ export function installChromeMock(scenario: PreviewScenario): void {
       getManifest: () => ({ version: '1.2.7', name: 'Disclora' }),
       getURL: (resource: string) =>
         resource === 'brand-logo.png' ? '/brand-logo.png' : `chrome-extension://mock/${resource}`,
+      openOptionsPage: () => {
+        window.open('/src/settings/index.html', '_blank', 'noopener,noreferrer');
+      },
       sendMessage: async (msg: { type?: string }) => {
         if (msg?.type === 'ANALYZE_PAGE') return { ok: true };
         return undefined;

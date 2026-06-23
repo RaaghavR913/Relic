@@ -181,6 +181,52 @@ export function BrandLogo({ className = 'h-6 w-6' }: { className?: string }) {
   );
 }
 
+/** Lime accent used for the version label and settings control in the header. */
+export const VERSION_ACCENT = '#39FF14';
+
+/** User + gear settings glyph — profile ring with corner gear (attached artwork). */
+export function SettingsIcon({ className = 'h-[18px] w-[18px]' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+      <path
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        d="M6.35 5.85a8.65 8.65 0 1 0 12.3 1.35"
+      />
+      <circle cx="12" cy="10.35" r="2.6" />
+      <path d="M7.45 16.85c0-2.45 2.03-4.45 4.55-4.45s4.55 2 4.55 4.45" />
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M17 2L18.07 3.19L19.64 3.52L19.15 5.05L19.64 6.57L18.07 6.91L17 8.1L15.93 6.91L14.36 6.58L14.85 5.05L14.36 3.52L15.92 3.19L17 2ZM16.05 5.05a.95.95 0 1 0 1.9 0 .95.95 0 1 0-1.9 0Z"
+      />
+    </svg>
+  );
+}
+
+/** Opens the extension settings page (How it works & settings). */
+export function SettingsButton() {
+  return (
+    <button
+      type="button"
+      onClick={() => chrome.runtime.openOptionsPage()}
+      className="group relative -mr-0.5 flex shrink-0 items-center rounded p-0.5 transition hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+      style={{ color: VERSION_ACCENT }}
+      aria-label="How it works & Settings"
+    >
+      <SettingsIcon />
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute right-0 top-full z-10 mt-1.5 hidden whitespace-nowrap rounded bg-zinc-800 px-2 py-1 text-[10px] font-medium text-zinc-200 shadow-lg ring-1 ring-zinc-700 group-hover:block group-focus-visible:block"
+      >
+        How it works &amp; Settings
+      </span>
+    </button>
+  );
+}
+
 export function LockIcon({ className = 'h-4 w-4' }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden="true">

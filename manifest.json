@@ -64,6 +64,10 @@
   "side_panel": {
     "default_path": "src/sidepanel/index.html"
   },
+  "options_ui": {
+    "page": "src/settings/index.html",
+    "open_in_tab": true
+  },
   "action": {
     "default_title": "Disclora",
     "default_icon": {
