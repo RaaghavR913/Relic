@@ -27,9 +27,8 @@ type SectionStatus = 'idle' | 'loading' | 'done' | 'error';
 
 interface SectionState {
   status: SectionStatus;
-  plain?: string;
-  analyst?: string;
-  plainAnchors?: ReadonlyArray<[number, number]>;
+  summary?: string;
+  anchors?: ReadonlyArray<[number, number]>;
   analystAvailable?: boolean;
   fromCache?: boolean;
   error?: string;
@@ -90,15 +89,11 @@ async function clearDocHighlights(): Promise<void> {
 function SectionCard({
   section,
   state,
-  view,
-  extractiveTier,
   onSummarize,
   onJumpTo,
 }: {
   section: Section;
   state: SectionState;
-  view: 'plain' | 'analyst';
-  extractiveTier: boolean;
   onSummarize: () => void;
   onJumpTo: (anchor: [number, number]) => void;
 }) {
@@ -107,13 +102,7 @@ function SectionCard({
   const isLoading = state.status === 'loading';
   const isError = state.status === 'error';
 
-  const displayText = isDone
-    ? view === 'analyst' && state.analystAvailable
-      ? state.analyst
-      : state.plain
-    : null;
-
-  const anchors = state.plainAnchors ?? [];
+  const anchors = state.anchors ?? [];
 
   return (
     <div className="rounded-lg bg-zinc-900 ring-1 ring-zinc-800 overflow-hidden">
@@ -177,8 +166,9 @@ function SectionCard({
             <div className="px-3 pb-3 border-t border-zinc-800/60">
               <div className="pt-2.5">
                 {/* Summary text */}
-                {extractiveTier ? (
-                  // Extractive: show each sentence as a separate bullet with jump link
+                {!state.analystAvailable ? (
+                  // No analyst note (extractive / fallback): show each key sentence
+                  // as a separate bullet with a jump link.
                   <div className="space-y-1.5">
                     {anchors.map((anchor, idx) => {
                       const sentText = section.text.slice(anchor[0], anchor[1]);
@@ -200,9 +190,9 @@ function SectionCard({
                     })}
                   </div>
                 ) : (
-                  // Builtin: render markdown + single jump-to-section
+                  // Analyst note: render markdown + single jump-to-section
                   <div className="flex flex-col gap-2">
-                    <MarkdownText md={displayText ?? ''} />
+                    <MarkdownText md={state.summary ?? ''} />
                     {anchors[0] !== undefined && (
                       <div className="flex flex-wrap items-center gap-3">
                         <button
@@ -251,7 +241,6 @@ export function SummaryPanel({ doc, detectedTier }: SummaryPanelProps) {
   const [states, setStates] = useState<Record<string, SectionState>>(() =>
     Object.fromEntries(sections.map((s) => [s.id, { status: 'idle' as const }])),
   );
-  const [view, setView] = useState<'plain' | 'analyst'>('plain');
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
 
   // Dev: force mode override
@@ -293,9 +282,8 @@ export function SummaryPanel({ doc, detectedTier }: SummaryPanelProps) {
             ...prev,
             [section.id]: {
               status: 'done',
-              plain: entry.plain,
-              analyst: entry.analyst,
-              plainAnchors: entry.plainAnchors,
+              summary: entry.analyst,
+              anchors: entry.plainAnchors,
               analystAvailable: entry.register === 'builtin',
               fromCache: true,
             },
@@ -349,9 +337,8 @@ export function SummaryPanel({ doc, detectedTier }: SummaryPanelProps) {
         ...prev,
         [section.id]: {
           status: 'done',
-          plain: result.plain,
-          analyst: result.analyst,
-          plainAnchors: result.plainAnchors,
+          summary: result.summary,
+          anchors: result.anchors,
           analystAvailable: result.analystAvailable,
           fromCache: result.fromCache,
         },
@@ -496,38 +483,6 @@ export function SummaryPanel({ doc, detectedTier }: SummaryPanelProps) {
         </div>
       )}
 
-      {/* Plain / Analyst view toggle */}
-      <div
-        className="flex items-center rounded-md bg-zinc-800/60 p-0.5 ring-1 ring-zinc-700/40"
-        role="tablist"
-        aria-label="Summary view"
-      >
-        {(['plain', 'analyst'] as const).map((v) => {
-          const isAnalyst = v === 'analyst';
-          const disabled = isAnalyst && extractiveTier;
-          const label = isAnalyst && extractiveTier ? 'Analyst (n/a)' : isAnalyst ? 'Analyst' : 'Plain';
-          return (
-            <button
-              key={v}
-              role="tab"
-              aria-selected={view === v}
-              aria-disabled={disabled}
-              onClick={() => { if (!disabled) setView(v); }}
-              title={disabled ? 'Analyst notes require Chrome built-in AI' : undefined}
-              className={`flex-1 rounded py-1 text-[11px] font-medium transition
-                ${view === v && !disabled
-                  ? 'bg-zinc-700 text-zinc-100 shadow-sm'
-                  : disabled
-                    ? 'text-zinc-600 cursor-not-allowed'
-                    : 'text-zinc-400 hover:text-zinc-200'
-                }`}
-            >
-              {label}
-            </button>
-          );
-        })}
-      </div>
-
       {/* Section cards */}
       <div className="flex flex-col gap-2">
         {sections.map((section) => (
@@ -535,8 +490,6 @@ export function SummaryPanel({ doc, detectedTier }: SummaryPanelProps) {
             key={section.id}
             section={section}
             state={states[section.id] ?? { status: 'idle' }}
-            view={view}
-            extractiveTier={extractiveTier}
             onSummarize={() => void summarize(section)}
             onJumpTo={(anchor) => void jumpTo(anchor, section)}
           />

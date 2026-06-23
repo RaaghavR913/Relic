@@ -1,8 +1,8 @@
 // ============================================================
-// Disclora — Session 3 tests: extractive algorithm + builtin multi-chunk
+// Disclora — Session 3 tests: extractive algorithm
 // ============================================================
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   splitSentences,
   rankByCentrality,
@@ -11,7 +11,6 @@ import {
   cosineSim,
   type SentenceSpan,
 } from '../src/summarizer/extractive';
-import { summarizeInChunks, type SummarizerInstance } from '../src/summarizer/summarize';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -270,77 +269,6 @@ describe('extractive pipeline (unit)', () => {
     // All selected text must be substrings of original
     for (const s of top) {
       expect(text.slice(s.range[0], s.range[1])).toBe(s.text);
-    }
-  });
-});
-
-// ── summarizeInChunks (builtin multi-chunk merge) ─────────────────────────────
-
-function makeMockSummarizer(responses?: string[]): SummarizerInstance & { callCount: number } {
-  let idx = 0;
-  return {
-    callCount: 0,
-    summarize: vi.fn().mockImplementation(async () => {
-      const r = responses?.[idx] ?? `chunk-summary-${idx}`;
-      idx++;
-      // Use Object.defineProperty to keep callCount in sync with the mock call count
-      return r;
-    }),
-    destroy: vi.fn(),
-  };
-}
-
-describe('summarizeInChunks', () => {
-  it('calls summarize once per chunk plus one merge call for a 3-chunk section', async () => {
-    // Build a ~24,000-char text that splits into ~3 chunks under the 8,000-char cap
-    const para = 'The company faces material risks including supply chain disruption and FX exposure. ';
-    const text = para.repeat(300).trim(); // ~24,300 chars
-
-    const mock = makeMockSummarizer();
-    const result = await summarizeInChunks(text, mock, undefined);
-
-    // Should be called N times for chunks + 1 for merge (N >= 3)
-    const calls = (mock.summarize as ReturnType<typeof vi.fn>).mock.calls.length;
-    expect(calls).toBeGreaterThanOrEqual(4); // at least 3 chunks + 1 merge
-    expect(typeof result).toBe('string');
-  });
-
-  it('returns the result of the merge summarize call as the final output', async () => {
-    const para = 'Revenue increased significantly year-over-year driven by strong demand. ';
-    const text = para.repeat(200).trim(); // ~14,000 chars
-
-    const responses = ['summary-a', 'summary-b', 'MERGED'];
-    const mock = makeMockSummarizer(responses);
-    const result = await summarizeInChunks(text, mock, undefined);
-
-    // Last call is the merge; its return value is the final output
-    expect(result).toBe('MERGED');
-  });
-
-  it('the merge call context mentions synthesizing partial summaries', async () => {
-    const para = 'Regulatory compliance costs rose materially during the period. ';
-    const text = para.repeat(200).trim(); // ~12,400 chars
-
-    const mock = makeMockSummarizer();
-    await summarizeInChunks(text, mock, undefined);
-
-    const calls = (mock.summarize as ReturnType<typeof vi.fn>).mock.calls as [string, { context?: string }][];
-    const lastCall = calls[calls.length - 1]!;
-    expect(lastCall[1]?.context).toMatch(/partial summaries/i);
-    expect(lastCall[1]?.context).toMatch(/synthesize/i);
-  });
-
-  it('passes the AbortSignal through to every summarize call', async () => {
-    const para = 'Geopolitical uncertainty could affect global operations and supply chains. ';
-    const text = para.repeat(200).trim(); // ~14,200 chars
-
-    const controller = new AbortController();
-    const mock = makeMockSummarizer();
-    await summarizeInChunks(text, mock, controller.signal);
-
-    const calls = (mock.summarize as ReturnType<typeof vi.fn>).mock.calls as [string, { signal?: AbortSignal }][];
-    for (const [, opts] of calls) {
-      expect(opts?.signal).toBe(controller.signal);
     }
   });
 });

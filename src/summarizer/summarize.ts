@@ -5,8 +5,10 @@
 // and chrome.runtime.sendMessage).
 //
 // Two-tier strategy keyed off `effectiveTier`:
-//   'builtin'   → Chrome Summarizer API (plain) + Prompt API (analyst)
-//   'extractive' → embedding-centrality sentences via offscreen (plain only)
+//   'builtin'    → Chrome Prompt API → investor "analyst note"
+//   'extractive' → embedding-centrality key sentences via offscreen
+// When the Prompt API is unavailable (or fails), builtin falls back to the
+// extractive key-sentence path so a summary is always produced.
 //
 // Cache: IndexedDB keyed by rawTextHash + sectionId + register.
 // Privacy: section text never leaves the device.
@@ -15,29 +17,27 @@
 import type { Section, DocumentModel } from '@/types';
 import {
   LANGUAGE_MODEL_LANGUAGE,
-  SUMMARIZER_LANGUAGE,
   type GenerationTier,
 } from '@/runtime/capabilities';
 import type { SummarizeSectionMsg, ExtractiveResponse } from '@/messages/types';
 import { getCachedSummary, putSummary } from './summaryStore';
-import { splitTextForSummarization } from '@/offscreen/chunker';
 
 // ── public types ──────────────────────────────────────────────────────────────
 
 export const DISCLAIMER = 'AI summary — verify against source.';
 
 export interface SummaryResult {
-  plain: string;
-  analyst: string;
+  /** Builtin: the analyst note. Extractive / fallback: joined key sentences. */
+  summary: string;
   /**
    * SECTION-space char ranges [start, end) for jump-to-source.
    * UI adds section.charRange[0] to get DOCUMENT-space for HIGHLIGHT_RANGE.
    * Builtin: one entry for the whole section [0, section.text.length].
    * Extractive: one entry per selected sentence.
    */
-  plainAnchors: ReadonlyArray<[number, number]>;
+  anchors: ReadonlyArray<[number, number]>;
   register: GenerationTier;
-  /** True when an analyst note is available (builtin tier only). */
+  /** True when an analyst note was produced (Prompt API). */
   analystAvailable: boolean;
   fromCache: boolean;
 }
@@ -46,31 +46,11 @@ export interface SummaryResult {
 // Minimal interfaces for the APIs we call; keeps us off globalThis casting
 // while remaining compatible with @types/dom-chromium-ai.
 
-interface SummarizerMonitor {
+interface DownloadMonitor {
   addEventListener(
     type: 'downloadprogress',
     cb: (e: { loaded: number; total: number }) => void,
   ): void;
-}
-
-export interface SummarizerInstance {
-  summarize(
-    text: string,
-    opts?: { context?: string; signal?: AbortSignal },
-  ): Promise<string>;
-  destroy(): void;
-}
-
-interface SummarizerCtor {
-  create(opts: {
-    type?: string;
-    format?: string;
-    length?: string;
-    outputLanguage?: string;
-    expectedInputLanguages?: string[];
-    monitor?: (m: SummarizerMonitor) => void;
-    signal?: AbortSignal;
-  }): Promise<SummarizerInstance>;
 }
 
 interface LMSession {
@@ -80,16 +60,13 @@ interface LMSession {
 
 interface LMCtor {
   create(opts: {
-    expectedInputs?: Array<{ type: string; languages: readonly string[] }>;
-    expectedOutputs?: Array<{ type: string; languages: readonly string[] }>;
+    // ReadonlyArray so the `as const` LANGUAGE_MODEL_LANGUAGE tuples assign cleanly.
+    expectedInputs?: ReadonlyArray<{ type: string; languages: readonly string[] }>;
+    expectedOutputs?: ReadonlyArray<{ type: string; languages: readonly string[] }>;
     initialPrompts?: Array<{ role: string; content: string }>;
-    monitor?: (m: SummarizerMonitor) => void;
+    monitor?: (m: DownloadMonitor) => void;
     signal?: AbortSignal;
   }): Promise<LMSession>;
-}
-
-function getSummarizer(): SummarizerCtor | undefined {
-  return (globalThis as Record<string, unknown>)['Summarizer'] as SummarizerCtor | undefined;
 }
 
 function getLanguageModel(): LMCtor | undefined {
@@ -98,7 +75,6 @@ function getLanguageModel(): LMCtor | undefined {
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
-const MAX_SUMMARIZER_CHARS = 8_000;
 const MAX_ANALYST_CHARS = 4_000;
 
 const ANALYST_SYSTEM_PROMPT =
@@ -115,7 +91,7 @@ const ANALYST_SYSTEM_PROMPT =
 // ── public entry point ────────────────────────────────────────────────────────
 
 /**
- * Produce { plain, analyst } for a section.
+ * Produce a { summary } for a section.
  * Checks cache first; writes result to cache after generation.
  */
 export async function summarizeSection(
@@ -131,9 +107,8 @@ export async function summarizeSection(
   const cached = await getCachedSummary(doc.rawTextHash, section.id, opts.effectiveTier);
   if (cached) {
     return {
-      plain: cached.plain,
-      analyst: cached.analyst,
-      plainAnchors: cached.plainAnchors,
+      summary: cached.analyst,
+      anchors: cached.plainAnchors,
       register: opts.effectiveTier,
       analystAvailable: opts.effectiveTier === 'builtin',
       fromCache: true,
@@ -142,17 +117,18 @@ export async function summarizeSection(
 
   const result =
     opts.effectiveTier === 'builtin'
-      ? await runBuiltin(section, opts)
+      ? await runBuiltin(section, doc.rawTextHash, opts)
       : await runExtractive(section, doc.rawTextHash);
 
-  // Persist (best-effort — don't fail summarization if cache write fails)
+  // Persist (best-effort — don't fail summarization if cache write fails).
+  // The store schema keeps `plain` for back-compat; it now mirrors `analyst`.
   await putSummary({
     rawTextHash: doc.rawTextHash,
     sectionId: section.id,
     register: opts.effectiveTier,
-    plain: result.plain,
-    analyst: result.analyst,
-    plainAnchors: result.plainAnchors as Array<[number, number]>,
+    plain: result.summary,
+    analyst: result.summary,
+    plainAnchors: result.anchors as Array<[number, number]>,
     cachedAt: Date.now(),
   }).catch(console.warn);
 
@@ -163,6 +139,7 @@ export async function summarizeSection(
 
 async function runBuiltin(
   section: Section,
+  rawTextHash: string,
   opts: { onDownloadProgress?: (loaded: number) => void; signal?: AbortSignal },
 ): Promise<SummaryResult> {
   const text = section.text;
@@ -170,113 +147,49 @@ async function runBuiltin(
     return emptyResult('builtin', section);
   }
 
-  const monitor = (m: SummarizerMonitor) => {
+  // Analyst note via Prompt API (Gemini Nano). When the Prompt API is
+  // unavailable or fails, fall back to the extractive key-sentence path so a
+  // summary is always produced.
+  const LM = getLanguageModel();
+  if (!LM) return runExtractive(section, rawTextHash);
+
+  // exactOptionalPropertyTypes: spread signal conditionally to avoid passing undefined.
+  const sig = opts.signal;
+  const monitor = (m: DownloadMonitor) => {
     m.addEventListener('downloadprogress', (e) => opts.onDownloadProgress?.(e.loaded));
   };
 
-  const SummarizerCtor = getSummarizer();
-  if (!SummarizerCtor) throw new Error('Chrome Summarizer API unavailable on this device.');
-
-  const length = text.length < 2_000 ? 'short' : 'medium';
-  // exactOptionalPropertyTypes: spread signal conditionally to avoid passing undefined.
-  const sig = opts.signal;
-  const summarizer = await SummarizerCtor.create({
-    type: 'key-points',
-    format: 'markdown',
-    length,
-    ...SUMMARIZER_LANGUAGE,
-    monitor,
-    ...(sig !== undefined ? { signal: sig } : {}),
-  });
-
-  let plain: string;
   try {
-    if (text.length <= MAX_SUMMARIZER_CHARS) {
-      plain = await summarizer.summarize(text, {
-        context: 'This is a section from an SEC regulatory filing.',
-        ...(sig !== undefined ? { signal: sig } : {}),
-      });
-    } else {
-      plain = await summarizeInChunks(text, summarizer, sig);
-    }
-  } finally {
-    summarizer.destroy();
-  }
-
-  // Analyst note via Prompt API (Gemini Nano)
-  let analyst = plain;
-  let analystAvailable = false;
-  const LM = getLanguageModel();
-  if (LM) {
-    try {
-      const session = await LM.create({
-        ...LANGUAGE_MODEL_LANGUAGE,
-        initialPrompts: [{ role: 'system', content: ANALYST_SYSTEM_PROMPT }],
-        monitor,
-        ...(sig !== undefined ? { signal: sig } : {}),
-      });
-      try {
-        analyst = await session.prompt(
-          `Section: ${section.label}\n\n${text.slice(0, MAX_ANALYST_CHARS)}`,
-          ...(sig !== undefined ? [{ signal: sig }] : []),
-        );
-        analystAvailable = true;
-      } finally {
-        session.destroy();
-      }
-    } catch {
-      // LM unavailable or failed — fall back to the plain summary
-      analyst = plain;
-    }
-  }
-
-  // Whole-section anchor in SECTION space
-  const sectionAnchor: [number, number] = [0, text.length];
-
-  return {
-    plain,
-    analyst,
-    plainAnchors: [sectionAnchor],
-    register: 'builtin',
-    analystAvailable,
-    fromCache: false,
-  };
-}
-
-// ── multi-chunk merge ─────────────────────────────────────────────────────────
-
-/**
- * Summarize a section that exceeds MAX_SUMMARIZER_CHARS by splitting it into
- * sequential chunks, summarizing each, then condensing the chunk summaries into
- * one coherent section summary.
- *
- * Exported for unit-testing with a mock summarizer.
- */
-export async function summarizeInChunks(
-  text: string,
-  summarizer: SummarizerInstance,
-  signal: AbortSignal | undefined,
-): Promise<string> {
-  const chunks = splitTextForSummarization(text, MAX_SUMMARIZER_CHARS);
-  const sigOpts = signal !== undefined ? { signal } : {};
-
-  const chunkSummaries: string[] = [];
-  for (const chunk of chunks) {
-    const s = await summarizer.summarize(chunk, {
-      context: 'This is a portion of an SEC regulatory filing section.',
-      ...sigOpts,
+    const session = await LM.create({
+      ...LANGUAGE_MODEL_LANGUAGE,
+      initialPrompts: [{ role: 'system', content: ANALYST_SYSTEM_PROMPT }],
+      monitor,
+      ...(sig !== undefined ? { signal: sig } : {}),
     });
-    chunkSummaries.push(s);
-  }
 
-  // Merge pass: condense chunk summaries into one coherent, non-redundant summary.
-  const mergeInput = chunkSummaries.join('\n\n').slice(0, MAX_SUMMARIZER_CHARS);
-  return summarizer.summarize(mergeInput, {
-    context:
-      'These are partial summaries of a single SEC filing section. ' +
-      'Synthesize them into one concise, coherent, non-redundant summary.',
-    ...sigOpts,
-  });
+    let analyst: string;
+    try {
+      analyst = await session.prompt(
+        `Section: ${section.label}\n\n${text.slice(0, MAX_ANALYST_CHARS)}`,
+        ...(sig !== undefined ? [{ signal: sig }] : []),
+      );
+    } finally {
+      session.destroy();
+    }
+
+    return {
+      summary: analyst,
+      // Whole-section anchor in SECTION space.
+      anchors: [[0, text.length]],
+      register: 'builtin',
+      analystAvailable: true,
+      fromCache: false,
+    };
+  } catch (err) {
+    // Respect aborts; otherwise fall back to extractive key sentences.
+    if (sig?.aborted) throw err;
+    return runExtractive(section, rawTextHash);
+  }
 }
 
 // ── extractive tier ───────────────────────────────────────────────────────────
@@ -309,13 +222,12 @@ async function runExtractive(
     return emptyResult('extractive', section);
   }
 
-  const plain = sentences.map((s) => s.text).join(' ');
-  const plainAnchors: Array<[number, number]> = sentences.map((s) => s.range);
+  const summary = sentences.map((s) => s.text).join(' ');
+  const anchors: Array<[number, number]> = sentences.map((s) => s.range);
 
   return {
-    plain,
-    analyst: plain, // reused — analyst toggle disabled in extractive tier
-    plainAnchors,
+    summary,
+    anchors,
     register: 'extractive',
     analystAvailable: false,
     fromCache: false,
@@ -326,11 +238,12 @@ async function runExtractive(
 
 function emptyResult(register: GenerationTier, section: Section): SummaryResult {
   const snippet = section.text.trim().slice(0, 200);
-  const plain = snippet ? snippet + (section.text.trim().length > 200 ? '…' : '') : '(empty section)';
+  const summary = snippet
+    ? snippet + (section.text.trim().length > 200 ? '…' : '')
+    : '(empty section)';
   return {
-    plain,
-    analyst: plain,
-    plainAnchors: [[0, section.text.length]],
+    summary,
+    anchors: [[0, section.text.length]],
     register,
     analystAvailable: false,
     fromCache: false,

@@ -24,9 +24,9 @@ export interface SummaryEntry {
   sectionId: string;
   /** 'builtin' | 'extractive' */
   register: string;
-  /** Plain summary text (markdown for builtin, joined key sentences for extractive). */
+  /** Retained for back-compat with older entries; now mirrors `analyst`. Not read by the UI. */
   plain: string;
-  /** Analyst note (builtin only); equals `plain` for extractive. */
+  /** The displayed summary: analyst note (builtin) or joined key sentences (extractive / fallback). */
   analyst: string;
   /**
    * SECTION-space char ranges [start, end) for jump-to-source.
