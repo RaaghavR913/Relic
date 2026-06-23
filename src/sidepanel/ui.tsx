@@ -212,7 +212,7 @@ export function SettingsButton() {
     <button
       type="button"
       onClick={() => chrome.runtime.openOptionsPage()}
-      className="group relative -mr-0.5 flex shrink-0 items-center rounded p-0.5 transition hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+      className="group relative -mr-0.5 flex shrink-0 items-center rounded p-0.5 text-[18px] font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] transition hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
       style={{ color: VERSION_ACCENT }}
       aria-label="How it works & Settings"
     >

@@ -23,8 +23,9 @@ interface LMMonitor {
 }
 interface LMCtor {
   create(opts: {
-    expectedInputs?: Array<{ type: string; languages: readonly string[] }>;
-    expectedOutputs?: Array<{ type: string; languages: readonly string[] }>;
+    // ReadonlyArray so the `as const` LANGUAGE_MODEL_LANGUAGE tuples assign cleanly.
+    expectedInputs?: ReadonlyArray<{ type: string; languages: readonly string[] }>;
+    expectedOutputs?: ReadonlyArray<{ type: string; languages: readonly string[] }>;
     initialPrompts?: Array<{ role: string; content: string }>;
     monitor?: (m: LMMonitor) => void;
     signal?: AbortSignal;

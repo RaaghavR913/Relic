@@ -401,34 +401,11 @@ export interface SentimentOkResponse {
 export interface SentimentErrResponse { ok: false; error: string }
 export type SentimentResponse = SentimentOkResponse | SentimentErrResponse;
 
-/**
- * Side panel → Content (via tabs.sendMessage): add sentiment highlight ranges
- * to the filing. Called progressively as each section finishes.
- */
-export interface ContentSentimentAddMsg {
-  target: 'content';
-  type: 'SENTIMENT_ADD_RANGES';
-  results: SentenceSentiment[];
-}
-
-/** Side panel → Content: clear all sentiment highlight layers. */
-export interface ContentClearSentimentMsg {
-  target: 'content';
-  type: 'CLEAR_SENTIMENT';
-}
-
-// ── Session 7: master overlay toggles ─────────────────────────────────────────
+// ── Session 7: master overlay toggle ──────────────────────────────────────────
 //
-// The content script caches the last-applied sentiment ranges and the document's
-// flags, so the side-panel "Overlay controls" surface can show/hide each overlay
-// WITHOUT re-running analysis. These are pure visibility switches.
-
-/** Side panel → Content: show/hide the sentiment heatmap from cached ranges. */
-export interface ContentSetSentimentOverlayMsg {
-  target: 'content';
-  type: 'SET_SENTIMENT_OVERLAY';
-  enabled: boolean;
-}
+// The content script caches the document's flags, so the side-panel "Overlay
+// controls" surface can show/hide the overlay WITHOUT re-running analysis.
+// This is a pure visibility switch.
 
 /** Side panel → Content: show/hide the language-flag overlay (and its tooltip). */
 export interface ContentSetFlagOverlayMsg {

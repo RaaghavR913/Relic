@@ -1,13 +1,11 @@
 // ============================================================
-// Disclora — Session 4 tests: FinBERT sentiment heatmap
+// Disclora — Session 4 tests: FinBERT sentiment
 // ============================================================
 //
 // Tests cover:
 //   1. sentenceSplit edge-cases specific to SEC/financial text.
 //   2. Table-range exclusion logic (the standalone predicate used in offscreen.ts).
-//   3. getSentimentLayer() bucketing.
-//   4. Sentiment aggregate computation.
-//   5. Sanity-check labels: Risk Factor sentences should score negative more
+//   3. Sanity-check labels: Risk Factor sentences should score negative more
 //      than positive when classified with a simple heuristic (model-free proxy).
 //
 // The actual FinBERT model is NOT loaded in unit tests (no ONNX runtime in
@@ -17,7 +15,6 @@
 
 import { describe, it, expect } from 'vitest';
 import { splitSentences } from '../src/summarizer/extractive';
-import { getSentimentLayer, SENTIMENT_LAYERS } from '../src/content/highlight/demo';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -35,19 +32,6 @@ function notInTable(
   const docStart = sectionDocOffset + sentSectionStart;
   const docEnd = sectionDocOffset + sentSectionEnd;
   return !tableRanges.some(([ts, te]) => docStart < te && docEnd > ts);
-}
-
-/** Simple aggregate counter for test assertions. */
-function aggregate(labels: string[]): { pos: number; neg: number; neu: number } {
-  let pos = 0;
-  let neg = 0;
-  let neu = 0;
-  for (const l of labels) {
-    if (l === 'positive') pos++;
-    else if (l === 'negative') neg++;
-    else neu++;
-  }
-  return { pos, neg, neu };
 }
 
 // ── splitSentences: financial abbreviations ───────────────────────────────────
@@ -184,53 +168,6 @@ describe('table exclusion', () => {
   });
 });
 
-// ── getSentimentLayer bucketing ───────────────────────────────────────────────
-
-describe('getSentimentLayer', () => {
-  it('returns sent-neu for neutral label regardless of score', () => {
-    expect(getSentimentLayer('neutral', 0.99)).toBe('sent-neu');
-    expect(getSentimentLayer('neutral', 0.50)).toBe('sent-neu');
-  });
-
-  it('buckets positive low (score < 0.65)', () => {
-    expect(getSentimentLayer('positive', 0.51)).toBe('sent-pos-1');
-    expect(getSentimentLayer('positive', 0.64)).toBe('sent-pos-1');
-  });
-
-  it('buckets positive medium (0.65 ≤ score < 0.85)', () => {
-    expect(getSentimentLayer('positive', 0.65)).toBe('sent-pos-2');
-    expect(getSentimentLayer('positive', 0.80)).toBe('sent-pos-2');
-  });
-
-  it('buckets positive high (score ≥ 0.85)', () => {
-    expect(getSentimentLayer('positive', 0.85)).toBe('sent-pos-3');
-    expect(getSentimentLayer('positive', 0.99)).toBe('sent-pos-3');
-  });
-
-  it('buckets negative low (score < 0.65)', () => {
-    expect(getSentimentLayer('negative', 0.55)).toBe('sent-neg-1');
-  });
-
-  it('buckets negative medium (0.65 ≤ score < 0.85)', () => {
-    expect(getSentimentLayer('negative', 0.70)).toBe('sent-neg-2');
-  });
-
-  it('buckets negative high (score ≥ 0.85)', () => {
-    expect(getSentimentLayer('negative', 0.90)).toBe('sent-neg-3');
-  });
-
-  it('every layer name is in SENTIMENT_LAYERS', () => {
-    const labels = ['positive', 'negative', 'neutral'] as const;
-    const scores = [0.51, 0.70, 0.90];
-    for (const label of labels) {
-      for (const score of scores) {
-        const layer = getSentimentLayer(label, score);
-        expect(SENTIMENT_LAYERS).toContain(layer);
-      }
-    }
-  });
-});
-
 // ── Risk Factors skew negative sanity check (heuristic proxy) ─────────────────
 //
 // We cannot run the actual FinBERT model in unit tests. Instead, we use a naive
@@ -303,16 +240,14 @@ describe('Risk Factors negative-skew sanity (heuristic)', () => {
 // ── Integration test stubs (require FinBERT model — skip in CI) ───────────────
 //
 // To run manually after loading the extension in Chrome:
-//   1. Open any SEC 10-K Risk Factors section.
-//   2. Open DevTools console and run:
-//        const rf = __Disclora.result.model.sections
-//          .find(s => s.id.includes('risk'));
-//        // Then check sentiment highlights painted on the page.
-//   3. Expected: Risk Factors section shows predominantly red (negative) highlights.
-//   4. Expected: Business / Strategy section shows mixed or slightly positive highlights.
+//   1. Open any SEC 10-K and click "Analyze Sentiment" in the Sentiment panel.
+//   2. Expected: a risk-heavy filing pulls the overall consensus toward negative;
+//      a business-heavy filing skews more neutral/positive.
+//   3. Expected: the "Filing overall" bar + plain-language summary reflect the
+//      aggregate tone across all scored sentences.
 //
 // Timing targets:
-//   - Warm inference (model already loaded): first section overlay < 3 s.
+//   - Warm inference (model already loaded): first section scored < 3 s.
 //   - Full 10-K pass: < 30 s on WebGPU (logged in console as
 //       "[offscreen] sentiment complete: N sentences in Xms").
 

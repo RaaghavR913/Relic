@@ -1,28 +1,23 @@
 // ============================================================
-// Disclora — Sentiment Heatmap side-panel component (Session 4)
+// Disclora — Sentiment side-panel component (Session 4)
 // ------------------------------------------------------------
 // Features:
-//   • On/off toggle (persisted to chrome.storage.local).
 //   • "Analyze Sentiment" button triggers FinBERT via offscreen worker.
-//   • Progressive highlights: each section's results reach the filing as
-//     SENTIMENT_SECTION_DONE events arrive — never blocking scroll.
-//   • Per-section and document-level sentiment aggregates.
-//   • Color legend with non-colour cues (solid/wavy underline shapes).
+//   • Streams SENTIMENT_SECTION_DONE events to build the aggregate without
+//     blocking scroll.
+//   • Document-level sentiment consensus with a plain-language summary.
 //   • Respects prefers-reduced-motion via useReducedMotion().
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { m, AnimatePresence, useReducedMotion } from 'framer-motion';
-import type { DocumentModel, Section, SentenceSentiment } from '@/types';
+import type { DocumentModel, SentenceSentiment } from '@/types';
 import type {
   AnalyzeSentimentMsg,
   SentimentSectionDoneMsg,
   SentimentProgressMsg,
   SentimentResponse,
-  ContentSentimentAddMsg,
-  ContentClearSentimentMsg,
 } from '@/messages/types';
-import { setHeatmap } from './overlayPrefs';
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -36,29 +31,6 @@ interface SentimentAggregate {
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-
-async function getActiveTabId(): Promise<number | undefined> {
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-  return tabs[0]?.id;
-}
-
-async function sendSentimentToContent(results: SentenceSentiment[]): Promise<void> {
-  const tabId = await getActiveTabId();
-  if (tabId === undefined) return;
-  const msg: ContentSentimentAddMsg = {
-    target: 'content',
-    type: 'SENTIMENT_ADD_RANGES',
-    results,
-  };
-  await chrome.tabs.sendMessage(tabId, msg).catch(() => {});
-}
-
-async function clearSentimentInContent(): Promise<void> {
-  const tabId = await getActiveTabId();
-  if (tabId === undefined) return;
-  const msg: ContentClearSentimentMsg = { target: 'content', type: 'CLEAR_SENTIMENT' };
-  await chrome.tabs.sendMessage(tabId, msg).catch(() => {});
-}
 
 function computeAggregate(results: SentenceSentiment[]): SentimentAggregate {
   let positive = 0;
@@ -74,6 +46,36 @@ function computeAggregate(results: SentenceSentiment[]): SentimentAggregate {
 
 function pct(n: number, total: number): number {
   return total === 0 ? 0 : Math.round((n / total) * 100);
+}
+
+// Plain-language read of the document-level aggregate: one or two sentences
+// describing the overall tone and the positive/negative balance.
+function consensusSummary(agg: SentimentAggregate): string {
+  const { positive, negative, total } = agg;
+  if (total === 0) return '';
+
+  const posP = pct(positive, total);
+  const negP = pct(negative, total);
+  const neuP = pct(agg.neutral, total);
+  const net = posP - negP;
+
+  const composition =
+    neuP >= 60
+      ? 'overwhelmingly neutral, as is typical of measured disclosure language'
+      : neuP >= 40
+        ? 'largely neutral, with pockets of directional tone'
+        : 'unusually opinionated for a filing, with little neutral language';
+
+  let lean: string;
+  if (net >= 8) {
+    lean = `Positive statements (${posP}%) outweigh negative ones (${negP}%), giving the filing an optimistic tilt.`;
+  } else if (net <= -8) {
+    lean = `Negative statements (${negP}%) outweigh positive ones (${posP}%), pointing to a cautious, risk-heavy tone.`;
+  } else {
+    lean = `Positive (${posP}%) and negative (${negP}%) statements are roughly balanced, leaving no strong directional bias.`;
+  }
+
+  return `The filing's tone is ${composition}. ${lean}`;
 }
 
 // ── SentimentBar ─────────────────────────────────────────────────────────────
@@ -138,128 +140,6 @@ function SentimentBar({
   );
 }
 
-// ── Legend ────────────────────────────────────────────────────────────────────
-
-function SentimentLegend() {
-  return (
-    <div
-      className="flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] text-zinc-400"
-      aria-label="Sentiment heatmap legend"
-    >
-      <div className="flex items-center gap-1.5">
-        <span
-          className="inline-block h-3 w-5 rounded-sm"
-          style={{ background: 'rgba(34,197,94,0.32)', borderBottom: '2px solid rgba(34,197,94,0.9)' }}
-          aria-hidden="true"
-        />
-        <span>Positive</span>
-        <span className="text-zinc-600">(solid underline)</span>
-      </div>
-      <div className="flex items-center gap-1.5">
-        <span
-          className="inline-block h-3 w-5 rounded-sm"
-          style={{ background: 'rgba(239,68,68,0.32)', borderBottom: '2px dashed rgba(239,68,68,0.9)' }}
-          aria-hidden="true"
-        />
-        <span>Negative</span>
-        <span className="text-zinc-600">(wavy underline)</span>
-      </div>
-      <div className="flex items-center gap-1.5">
-        <span
-          className="inline-block h-3 w-5 rounded-sm"
-          style={{ background: 'rgba(161,161,170,0.15)' }}
-          aria-hidden="true"
-        />
-        <span>Neutral</span>
-      </div>
-      <div className="flex items-center gap-1.5 w-full text-zinc-600">
-        Opacity = confidence · Table regions excluded
-      </div>
-    </div>
-  );
-}
-
-// ── SectionSentimentRow ───────────────────────────────────────────────────────
-
-function SectionSentimentRow({
-  section,
-  agg,
-  reducedMotion,
-}: {
-  section: Section;
-  agg: SentimentAggregate;
-  reducedMotion: boolean;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  if (agg.total === 0) return null;
-
-  return (
-    <div className="rounded-lg bg-zinc-900 ring-1 ring-zinc-800 overflow-hidden">
-      <div
-        className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-zinc-800/50 transition-colors"
-        onClick={() => setExpanded((v) => !v)}
-        role="button"
-        aria-expanded={expanded}
-        aria-label={`${section.label} sentiment: ${pct(agg.positive, agg.total)}% positive, ${pct(agg.negative, agg.total)}% negative`}
-      >
-        <span className="flex-1 truncate text-xs font-medium text-zinc-200 leading-snug">
-          {section.label}
-        </span>
-        <span className="shrink-0 text-[10px] text-zinc-500">{agg.total} sent.</span>
-        {/* Mini bar */}
-        <div className="flex h-2 w-14 shrink-0 overflow-hidden rounded-full bg-zinc-800" aria-hidden="true">
-          {agg.positive > 0 && (
-            <div
-              className="h-full bg-green-500/70"
-              style={{ width: `${(agg.positive / agg.total) * 100}%` }}
-            />
-          )}
-          {agg.neutral > 0 && (
-            <div
-              className="h-full bg-zinc-600/60"
-              style={{ width: `${(agg.neutral / agg.total) * 100}%` }}
-            />
-          )}
-          {agg.negative > 0 && (
-            <div
-              className="h-full bg-red-500/70"
-              style={{ width: `${(agg.negative / agg.total) * 100}%` }}
-            />
-          )}
-        </div>
-        <svg
-          className={`h-3.5 w-3.5 text-zinc-500 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
-          viewBox="0 0 20 20"
-          fill="currentColor"
-          aria-hidden="true"
-        >
-          <path
-            fillRule="evenodd"
-            d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z"
-            clipRule="evenodd"
-          />
-        </svg>
-      </div>
-
-      <AnimatePresence>
-        {expanded && (
-          <m.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={reducedMotion ? { duration: 0 } : { duration: 0.18 }}
-            className="overflow-hidden"
-          >
-            <div className="border-t border-zinc-800/60 px-3 pb-3 pt-2.5">
-              <SentimentBar agg={agg} reducedMotion={reducedMotion} />
-            </div>
-          </m.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
-
 // ── main component ────────────────────────────────────────────────────────────
 
 interface SentimentPanelProps {
@@ -269,18 +149,13 @@ interface SentimentPanelProps {
 export function SentimentPanel({ doc }: SentimentPanelProps) {
   const reducedMotion = useReducedMotion() ?? false;
 
-  const sections = useMemo(
-    () => [...doc.sections].sort((a, b) => a.order - b.order),
-    [doc],
-  );
-
   const [status, setStatus] = useState<AnalysisStatus>('idle');
   const [progress, setProgress] = useState<{ stage: string; value: number; detail?: string } | null>(null);
   const [error, setError] = useState('');
   const [fromCache, setFromCache] = useState(false);
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
 
-  // Accumulate results keyed by sectionId for aggregates + progressive highlights.
+  // Accumulate results keyed by sectionId to build the document-level aggregate.
   const resultsRef = useRef<Map<string, SentenceSentiment[]>>(new Map());
   const [aggregates, setAggregates] = useState<Record<string, SentimentAggregate>>({});
 
@@ -304,12 +179,6 @@ export function SentimentPanel({ doc }: SentimentPanelProps) {
           ...prev,
           [m.sectionId]: computeAggregate(merged),
         }));
-
-        // Progressive highlight — always push to the page; the content script
-        // paints only when the master heatmap overlay is on.
-        if (m.results.length > 0) {
-          void sendSentimentToContent(m.results);
-        }
 
         // Update progress bar.
         setProgress({
@@ -338,8 +207,7 @@ export function SentimentPanel({ doc }: SentimentPanelProps) {
   const analyze = useCallback(async () => {
     if (status === 'loading') return;
 
-    // Reset accumulated results for a fresh run; clear the page cache so re-runs
-    // don't double-accumulate ranges in the content script.
+    // Reset accumulated results for a fresh run.
     resultsRef.current.clear();
     setAggregates({});
     setStatus('loading');
@@ -347,10 +215,6 @@ export function SentimentPanel({ doc }: SentimentPanelProps) {
     setElapsedMs(null);
     setFromCache(false);
     setProgress({ stage: 'Starting…', value: 0 });
-    await clearSentimentInContent();
-
-    // Turn the page heatmap overlay on so results are visible as they stream in.
-    setHeatmap(true);
 
     try {
       const msg: AnalyzeSentimentMsg = {
@@ -417,7 +281,7 @@ export function SentimentPanel({ doc }: SentimentPanelProps) {
           id="sentiment-heading"
           className="text-[13px] font-medium uppercase tracking-widest text-zinc-500 font-[Times,serif]"
         >
-          Sentiment Heatmap
+          Sentiment
         </p>
         {isDone && elapsedMs !== null && (
           <span className="ml-auto text-[10px] text-zinc-600">
@@ -479,41 +343,18 @@ export function SentimentPanel({ doc }: SentimentPanelProps) {
         </div>
       )}
 
-      {/* Document-level aggregate */}
+      {/* Document-level consensus */}
       {docAggregate.total > 0 && (
         <div className="rounded-xl bg-zinc-900 p-3 ring-1 ring-zinc-800">
           <p className="mb-2 text-[10px] font-medium uppercase tracking-widest text-zinc-500">
             Filing overall · {docAggregate.total} sentences
           </p>
           <SentimentBar agg={docAggregate} reducedMotion={reducedMotion} />
-        </div>
-      )}
 
-      {/* Legend */}
-      {docAggregate.total > 0 && (
-        <div className="rounded-lg bg-zinc-900/50 px-3 py-2.5 ring-1 ring-dashed ring-zinc-800">
-          <p className="mb-2 text-[10px] font-medium uppercase tracking-widest text-zinc-500">
-            Legend
+          {/* Plain-language summary of the consensus */}
+          <p className="mt-3 border-t border-zinc-800/60 pt-2.5 text-[11px] leading-relaxed text-zinc-400">
+            {consensusSummary(docAggregate)}
           </p>
-          <SentimentLegend />
-        </div>
-      )}
-
-      {/* Per-section rows */}
-      {Object.keys(aggregates).length > 0 && (
-        <div className="flex flex-col gap-2">
-          {sections.map((section) => {
-            const agg = aggregates[section.id];
-            if (!agg || agg.total === 0) return null;
-            return (
-              <SectionSentimentRow
-                key={section.id}
-                section={section}
-                agg={agg}
-                reducedMotion={reducedMotion}
-              />
-            );
-          })}
         </div>
       )}
 

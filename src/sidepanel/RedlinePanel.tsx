@@ -488,7 +488,7 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
       )}
 
       {applicable && state === 'idle' && (
-        <p className="text-[11px] leading-relaxed text-zinc-600">
+        <p className="text-[12px] leading-relaxed text-emerald-400 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">
           Fetches last year’s comparable filing from EDGAR and shows what changed in the Risk Factors and
           MD&amp;A — all diffing and summarization run on-device.
         </p>

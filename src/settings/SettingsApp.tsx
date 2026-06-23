@@ -35,12 +35,12 @@ const HOW_IT_WORKS: ReadonlyArray<{ step: string; detail: string }> = [
   {
     step: 'Use the tabs',
     detail:
-      'Analyst builds an investor-style read. Summary condenses each section. Sentiment scores tone with FinBERT. Changes compares against the prior-year filing.',
+      'Analyst builds an investor-style read. Summary condenses each section. Sentiment scores overall tone with FinBERT. Changes compares against the prior-year filing.',
   },
   {
     step: 'Highlight on the page',
     detail:
-      'Sentiment heatmap and language-flag underlines paint directly on the filing. Toggle them below or from the Sentiment tab when you run analysis.',
+      'Language-flag underlines paint directly on the filing, marking uncertainty, weak-modal, litigious, and negative phrasing. Toggle them below.',
   },
 ];
 
@@ -66,7 +66,7 @@ function Section({
 
 export default function SettingsApp() {
   const { caps } = useCapabilities();
-  const { prefs, loaded, setHeatmap, setFlags } = useOverlayPrefs();
+  const { prefs, loaded, setFlags } = useOverlayPrefs();
   const version = chrome.runtime.getManifest().version;
 
   const replayOnboarding = useCallback(() => {
@@ -127,20 +127,6 @@ export default function SettingsApp() {
             Control on-page highlights for the active browser tab. Changes apply immediately.
           </p>
           <div className="flex flex-col gap-3">
-            <label className="flex items-center justify-between gap-3 text-sm text-zinc-300">
-              <span>
-                <span className="font-medium text-zinc-200">Sentiment heatmap</span>
-                <span className="mt-0.5 block text-xs text-zinc-500">
-                  FinBERT tone colours on the filing after you run Sentiment analysis.
-                </span>
-              </span>
-              <Switch
-                checked={loaded ? prefs.heatmap : false}
-                onChange={setHeatmap}
-                label="Sentiment heatmap"
-                on="bg-green-600"
-              />
-            </label>
             <label className="flex items-center justify-between gap-3 text-sm text-zinc-300">
               <span>
                 <span className="font-medium text-zinc-200">Language flags</span>

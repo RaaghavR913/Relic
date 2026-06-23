@@ -21,12 +21,10 @@ import { ingestDocument } from './ingest';
 import { isLowConfidenceGeneric } from './ingest/detect';
 import { waitForContent } from './ingest/ready';
 import { getSiteProfile, detectGateState } from './ingest/siteProfiles';
-import type { IngestResult, LanguageFlag, SentenceSentiment } from '@/types';
+import type { IngestResult, LanguageFlag } from '@/types';
 import {
   HighlightController,
   demoHighlight,
-  applySentimentHighlights,
-  clearSentimentLayers,
   type DemoResult,
 } from './highlight/demo';
 import { FlagOverlayManager } from './highlight/flagOverlay';
@@ -38,8 +36,6 @@ const _lmPrewarm = awaitLexiconReady();
 import type {
   ContentHighlightMsg,
   ContentShowRedlineMsg,
-  ContentSentimentAddMsg,
-  ContentSetSentimentOverlayMsg,
   ContentSetFlagOverlayMsg,
   FilingReadyMsg,
   FilingGatedMsg,
@@ -81,12 +77,10 @@ let _positionMap:        IngestResult['positionMap'] | null = null;
 let _highlightController: HighlightController | null = null;
 let _flagOverlay:         FlagOverlayManager | null = null;
 
-// ── Session 7 overlay caches ──────────────────────────────────────────────────
-// The side panel drives master show/hide toggles for the sentiment heatmap and the
-// flag overlay. We cache the inputs so visibility can flip without re-analysis.
+// ── Session 7 overlay cache ───────────────────────────────────────────────────
+// The side panel drives a master show/hide toggle for the flag overlay. We cache
+// the flags so visibility can flip without re-analysis.
 let _allFlags:          LanguageFlag[] = [];
-let _sentimentCache:    SentenceSentiment[] = [];
-let _sentimentVisible = false;
 let _flagsVisible     = true;
 // Low-confidence generic page: flag overlay stays hidden until the user
 // explicitly opts in (the panel's passive pref sync must not enable it).
@@ -182,8 +176,6 @@ async function run(): Promise<DiscloraDevApi> {
     // Hide forward-looking / safe-harbor boilerplate flags by default (low signal).
     // Retained in _allFlags so a future in-page toggle can reveal them.
     const shownFlags = allFlags.filter((f) => !f.boilerplate);
-    // Fresh document → drop any prior sentiment highlights/cache.
-    _sentimentCache = [];
 
     // Confidence gate: on a generic page that doesn't look like a filing, keep
     // the on-page flag overlay hidden until the user opts in via the side panel
@@ -302,38 +294,6 @@ if (!ALREADY_INJECTED) chrome.runtime.onMessage.addListener(
 
     if (msg.type === 'CLEAR_REDLINE') {
       _highlightController?.clear('redline');
-      return false;
-    }
-
-    // Session 4 (wired in Session 7): receive sentiment ranges section-by-section.
-    // We always cache them; we only paint when the heatmap overlay is visible.
-    if (msg.type === 'SENTIMENT_ADD_RANGES') {
-      const m = rawMsg as ContentSentimentAddMsg;
-      _sentimentCache.push(...m.results);
-      if (_sentimentVisible && _positionMap && _highlightController) {
-        applySentimentHighlights(_positionMap, _highlightController, m.results);
-      }
-      return false;
-    }
-
-    if (msg.type === 'CLEAR_SENTIMENT') {
-      _sentimentCache = [];
-      if (_highlightController) clearSentimentLayers(_highlightController);
-      return false;
-    }
-
-    // Session 7: master heatmap toggle — show/hide from the cache, no re-analysis.
-    if (msg.type === 'SET_SENTIMENT_OVERLAY') {
-      const m = rawMsg as ContentSetSentimentOverlayMsg;
-      _sentimentVisible = m.enabled;
-      if (!_highlightController) return false;
-      if (m.enabled) {
-        if (_positionMap && _sentimentCache.length > 0) {
-          applySentimentHighlights(_positionMap, _highlightController, _sentimentCache);
-        }
-      } else {
-        clearSentimentLayers(_highlightController);
-      }
       return false;
     }
 

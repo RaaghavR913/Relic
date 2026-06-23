@@ -2,7 +2,7 @@
 // Disclora — Analyst tab: investor-focused document analysis
 // ------------------------------------------------------------
 // Renders the staged FilingAnalysis in the spec order:
-//   Snapshot → Takeaways → What Changed → What This Means
+//   Snapshot → Takeaways → What This Means
 //   → Risks → Narrative Check → Bull/Bear → Watch Next → Plain English
 //
 // Sections stream in as pipeline stages complete; everything except the
@@ -70,10 +70,15 @@ const STAGE_ORDER: AnalysisStage[] = [
   'cashflow', 'shares', 'risks', 'narrative', 'synthesis',
 ];
 
+/** User-facing badge text — the internal 'Neutral' label is shown to users as 'Info'. */
+function labelText(label: string): string {
+  return label === 'Neutral' ? 'Info' : label;
+}
+
 function LabelChip({ label }: { label: InsightLabel }) {
   return (
     <span className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold ring-1 ring-inset font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif] ${LABEL_STYLES[label]}`}>
-      {label}
+      {labelText(label)}
     </span>
   );
 }
@@ -206,7 +211,7 @@ function Collapse({
         </span>
         {pending && <span className="animate-pulse text-[10px] text-sky-400">…</span>}
         {count !== undefined && count > 0 && (
-          <span className="rounded-full bg-zinc-800 px-1.5 text-[9px] font-semibold tabular-nums text-zinc-400">{count}</span>
+          <span className="rounded-full bg-zinc-800 px-1.5 text-[10px] font-semibold tabular-nums text-zinc-400 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">{count}</span>
         )}
         <svg
           className={`h-3 w-3 shrink-0 text-zinc-600 transition-transform ${open ? 'rotate-180' : ''}`}
@@ -256,7 +261,7 @@ function SnapshotCard({ analysis }: { analysis: FilingAnalysis }) {
     <div className="rounded-xl bg-zinc-900 p-3.5 ring-1 ring-zinc-800">
       <div className="flex flex-wrap items-center gap-1.5 font-[Times,serif]">
         <span className={`rounded-md px-2 py-1 text-[12px] font-bold ring-1 ring-inset ${READ_STYLES[analysis.overallRead]}`}>
-          {analysis.overallRead}
+          {labelText(analysis.overallRead)}
         </span>
         <span className="rounded bg-zinc-800 px-1.5 py-0.5 text-[12px] font-medium text-zinc-300">
           {analysis.documentType}
@@ -476,20 +481,7 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
             <InsightList insights={a.topTakeaways} emptyNote="Not enough information in this document." />
           </Collapse>
 
-          {/* 4 ── What changed */}
-          <Collapse
-            title="What changed"
-            count={a.whatChanged.length}
-            defaultOpen={a.whatChanged.length > 0}
-            pending={running && !a.stagesDone.includes('whatChanged')}
-          >
-            <InsightList
-              insights={a.whatChanged}
-              emptyNote="Not enough information — no comparable prior filing found to diff against."
-            />
-          </Collapse>
-
-          {/* 5 ── What this means */}
+          {/* 4 ── What this means */}
           <Collapse
             title="What this means"
             count={
