@@ -1,20 +1,21 @@
 /**
- * Export report builder.
- *
- * buildFilingReportHtml is a pure renderer over the artifacts gathered from the
- * on-device caches. These tests pin that it emits a complete self-contained HTML
- * document, includes each available analysis surface, HTML-escapes all dynamic
- * text (filing prose can contain <, >, &), and that the data-presence and
- * filename helpers behave.
+ * Export pipeline: the pure data helpers (report.ts) and the jsPDF renderer
+ * (pdf.ts). The helpers are asserted directly; the renderer is smoke-tested —
+ * it must emit a valid multi-page PDF without throwing, including when only some
+ * artifacts are cached and when text carries unicode punctuation.
  */
 
 import { describe, it, expect } from 'vitest';
 import {
-  buildFilingReportHtml,
   hasExportableData,
   reportFilename,
+  labelText,
+  summaryItems,
+  aggregateSentiment,
+  sentimentConsensus,
   type FilingExportData,
 } from '@/export/report';
+import { buildFilingReportPdf } from '@/export/pdf';
 import type {
   DocumentModel,
   FilingAnalysis,
@@ -135,53 +136,42 @@ function fullData(over: Partial<FilingExportData> = {}): FilingExportData {
   };
 }
 
-describe('buildFilingReportHtml', () => {
-  it('emits a complete, self-contained HTML document', () => {
-    const html = buildFilingReportHtml(fullData());
-    expect(html.startsWith('<!doctype html>')).toBe(true);
-    expect(html).toContain('<style>'); // CSS is inlined (no external assets)
-    expect(html).not.toContain('http://'); // no remote scripts/styles pulled in
-    expect(html).toContain('Micron Technology, Inc.');
-    expect(html).toContain('MU');
+function pdfHeader(data: FilingExportData): { head: string; pages: number; size: number } {
+  const pdf = buildFilingReportPdf(data);
+  const bytes = new Uint8Array(pdf.output('arraybuffer'));
+  return {
+    head: String.fromCharCode(...bytes.slice(0, 5)),
+    pages: pdf.getNumberOfPages(),
+    size: bytes.length,
+  };
+}
+
+describe('buildFilingReportPdf', () => {
+  it('emits a valid, non-trivial PDF from full data', () => {
+    const { head, pages, size } = pdfHeader(fullData());
+    expect(head).toBe('%PDF-');
+    expect(pages).toBeGreaterThanOrEqual(1);
+    expect(size).toBeGreaterThan(1500);
   });
 
-  it('includes every cached analysis surface', () => {
-    const html = buildFilingReportHtml(fullData());
-    expect(html).toContain('Investor snapshot');
-    expect(html).toContain('A strong quarter driven by AI-led memory demand.');
-    expect(html).toContain('Top investor takeaways');
-    expect(html).toContain('Risk signals');
-    expect(html).toContain('Management narrative check');
-    expect(html).toContain('Bull case vs bear case');
-    expect(html).toContain('What to watch next');
-    expect(html).toContain('Section summaries');
-    expect(html).toContain('Risk factors remain cyclical.');
-    expect(html).toContain('Sentiment analysis');
-    expect(html).toContain('Year-over-year changes');
-    expect(html).toContain('New supply-chain risk added.');
+  it('renders without throwing when only some artifacts are cached', () => {
+    expect(() => buildFilingReportPdf(fullData({ analysis: null, sentiment: null, redline: null }))).not.toThrow();
+    expect(() => buildFilingReportPdf(fullData({ summaries: [], sentiment: [], redline: null }))).not.toThrow();
   });
 
-  it('HTML-escapes dynamic text to prevent broken/injected markup', () => {
+  it('renders unicode punctuation and degraded mode without throwing', () => {
     const data = fullData({
-      analysis: analysis({ oneSentenceSummary: 'Risk <script>alert(1)</script> & danger' }),
+      analysis: analysis({
+        degraded: true,
+        oneSentenceSummary: 'Risk “smart quotes” — em dash • bullet & ampersand',
+      }),
     });
-    const html = buildFilingReportHtml(data);
-    expect(html).not.toContain('<script>alert(1)</script>');
-    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt; &amp; danger');
+    expect(pdfHeader(data).head).toBe('%PDF-');
   });
 
-  it('renders gracefully when only some artifacts are cached', () => {
-    const data = fullData({ analysis: null, sentiment: null, redline: null });
-    const html = buildFilingReportHtml(data);
-    expect(html).toContain('No investor analysis is cached');
-    expect(html).toContain('Section summaries'); // the one present surface still renders
-    expect(html).not.toContain('Sentiment analysis');
-    expect(html).not.toContain('Year-over-year changes');
-  });
-
-  it('notes extractive (degraded) mode', () => {
-    const data = fullData({ analysis: analysis({ degraded: true }) });
-    expect(buildFilingReportHtml(data)).toContain('extractive mode');
+  it('handles a no-prior redline status', () => {
+    const redline: RedlineEntry = { rawTextHash: 'hash-mu', status: 'no_prior', diffs: [], alignment: [], cachedAt: 1 };
+    expect(pdfHeader(fullData({ redline })).head).toBe('%PDF-');
   });
 });
 
@@ -192,25 +182,51 @@ describe('hasExportableData', () => {
   });
 
   it('is false when nothing is cached', () => {
-    expect(
-      hasExportableData(fullData({ analysis: null, summaries: [], sentiment: null, redline: null })),
-    ).toBe(false);
-    expect(
-      hasExportableData(fullData({ analysis: null, summaries: [], sentiment: [], redline: null })),
-    ).toBe(false);
+    expect(hasExportableData(fullData({ analysis: null, summaries: [], sentiment: null, redline: null }))).toBe(false);
+    expect(hasExportableData(fullData({ analysis: null, summaries: [], sentiment: [], redline: null }))).toBe(false);
   });
 });
 
 describe('reportFilename', () => {
-  it('builds a safe, descriptive name from ticker + type + period', () => {
-    expect(reportFilename(fullData())).toBe('Disclora-MU-10-Q-2026-05-28.html');
+  it('builds a safe .pdf name from ticker + type + period', () => {
+    expect(reportFilename(fullData())).toBe('Disclora-MU-10-Q-2026-05-28.pdf');
   });
 
   it('falls back to company name and strips unsafe characters', () => {
     const { ticker: _ticker, ...rest } = doc();
     const d: DocumentModel = { ...rest, companyName: 'Acme/Co: Inc.' };
     const name = reportFilename({ ...fullData(), doc: d });
-    expect(name).toMatch(/^Disclora-Acme-Co-Inc\.-10-Q-2026-05-28\.html$/);
+    expect(name).toMatch(/^Disclora-Acme-Co-Inc\.-10-Q-2026-05-28\.pdf$/);
     expect(name).not.toMatch(/[/:]/);
+  });
+});
+
+describe('report helpers', () => {
+  it('labelText maps the internal Neutral label to Info', () => {
+    expect(labelText('Neutral')).toBe('Info');
+    expect(labelText('Bullish')).toBe('Bullish');
+  });
+
+  it('summaryItems flattens a builtin analyst note into bullets + paragraphs', () => {
+    const entry = summaryEntry('s', '- First point\nA closing paragraph.', 'builtin');
+    const items = summaryItems(doc().sections[0]!, entry);
+    expect(items[0]).toEqual({ bullet: true, text: 'First point' });
+    expect(items[1]).toEqual({ bullet: false, text: 'A closing paragraph.' });
+  });
+
+  it('summaryItems slices key sentences for the extractive register', () => {
+    const sec = section('s', 'S', 0, 'Hello world from a filing.', 0);
+    const entry: SummaryEntry = { ...summaryEntry('s', '', 'extractive'), plainAnchors: [[0, 5]] };
+    expect(summaryItems(sec, entry)).toEqual([{ bullet: true, text: 'Hello' }]);
+  });
+
+  it('aggregateSentiment + sentimentConsensus describe the tone', () => {
+    const agg = aggregateSentiment([
+      { sectionId: 's', sentenceIdx: 0, label: 'negative', score: 1, range: [0, 1] },
+      { sectionId: 's', sentenceIdx: 1, label: 'negative', score: 1, range: [0, 1] },
+      { sectionId: 's', sentenceIdx: 2, label: 'positive', score: 1, range: [0, 1] },
+    ]);
+    expect(agg).toEqual({ positive: 1, negative: 2, neutral: 0, total: 3 });
+    expect(sentimentConsensus(agg)).toContain('cautious');
   });
 });
