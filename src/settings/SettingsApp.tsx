@@ -2,18 +2,16 @@
 // Disclora — extension settings & guide page
 // ------------------------------------------------------------
 // Opened from the side-panel header (chrome.runtime.openOptionsPage).
-// Editorial single-column layout: controls first (Page highlights, Privacy &
-// data), then the guide (How it works, FAQ, About). Every control here is wired
+// Editorial single-column layout: controls first (Privacy & data), then the
+// guide (How it works, FAQ, About). Every control here is wired
 // to real persisted state — nothing is decorative.
 // ============================================================
 
 import { useCallback, useState, type ReactNode } from 'react';
 import { useCapabilities } from '@/runtime/useCapabilities';
 import { Switch } from '@/sidepanel/OverlayControls';
-import { useOverlayPrefs, FLAG_CATEGORIES } from '@/sidepanel/overlayPrefs';
 import { useSecFetchPref } from '@/shared/secFetchPref';
 import { clearAllCaches } from '@/shared/clearCaches';
-import { CATEGORY_META } from '@/shared/flagMeta';
 import {
   BrandLogo,
   LockIcon,
@@ -41,7 +39,7 @@ const STEPS: ReadonlyArray<{ title: string; detail: string }> = [
   {
     title: 'Highlight on the page',
     detail:
-      'Language-flag underlines paint directly on the filing to mark uncertainty, weak-modal, litigious, and negative phrasing. Toggle them under Page highlights.',
+      'Language-flag underlines paint directly on the filing to mark uncertainty, weak-modal, litigious, and negative phrasing.',
   },
 ];
 
@@ -145,14 +143,11 @@ function FaqItem({ q, a, defaultOpen = false }: { q: string; a: string; defaultO
 
 export default function SettingsApp() {
   const { caps } = useCapabilities();
-  const { prefs, loaded, setFlags, setType, setBoilerplate } = useOverlayPrefs();
   const { enabled: secFetch, setSecFetch } = useSecFetchPref();
   const version = chrome.runtime.getManifest().version;
 
   const [cacheState, setCacheState] = useState<'idle' | 'clearing' | 'done'>('idle');
   const [replayed, setReplayed] = useState(false);
-
-  const flagsOn = loaded ? prefs.flags : true;
 
   const clearCaches = useCallback(() => {
     setCacheState('clearing');
@@ -182,52 +177,6 @@ export default function SettingsApp() {
             <span className="font-mono text-[13px]" style={{ color: VERSION_ACCENT }}>v{version}</span>
           </p>
         </header>
-
-        {/* Page highlights */}
-        <Section title="Page highlights" kicker="What gets underlined on the filing">
-          <Row
-            first
-            label="Show language flags"
-            helper="Master switch for every underline below."
-            control={<Switch checked={flagsOn} onChange={setFlags} label="Language flags" on="bg-sky-600" />}
-          />
-          <div className={flagsOn ? '' : 'opacity-50'}>
-            {FLAG_CATEGORIES.map((cat) => {
-              const meta = CATEGORY_META[cat];
-              return (
-                <Row
-                  key={cat}
-                  label={
-                    <span className={`underline decoration-zinc-500 underline-offset-[5px] ${meta.underline}`}>
-                      {meta.label}
-                    </span>
-                  }
-                  helper={meta.example}
-                  control={
-                    <Switch
-                      checked={loaded ? prefs.types[cat] : true}
-                      onChange={(v) => setType(cat, v)}
-                      label={meta.label}
-                      on="bg-sky-600"
-                    />
-                  }
-                />
-              );
-            })}
-          </div>
-          <Row
-            label="Include boilerplate"
-            helper="Show safe-harbor & forward-looking phrasing, hidden by default."
-            control={
-              <Switch
-                checked={loaded ? prefs.boilerplate : false}
-                onChange={setBoilerplate}
-                label="Include boilerplate"
-                on="bg-sky-600"
-              />
-            }
-          />
-        </Section>
 
         {/* Privacy & data */}
         <Section title="Privacy & data" kicker="Your research stays on your computer">

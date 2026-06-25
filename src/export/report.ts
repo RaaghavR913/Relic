@@ -422,7 +422,9 @@ function sectionHtml(title: string, inner: string): string {
 /** Build the complete self-contained report document. */
 export function buildFilingReportHtml(data: FilingExportData): string {
   const { doc, analysis: a } = data;
-  const title = `${doc.companyName ?? 'Filing'}${doc.ticker ? ` (${doc.ticker})` : ''} — ${doc.filingType}`;
+  // The document <title> doubles as the default filename Chrome suggests when the
+  // report is saved via the browser's print-to-PDF, so use the clean stem.
+  const docTitle = reportFilename(data).replace(/\.html$/, '');
 
   const metaLine = [
     doc.filingType,
@@ -465,7 +467,7 @@ export function buildFilingReportHtml(data: FilingExportData): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${esc(`Disclora report — ${title}`)}</title>
+<title>${esc(docTitle)}</title>
 <style>${REPORT_CSS}</style>
 </head>
 <body>

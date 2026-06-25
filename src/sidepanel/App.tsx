@@ -29,7 +29,7 @@ import { SummaryPanel } from './SummaryPanel';
 import { SentimentPanel } from './SentimentPanel';
 import { RedlinePanel } from './RedlinePanel';
 import { FirstRun } from './FirstRun';
-import { Switch, OverlayControlsPanel } from './OverlayControls';
+import { Switch } from './OverlayControls';
 import { WORKS_TIERS } from '@/shared/worksTiers';
 import {
   Spinner,
@@ -688,7 +688,6 @@ export default function App() {
                     an <span className="font-medium">exNN</span> suffix) for full investor analysis.
                   </Banner>
                 )}
-                <OverlayControlsPanel />
                 <TabBar active={activeTab} onSelect={setActiveTab} tabs={visibleTabs} />
 
                 {/* Tab panels — kept mounted to preserve async state across switches.
