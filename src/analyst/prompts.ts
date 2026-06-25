@@ -133,7 +133,6 @@ export const synthesisSchema: Record<string, unknown> = {
       },
       maxItems: 6,
     },
-    plainEnglishExplanation: { type: 'string' },
     scores: {
       type: 'object',
       properties: {
@@ -153,7 +152,7 @@ export const synthesisSchema: Record<string, unknown> = {
       additionalProperties: false,
     },
   },
-  required: ['bullCase', 'bearCase', 'netRead', 'whatToWatchNext', 'plainEnglishExplanation', 'scores'],
+  required: ['bullCase', 'bearCase', 'netRead', 'whatToWatchNext', 'scores'],
   additionalProperties: false,
 };
 
@@ -259,8 +258,7 @@ export function buildStagePrompt(
         '\nSynthesize the analysis below into: bullCase (strongest positive signals), bearCase (strongest negatives), ' +
         'netRead (which side the document supports more and why — do not overstate certainty), ' +
         'whatToWatchNext (specific items for future filings/calls, each with why it matters), ' +
-        'plainEnglishExplanation (3–5 simple sentences for a non-expert: what is going on, is it good or bad, ' +
-        'why care, what could happen next), and scores (1–5; riskLevel: 1 = low risk). ' +
+        'and scores (1–5; riskLevel: 1 = low risk). ' +
         'Base everything ONLY on the findings below.\n\n' +
         `Findings:\n${excerpts}`
       );

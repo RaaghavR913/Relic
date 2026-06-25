@@ -14,8 +14,8 @@ import type { Capabilities } from '@/runtime/capabilities';
 import { TierBadge, Banner, BrandLogo, LockIcon, stateLabel, stateColor } from './ui';
 
 const ENCODER_MODELS = [
-  { name: 'Encoder', role: 'Extractive summary & redline matching', size: '~23 MB' },
-  { name: 'FinBERT', role: 'Financial sentiment & tone analysis', size: '~106 MB' },
+  { name: 'Encoder', role: 'Extractive summary & redline matching' },
+  { name: 'FinBERT', role: 'Financial sentiment & tone analysis' },
 ];
 
 function Check() {
@@ -66,12 +66,9 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
         </p>
         <ul className="flex flex-col gap-2">
           {ENCODER_MODELS.map((m) => (
-            <li key={m.name} className="flex items-center gap-2 text-xs">
-              <span className="flex-1">
-                <span className="font-medium text-zinc-200">{m.name}</span>
-                <span className="block text-zinc-500">{m.role}</span>
-              </span>
-              <span className="shrink-0 rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-400 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">{m.size}</span>
+            <li key={m.name} className="text-xs">
+              <span className="font-medium text-zinc-200">{m.name}</span>
+              <span className="block text-zinc-500">{m.role}</span>
             </li>
           ))}
         </ul>

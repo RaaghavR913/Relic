@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Disclora",
   "version": "1.2.7",
-  "description": "On-Device SEC & Investor filing analysis - summaries, sentiment, redlines, YoY changes, and Q&A. 100% Private.",
+  "description": "Turn SEC filings and investor documents into clear summaries, key takeaways, sentiment insights, and important changes.",
   "permissions": [
     "storage",
     "sidePanel",

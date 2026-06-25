@@ -340,8 +340,8 @@ function deterministicOneLiner(doc: DocumentModel, aux: AuxSignals, read: Overal
  * Build the best FilingAnalysis without any generative model: a deterministic
  * snapshot plus real takeaways / risk signals / per-dimension cards synthesized
  * from on-device sentiment, language flags, and the prior-filing redline. Only
- * the genuinely LM-shaped sections (bull/bear, narrative check, watch list,
- * plain-English) stay empty; `degraded` is set so the UI frames the difference.
+ * the genuinely LM-shaped sections (bull/bear, narrative check, watch list)
+ * stay empty; `degraded` is set so the UI frames the difference.
  */
 export function deterministicAnalysis(
   doc: DocumentModel,
@@ -401,7 +401,6 @@ export function deterministicAnalysis(
     bearCase: [],
     netRead: '',
     whatToWatchNext: [],
-    plainEnglishExplanation: '',
     stagesDone,
     degraded: true,
     generatedAt: Date.now(),

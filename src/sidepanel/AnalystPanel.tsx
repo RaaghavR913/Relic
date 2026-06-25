@@ -3,7 +3,7 @@
 // ------------------------------------------------------------
 // Renders the staged FilingAnalysis in the spec order:
 //   Snapshot → Takeaways → What This Means
-//   → Risks → Narrative Check → Bull/Bear → Watch Next → Plain English
+//   → Risks → Narrative Check → Bull/Bear → Watch Next
 //
 // Sections stream in as pipeline stages complete; everything except the
 // snapshot + takeaways starts collapsed to stay compact in the side panel.
@@ -118,13 +118,13 @@ function InsightCard({ insight }: { insight: FilingInsight }) {
       <p className="mt-1.5 text-xs leading-relaxed text-zinc-300">{insight.summary}</p>
       {insight.whyItMatters && (
         <p className="mt-1.5 text-xs leading-relaxed text-zinc-400">
-          <span className="font-medium text-zinc-500">Why it matters: </span>
+          <span className="font-medium text-[#39FF14]">Why it matters: </span>
           {insight.whyItMatters}
         </p>
       )}
       {insight.investorMeaning && (
         <p className="mt-1 text-xs leading-relaxed text-zinc-400">
-          <span className="font-medium text-zinc-500">Investor view: </span>
+          <span className="font-medium text-[#39FF14]">Investor view: </span>
           {insight.investorMeaning}
         </p>
       )}
@@ -533,7 +533,7 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
                     </p>
                     {n.investorMeaning && (
                       <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-400">
-                        <span className="font-medium text-zinc-500">Investor view: </span>{n.investorMeaning}
+                        <span className="font-medium text-[#39FF14]">Investor view: </span>{n.investorMeaning}
                       </p>
                     )}
                   </div>
@@ -593,14 +593,6 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
               </ul>
             </Collapse>
           )}
-
-          {/* 10 ── Plain-English explanation */}
-          {a.plainEnglishExplanation && (
-            <Collapse title="Plain-English explanation">
-              <p className="px-1 text-xs leading-relaxed text-zinc-300">{a.plainEnglishExplanation}</p>
-            </Collapse>
-          )}
-
         </>
       )}
     </section>

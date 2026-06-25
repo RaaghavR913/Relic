@@ -258,7 +258,6 @@ export interface FilingAnalysis {
 
   whatToWatchNext: WatchItem[];
   scores?: AnalysisScores;
-  plainEnglishExplanation: string;
 
   /** Stages that completed successfully (LM or deterministic). */
   stagesDone: AnalysisStage[];

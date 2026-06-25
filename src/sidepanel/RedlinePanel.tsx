@@ -28,6 +28,7 @@ import type { DiffStats } from '@/redline/diff';
 import { generateChangeSummary, createChangeSummarySession } from '@/redline/changeSummary';
 import { redlineSupportsForm } from '@/redline/align';
 import { getCachedRedline, putRedline } from '@/redline/redlineStore';
+import { useSecFetchPref } from '@/shared/secFetchPref';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -236,6 +237,12 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
   // found" message) and show an honest note instead.
   const applicable = redlineSupportsForm(doc.filingType);
 
+  // The redline is the only feature that hits the network (fetches the prior
+  // filing from EDGAR). Respect the user's "Fetch from SEC.gov" setting: when
+  // off, we never send COMPUTE_REDLINE, though any on-device cached redline can
+  // still display.
+  const { enabled: secFetch } = useSecFetchPref();
+
   const sectionById = useMemo(() => {
     const map = new Map<string, Section>();
     for (const s of doc.sections) map.set(s.id, s);
@@ -320,6 +327,7 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
 
   const run = useCallback(async () => {
     if (!applicable) return; // no focus sections for this form — nothing to compare
+    if (!secFetch) return;   // SEC.gov fetch disabled in Settings — never go to network
     setState('running');
     setError('');
     setSummaries({});
@@ -369,7 +377,7 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
     } finally {
       setProgress(null);
     }
-  }, [doc, applicable, upgradeSummaries]);
+  }, [doc, applicable, secFetch, upgradeSummaries]);
 
   const totalChanges = useMemo(
     () => diffs.reduce((n, d) => n + d.added.length + d.removed.length, 0),
@@ -386,7 +394,8 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
           <span className="ml-auto">
             <button
               onClick={() => void run()}
-              disabled={state === 'running'}
+              disabled={state === 'running' || !secFetch}
+              title={!secFetch ? 'Turn on “Fetch from SEC.gov” in Settings to compare' : undefined}
               className="rounded-md bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500"
             >
               {state === 'running' ? 'Comparing…' : state === 'done' || state === 'no_prior' || state === 'unsupported_form' ? 'Re-compare' : 'Compare to prior year'}
@@ -403,6 +412,21 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
           Risk Factors and MD&amp;A of a <span className="font-medium text-zinc-300">10-K, 10-Q, 20-F,
           S-1, proxy (DEF&nbsp;14A), or 8-K</span> against the prior comparable filing. Open one of
           those filings to see what changed.
+        </p>
+      )}
+
+      {/* SEC.gov fetch disabled — the comparison needs the prior filing from EDGAR. */}
+      {applicable && !secFetch && state !== 'done' && (
+        <p className="rounded-lg bg-amber-950/30 px-3 py-2.5 text-xs leading-relaxed text-amber-200/90 ring-1 ring-inset ring-amber-800/40">
+          Fetching prior-year filings from <span className="font-medium">SEC.gov</span> is turned off,
+          so the year-over-year comparison can’t run.{' '}
+          <button
+            onClick={() => chrome.runtime.openOptionsPage()}
+            className="font-medium text-amber-100 underline decoration-amber-400/50 underline-offset-2 transition hover:text-amber-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+          >
+            Turn it on in Settings
+          </button>
+          .
         </p>
       )}
 
@@ -487,7 +511,7 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
         </div>
       )}
 
-      {applicable && state === 'idle' && (
+      {applicable && secFetch && state === 'idle' && (
         <p className="text-[12px] leading-relaxed text-emerald-400 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">
           Fetches last year’s comparable filing from EDGAR and shows what changed in the Risk Factors and
           MD&amp;A — all diffing and summarization run on-device.

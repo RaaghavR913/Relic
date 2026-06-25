@@ -418,6 +418,17 @@ export interface ContentSetFlagOverlayMsg {
    * low-confidence generic pages, enabling requires an explicit gesture.
    */
   explicit?: boolean;
+  /**
+   * Per-category visibility. A category set to false is painted out even while
+   * the master switch is on. Omitted → all four categories visible (back-compat
+   * with the pre-Settings master-only toggle).
+   */
+  types?: Record<LanguageFlag['type'], boolean>;
+  /**
+   * Include forward-looking / safe-harbor boilerplate matches (low marginal
+   * signal, hidden by default). Omitted → false.
+   */
+  boilerplate?: boolean;
 }
 
 // ── Sentiment Worker (no chrome.*) ────────────────────────────────────────────

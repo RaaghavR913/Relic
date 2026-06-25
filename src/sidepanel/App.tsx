@@ -24,11 +24,12 @@ import type {
 import { isLowConfidenceGeneric, isEdgarExhibit } from '@/content/ingest/detect';
 import { setFlags as setFlagOverlayPref } from './overlayPrefs';
 import { AnalystPanel } from './AnalystPanel';
+import { ExportButton } from './ExportButton';
 import { SummaryPanel } from './SummaryPanel';
 import { SentimentPanel } from './SentimentPanel';
 import { RedlinePanel } from './RedlinePanel';
 import { FirstRun } from './FirstRun';
-import { Switch } from './OverlayControls';
+import { Switch, OverlayControlsPanel } from './OverlayControls';
 import { WORKS_TIERS } from '@/shared/worksTiers';
 import {
   Spinner,
@@ -202,16 +203,19 @@ function Header({ doc, hideDocMeta = false }: { doc: DocumentModel | null; hideD
         </div>
       </div>
       {doc && !hideDocMeta && (
-        <div className="mt-2">
-          <p className="truncate text-[15px] font-medium text-zinc-200 font-[Georgia,serif]">
-            {doc.companyName ?? 'Unknown company'}
-            {doc.ticker ? <span className="ml-1.5 text-zinc-500 font-['Times_New_Roman',serif]">{doc.ticker}</span> : null}
-          </p>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] text-zinc-500">
-            <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-medium text-zinc-300 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">{typeLabel}</span>
-            {period && <span className="font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">· Period {period}</span>}
-            <span className="font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">· {doc.sections.length} sections</span>
-          </p>
+        <div className="mt-2 flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[15px] font-medium text-zinc-200 font-[Georgia,serif]">
+              {doc.companyName ?? 'Unknown company'}
+              {doc.ticker ? <span className="ml-1.5 text-zinc-500 font-['Times_New_Roman',serif]">{doc.ticker}</span> : null}
+            </p>
+            <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] text-zinc-500">
+              <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-medium text-zinc-300 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">{typeLabel}</span>
+              {period && <span className="font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">· Period {period}</span>}
+              <span className="font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">· {doc.sections.length} sections</span>
+            </p>
+          </div>
+          <ExportButton doc={doc} />
         </div>
       )}
     </header>
@@ -684,6 +688,7 @@ export default function App() {
                     an <span className="font-medium">exNN</span> suffix) for full investor analysis.
                   </Banner>
                 )}
+                <OverlayControlsPanel />
                 <TabBar active={activeTab} onSelect={setActiveTab} tabs={visibleTabs} />
 
                 {/* Tab panels — kept mounted to preserve async state across switches.

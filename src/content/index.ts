@@ -78,13 +78,31 @@ let _highlightController: HighlightController | null = null;
 let _flagOverlay:         FlagOverlayManager | null = null;
 
 // ── Session 7 overlay cache ───────────────────────────────────────────────────
-// The side panel drives a master show/hide toggle for the flag overlay. We cache
-// the flags so visibility can flip without re-analysis.
+// The side panel drives the flag overlay's visibility. We cache the full flag set
+// so visibility (master switch, per-category, boilerplate) can flip without
+// re-analysis.
 let _allFlags:          LanguageFlag[] = [];
 let _flagsVisible     = true;
+// Per-category visibility + boilerplate inclusion, mirrored from the side panel's
+// overlay prefs. Defaults match the historical master-only behaviour: every
+// category on, boilerplate hidden.
+let _flagTypes: Record<LanguageFlag['type'], boolean> = {
+  uncertainty: true,
+  weak_modal:  true,
+  litigious:   true,
+  negative:    true,
+};
+let _showBoilerplate = false;
 // Low-confidence generic page: flag overlay stays hidden until the user
 // explicitly opts in (the panel's passive pref sync must not enable it).
 let _flagOptInRequired = false;
+
+/** The subset of cached flags currently eligible to paint, per category + boilerplate prefs. */
+function visibleFlags(): LanguageFlag[] {
+  return _allFlags.filter(
+    (f) => _flagTypes[f.type] !== false && (_showBoilerplate || !f.boilerplate),
+  );
+}
 
 async function run(): Promise<DiscloraDevApi> {
   // Re-analyze (run() called a second time in this scope): tear down the prior
@@ -185,9 +203,11 @@ async function run(): Promise<DiscloraDevApi> {
       _flagOptInRequired = true;
     }
 
-    // Paint the four typed CSS Custom Highlight layers + mount tooltip.
+    // Paint the four typed CSS Custom Highlight layers + mount tooltip. The
+    // overlay honours per-category + boilerplate prefs (defaults match shownFlags);
+    // the side panel's pref sync refines this moments later via SET_FLAG_OVERLAY.
     const flagOverlay = new FlagOverlayManager(doc, controller);
-    if (_flagsVisible) flagOverlay.activate(shownFlags, positionMap);
+    if (_flagsVisible) flagOverlay.activate(visibleFlags(), positionMap);
     _flagOverlay = flagOverlay;
 
     console.debug(
@@ -297,7 +317,7 @@ if (!ALREADY_INJECTED) chrome.runtime.onMessage.addListener(
       return false;
     }
 
-    // Session 7: master flag toggle — activate/deactivate the flag overlay layer.
+    // Session 7/8: flag overlay sync — master switch + per-category + boilerplate.
     if (msg.type === 'SET_FLAG_OVERLAY') {
       const m = rawMsg as ContentSetFlagOverlayMsg;
       // Confidence gate: a passive pref sync may not enable flags on a page
@@ -305,8 +325,13 @@ if (!ALREADY_INJECTED) chrome.runtime.onMessage.addListener(
       if (m.enabled && _flagOptInRequired && !m.explicit) return false;
       if (m.explicit) _flagOptInRequired = false;
       _flagsVisible = m.enabled;
+      // Adopt category / boilerplate prefs when provided (older senders omit them).
+      if (m.types) _flagTypes = { ..._flagTypes, ...m.types };
+      if (typeof m.boilerplate === 'boolean') _showBoilerplate = m.boilerplate;
       if (_flagOverlay && _positionMap) {
-        if (m.enabled) _flagOverlay.activate(_allFlags.filter((f) => !f.boilerplate), _positionMap);
+        // Re-activate (rather than no-op when already visible) so category and
+        // boilerplate changes repaint the layers immediately.
+        if (m.enabled) _flagOverlay.activate(visibleFlags(), _positionMap);
         else _flagOverlay.deactivate();
       }
       return false;

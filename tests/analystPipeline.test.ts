@@ -187,7 +187,6 @@ const STAGE_RESPONSES: Record<string, string> = {
     whatToWatchNext: [
       { item: 'Gross margin recovery', whyItMatters: 'Confirms whether pressure is temporary or structural.', relatedMetric: 'Gross margin %' },
     ],
-    plainEnglishExplanation: 'The company is selling more but keeping less of each dollar. That is why this report reads mixed.',
     scores: {
       revenueStrength: 4, marginQuality: 2, cashFlowQuality: 2, balanceSheetStrength: 3,
       riskLevel: 4, managementCredibility: 3, shareholderFriendliness: 3,
@@ -242,7 +241,6 @@ describe('generateFilingAnalysis — builtin tier', () => {
     expect(analysis.bearCase.length).toBeGreaterThan(0);
     expect(analysis.netRead).toMatch(/mixed/i);
     expect(analysis.scores?.riskLevel).toBe(4);
-    expect(analysis.plainEnglishExplanation.length).toBeGreaterThan(0);
 
     // LM stage order (whatChanged is deterministic — never an LM call).
     expect(calls).toEqual([
@@ -285,8 +283,6 @@ describe('generateFilingAnalysis — builtin tier', () => {
     expect(takeaway.summary).toMatch(/Gross margin fell/);
     // Careful analyst language passes through untouched.
     expect(takeaway.investorMeaning).toMatch(/may weigh on investor sentiment/);
-    // "selling more" in plain English is not advice and survives.
-    expect(analysis.plainEnglishExplanation).toMatch(/selling more/);
   });
 
   it('builds whatChanged from the redline engine', async () => {

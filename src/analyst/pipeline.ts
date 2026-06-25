@@ -461,7 +461,7 @@ export async function generateFilingAnalysis(
     markDone('narrative');
   }
 
-  // 10 ── synthesis (bull/bear, watch list, plain English, scores) — uses only
+  // 10 ── synthesis (bull/bear, watch list, scores) — uses only
   // prior findings, never raw filing text, so the model can't introduce new "facts".
   const haveFindings =
     analysis.topTakeaways.length + analysis.revenueImpact.length +
@@ -476,7 +476,6 @@ export async function generateFilingAnalysis(
       analysis.bullCase = strArr(o['bullCase'], 5);
       analysis.bearCase = strArr(o['bearCase'], 5);
       analysis.netRead = scrubAdvice(str(o['netRead']));
-      analysis.plainEnglishExplanation = scrubAdvice(str(o['plainEnglishExplanation']));
       if (Array.isArray(o['whatToWatchNext'])) {
         const items: WatchItem[] = [];
         for (const w of (o['whatToWatchNext'] as unknown[]).slice(0, 6)) {
