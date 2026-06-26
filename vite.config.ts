@@ -193,6 +193,7 @@ export default defineConfig(({ mode }) => ({
   ],
   build: {
     target: 'es2022',
+    chunkSizeWarningLimit: 700,
     // Minify production builds only — dev/watch keeps readable output for debugging.
     minify: mode === 'production',
     // Sourcemaps in dev only. Production (CWS) builds ship no .map files: this

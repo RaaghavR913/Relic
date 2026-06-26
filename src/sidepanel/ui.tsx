@@ -184,24 +184,16 @@ export function BrandLogo({ className = 'h-6 w-6' }: { className?: string }) {
 /** Lime accent used for the version label and settings control in the header. */
 export const VERSION_ACCENT = '#39FF14';
 
-/** User + gear settings glyph — profile ring with corner gear (attached artwork). */
+/** Standard settings cog. */
 export function SettingsIcon({ className = 'h-[18px] w-[18px]' }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className} aria-hidden="true">
       <path
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2.2"
         strokeLinecap="round"
-        d="M6.35 5.85a8.65 8.65 0 1 0 12.3 1.35"
+        strokeLinejoin="round"
+        d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
       />
-      <circle cx="12" cy="10.35" r="2.6" />
-      <path d="M7.45 16.85c0-2.45 2.03-4.45 4.55-4.45s4.55 2 4.55 4.45" />
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M17 2L18.07 3.19L19.64 3.52L19.15 5.05L19.64 6.57L18.07 6.91L17 8.1L15.93 6.91L14.36 6.58L14.85 5.05L14.36 3.52L15.92 3.19L17 2ZM16.05 5.05a.95.95 0 1 0 1.9 0 .95.95 0 1 0-1.9 0Z"
-      />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
     </svg>
   );
 }

@@ -8,7 +8,7 @@
 // We bundle weights in the extension, so browser caching is unnecessary.
 // ============================================================
 
-import { env } from '@huggingface/transformers';
+import { env, LogLevel } from '@huggingface/transformers';
 
 export function configureBundledModelEnv(
   wasmPaths: string,
@@ -26,4 +26,10 @@ export function configureBundledModelEnv(
   env.useBrowserCache = false;
   // ORT WASM pre-load also routes through the same cache layer.
   env.useWasmCache = false;
+
+  // Bundled weights are served without a Content-Length header, so Transformers.js
+  // logs a harmless "Unable to determine content-length…" warning on every model
+  // load. Raising the log level to ERROR silences that noise (the setter also
+  // propagates to the ONNX backend) while still surfacing real failures.
+  env.logLevel = LogLevel.ERROR;
 }
