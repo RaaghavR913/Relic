@@ -415,7 +415,7 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
         <button
           onClick={() => void run(true)}
           disabled={running}
-          className="ml-auto shrink-0 rounded border border-[#36ADA3]/40 px-2 py-0.5 text-[11px] font-medium bg-[#1A5752] text-[#36ADA3] transition hover:border-[#36ADA3]/60 hover:bg-[#1F6761] disabled:cursor-default disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#36ADA3]"
+          className="ml-auto shrink-0 rounded border border-[#36ADA3]/40 px-2 py-0.5 text-[11px] font-medium bg-[#1A5752] text-white transition hover:border-[#36ADA3]/60 hover:bg-[#1F6761] disabled:cursor-default disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#36ADA3]"
         >
           Regenerate
         </button>
