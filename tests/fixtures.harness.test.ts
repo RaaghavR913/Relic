@@ -1,43 +1,17 @@
 /**
- * Offline extraction harness — runs the full ingestDocument() pipeline against
- * saved fixture HTML files and reports usability per site.
+ * Offline extraction harness — exercises the ingestDocument() pipeline.
  *
- * ─── CRITICAL CAVEAT ────────────────────────────────────────────────────────
- * Fixtures are SERVER-FETCH captures, not true rendered-DOM snapshots.
- * For SSR + hydration sites (Yahoo Finance, Motley Fool, Benzinga), the live DOM
- * the content script sees WILL differ from these files. A passing fixture is a
- * SMOKE TEST that field extraction works on available markup — it is NOT proof
- * the live site works.
+ * Covers the SEC.gov classification regression (inline fixtures, no file reads)
+ * and tracks UNVERIFIED sites that have no offline fixture yet.
  *
- * Mark a site as supported only after:
- *   1. Running Disclora on the real page and opening DevTools.
- *   2. Copying true outerHTML via: document.documentElement.outerHTML
- *   3. Replacing the stub fixture with that capture.
- *   4. This harness passing on the real capture.
- *
- * Sites marked UNVERIFIED have no fixture at all (anti-bot, JS shells, or
- * paywalls prevent server-fetch captures). Do not claim support for those until
- * a true DOM snapshot is supplied.
- * ────────────────────────────────────────────────────────────────────────────
- *
- * How to interpret results:
- *   PASS    — extraction ran, produced ≥1 section, ≥500 chars, correct category.
- *             Still needs true DOM snapshot before claiming live support.
- *   FAIL    — extraction threw or produced unusable output. Check the selector
- *             overrides in siteProfiles.ts and the fixture HTML structure.
- *   SKIP    — no fixture available; site is UNVERIFIED.
+ * NOTE: Saved HTML snapshots of third-party financial sites are intentionally
+ * NOT committed to this repo (they are copyrighted page captures). To smoke-test
+ * a specific non-SEC site layout, capture the live outerHTML locally
+ * (`document.documentElement.outerHTML`) and run it through ingestDocument().
  */
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
-import { join } from 'path';
 import { ingestDocument } from '@/content/ingest';
-
-const FIXTURES_DIR = join(process.cwd(), 'fixtures');
-
-function loadFixture(filename: string): string {
-  return readFileSync(join(FIXTURES_DIR, filename), 'utf-8');
-}
 
 function docFrom(html: string): Document {
   return new DOMParser().parseFromString(html, 'text/html');
@@ -76,118 +50,6 @@ describe('SEC.gov regression (inline fixture — no file read)', () => {
     expect(model.source.category).toBe('ir_or_financial');
     expect(model.source.category).not.toBe('edgar_filing');
   });
-});
-
-// ── Group A fixtures ──────────────────────────────────────────────────────────
-// Static content_scripts matches. Content readable at document_idle.
-// SMOKE TEST ONLY — needs true outerHTML snapshot to confirm live support.
-
-describe('Group A (auto-inject, static content) — SMOKE TEST', () => {
-  const FIXTURES: Array<{
-    site: string;
-    file: string;
-    url: string;
-  }> = [
-    {
-      site: 'stockanalysis.com',
-      file: 'stockanalysis_AAPL.html',
-      url: 'https://stockanalysis.com/stocks/aapl/',
-    },
-    {
-      site: 'annualreports.com',
-      file: 'annualreports_AAPL.html',
-      url: 'https://www.annualreports.com/Company/apple',
-    },
-    {
-      site: 'fool.com',
-      file: 'fool_AAPL.html',
-      url: 'https://www.fool.com/investing/2024/06/10/apple-stock-analysis/',
-    },
-    {
-      site: 'benzinga.com',
-      file: 'benzinga_AAPL.html',
-      url: 'https://www.benzinga.com/stock/AAPL',
-    },
-  ];
-
-  for (const { site, file, url } of FIXTURES) {
-    describe(`${site} [SMOKE TEST — needs true outerHTML snapshot]`, () => {
-      const html = loadFixture(file);
-      const { model, positionMap } = ingestDocument({ document: docFrom(html), url });
-
-      it('classifies as ir_or_financial (not edgar_filing)', () => {
-        expect(model.source.category).toBe('ir_or_financial');
-      });
-
-      it('is NOT misclassified as an EDGAR filing', () => {
-        expect(model.source.category).not.toBe('edgar_filing');
-        expect(model.source.category).not.toBe('edgar_ixbrl');
-      });
-
-      it('produces at least 1 section', () => {
-        expect(model.sections.length).toBeGreaterThanOrEqual(1);
-      });
-
-      it('extracts at least 500 chars of text', () => {
-        expect(positionMap.text.length).toBeGreaterThanOrEqual(500);
-      });
-    });
-  }
-});
-
-// ── Group C fixtures ──────────────────────────────────────────────────────────
-// optional_host_permissions. These fixtures represent the accessible (pre-gate) view.
-// SMOKE TEST ONLY — live pages may show consent/paywall gates or heavy hydration.
-
-describe('Group C (optional permission, pre-gate view) — SMOKE TEST', () => {
-  const FIXTURES: Array<{
-    site: string;
-    file: string;
-    url: string;
-    note: string;
-  }> = [
-    {
-      site: 'finance.yahoo.com',
-      file: 'yahoo_finance_AAPL.html',
-      url: 'https://finance.yahoo.com/quote/AAPL/',
-      note: 'GUCE consent wall in EU; heavy React hydration — live DOM differs',
-    },
-    {
-      site: 'macrotrends.net',
-      file: 'macrotrends_AAPL_revenue.html',
-      url: 'https://www.macrotrends.net/stocks/charts/AAPL/apple/revenue',
-      note: 'Email registration wall after a few views — live DOM may have .bwal-modal',
-    },
-    {
-      site: 'bamsec.com',
-      file: 'bamsec_AAPL.html',
-      url: 'https://bamsec.com/company/0000320193',
-      note: 'Filing index is open; document viewer is account-gated',
-    },
-  ];
-
-  for (const { site, file, url, note } of FIXTURES) {
-    describe(`${site} [SMOKE TEST — ${note}]`, () => {
-      const html = loadFixture(file);
-      const { model, positionMap } = ingestDocument({ document: docFrom(html), url });
-
-      it('classifies as ir_or_financial', () => {
-        expect(model.source.category).toBe('ir_or_financial');
-      });
-
-      it('is NOT misclassified as an EDGAR filing', () => {
-        expect(model.source.category).not.toBe('edgar_filing');
-      });
-
-      it('produces at least 1 section', () => {
-        expect(model.sections.length).toBeGreaterThanOrEqual(1);
-      });
-
-      it('extracts at least 500 chars of text', () => {
-        expect(positionMap.text.length).toBeGreaterThanOrEqual(500);
-      });
-    });
-  }
 });
 
 // ── UNVERIFIED sites (no fixture) ─────────────────────────────────────────────

@@ -2,6 +2,7 @@
   "name": "disclora",
   "version": "1.2.7",
   "private": true,
+  "license": "MIT",
   "description": "Turn SEC filings and investor documents into clear summaries, key takeaways, sentiment insights, and important changes.",
   "type": "module",
   "scripts": {

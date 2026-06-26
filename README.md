@@ -176,3 +176,12 @@ Weights are fetched at build time via `npm run fetch-models` and loaded from `ch
 - **ML:** ONNX Runtime Web, `@huggingface/transformers`, Chrome built-in AI APIs
 - **Build:** Vite, `vite-plugin-web-extension`, TypeScript 6
 - **Test:** Vitest, jsdom
+
+## License
+
+Disclora's source code is released under the [MIT License](LICENSE).
+
+The MIT grant covers code authored in this repository only. Bundled or
+referenced third-party components — the Loughran-McDonald dictionary word lists,
+the on-device ML models, and the test fixtures — remain under their own terms.
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
