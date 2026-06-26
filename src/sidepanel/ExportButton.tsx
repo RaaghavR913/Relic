@@ -53,7 +53,7 @@ export function ExportButton({ doc }: { doc: DocumentModel }) {
     state === 'busy' ? 'Preparing…'
     : state === 'empty' ? 'Nothing to export yet'
     : state === 'error' ? 'Export failed'
-    : 'Export PDF';
+    : 'Export';
 
   return (
     <button
