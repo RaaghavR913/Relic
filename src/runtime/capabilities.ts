@@ -1,5 +1,5 @@
 /**
- * Disclora capability detection — the linchpin of the lean (built-in-AI-only) build.
+ * Relic capability detection — the linchpin of the lean (built-in-AI-only) build.
  *
  * getCapabilities() classifies the device into a generationTier ('builtin' | 'extractive')
  * that drives the entire tier-aware UX: summaries (Session 3) and change summaries

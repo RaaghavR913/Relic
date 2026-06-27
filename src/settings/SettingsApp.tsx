@@ -1,277 +1,351 @@
 // ============================================================
-// Disclora — extension settings & guide page
+// Relic — extension settings page
 // ------------------------------------------------------------
-// Opened from the side-panel header (chrome.runtime.openOptionsPage).
-// Editorial single-column layout: controls first (Privacy & data), then the
-// guide (How it works, FAQ, About). Every control here is wired
-// to real persisted state — nothing is decorative.
+// Opened in a tab via chrome.runtime.openOptionsPage() (options_ui).
+// A single centered column: a read-only privacy statement, the handful of
+// controls the user can change, and an auto-detected device status block.
+//
+// Every control is wired to real persisted state through the extension's
+// existing storage layer — nothing here is decorative, and the page itself
+// makes zero network requests (the privacy promise).
+//   • Fetch prior-year filings → relic:secFetch        (useSecFetchPref)
+//   • On-page highlights        → relic:flagsEnabled    (overlay prefs)
+//   • Clear cached analyses     → clearAllCaches() (IndexedDB)
+//   • Replay onboarding         → removes relic:onboarded
+//   • Generation mode           → live capability detection (read-only)
 // ============================================================
 
 import { useCallback, useState, type ReactNode } from 'react';
 import { useCapabilities } from '@/runtime/useCapabilities';
-import { Switch } from '@/sidepanel/OverlayControls';
 import { useSecFetchPref } from '@/shared/secFetchPref';
+import { useOverlayPrefs } from '@/sidepanel/overlayPrefs';
 import { clearAllCaches } from '@/shared/clearCaches';
-import {
-  BrandLogo,
-  LockIcon,
-  TierBadge,
-  VERSION_ACCENT,
-  stateColor,
-  stateLabel,
-} from '@/sidepanel/ui';
+import { BrandLogo, LockIcon } from '@/sidepanel/ui';
 
-const ONBOARDED_KEY = 'disclora:onboarded';
+// Same storage key the side panel reads on open (src/sidepanel/App.tsx). Removing
+// it makes the next side-panel open show the welcome screen again.
+const ONBOARDED_KEY = 'relic:onboarded';
+
+// Self-hosted system serif stack — no remote font fetch (privacy + Web Store review).
+const SERIF = '"Iowan Old Style", Palatino, Georgia, serif';
+
+// Accent teal-green: version string, status dots, lock icon, focus rings.
+const ACCENT = '#34d399';
 
 // ── static content ──────────────────────────────────────────────────────────
 
+/** Three-step walkthrough — rendered as title + detail rows, in document order. */
 const STEPS: ReadonlyArray<{ title: string; detail: string }> = [
   {
     title: 'Open a filing',
     detail:
-      'Visit a 10-K, 10-Q, 8-K, 20-F, S-1, or proxy on SEC EDGAR — or run “Analyze this page” on a supported IR or filing page. Disclora wakes up in the side panel.',
+      'Go to a 10-K, 10-Q, 8-K, 20-F, S-1, or proxy on SEC EDGAR and open Relic from the side panel. On other financial pages, click the Relic toolbar icon and choose “Analyze this page.”',
   },
   {
-    title: 'Read the tabs',
+    title: 'Read the analysis tabs',
     detail:
-      'Analyst builds an investor read, Summary condenses each section, Sentiment scores tone with FinBERT, and Changes diffs against last year’s filing. Each runs on-device as it’s ready.',
+      'Analyst gives an investor read, Summary condenses each section, Sentiment scores tone with FinBERT, and Changes compares against last year’s filing. Each appears as it finishes — all on your device.',
   },
   {
-    title: 'Highlight on the page',
+    title: 'Use the on-page highlights',
     detail:
-      'Language-flag underlines paint directly on the filing to mark uncertainty, weak-modal, litigious, and negative phrasing.',
+      'Relic underlines cautious, litigious, and negative wording directly in the filing so the language that matters is easy to spot. Turn highlights on or off under Settings.',
   },
 ];
 
+/** Frequently asked questions — question + answer rows. */
 const FAQS: ReadonlyArray<{ q: string; a: string }> = [
   {
-    q: 'Does any of my data leave my computer?',
-    a: 'No. Filing text, summaries, and notes never leave the device — the models run locally. The one exception is the Changes tab, which fetches a prior-year filing from sec.gov to compare against, and only when you ask. You can turn that off under Privacy & data.',
+    q: 'Does any of my data leave my device?',
+    a: 'No. Filing text, summaries, and notes stay on your device. The only network request is the Changes lookup, which fetches last year’s filing from SEC.gov — and only when you ask. You can turn it off under Settings.',
   },
   {
     q: 'Why are some tabs missing on a page?',
-    a: 'Analyst, Sentiment, and Changes need a company filing with a real investment thesis. On SEC data/report pages, EDGAR index pages, exhibits, and pages that don’t look like a filing, Disclora keeps Summary only.',
+    a: 'Analyst, Sentiment, and Changes need a real company filing. On SEC data pages, EDGAR index pages, exhibits, and pages that don’t look like a filing, Relic keeps Summary only.',
   },
   {
-    q: 'What’s the difference between Built-in AI and Extractive mode?',
-    a: 'Built-in AI (Chrome’s Gemini Nano) writes analyst notes and change narratives in natural language. Extractive mode instead surfaces the filing’s most important existing sentences. Sentiment, language flags, and year-over-year changes work fully in both.',
+    q: 'What’s the difference between Built-in AI and Extractive?',
+    a: 'Built-in AI writes analyst notes and change narratives in natural language. Extractive instead surfaces the filing’s most important existing sentences. Sentiment, highlights, and Changes work fully in both.',
   },
   {
     q: 'Why is the first analysis slow?',
-    a: 'The first time you use Built-in AI, Chrome downloads and sets up Gemini Nano — a one-time step it manages itself. Large filings also take up to a minute to read. Sentiment and flags are available immediately in the meantime.',
+    a: 'The first time you use Built-in AI, your browser downloads its on-device model — a one-time step it manages itself. Large filings also take up to a minute to read. Sentiment and highlights are ready immediately.',
   },
-  {
-    q: 'What do the underline styles mean?',
-    a: 'Each language-flag category has its own non-color underline so it stays distinguishable without relying on color: dashed for uncertainty, dotted for weak modal, double for litigious, and wavy for negative phrasing.',
-  },
-  {
-    q: 'Is this investment advice?',
-    a: 'No. Disclora is a research tool that summarizes and characterizes disclosure language. Its reads, scores, and bull/bear framing are informational only — not investment advice, a recommendation, or a solicitation. Always do your own due diligence.',
-  },
-];
-
-const BUNDLED_MODELS = [
-  { name: 'Encoder', role: 'Extractive summary & redline matching' },
-  { name: 'FinBERT', role: 'Financial sentiment & tone' },
 ];
 
 // ── primitives ──────────────────────────────────────────────────────────────
 
-function Section({ title, kicker, children }: { title: string; kicker?: string; children: ReactNode }) {
+function Section({
+  title,
+  sublabel,
+  children,
+}: {
+  title: string;
+  sublabel: string;
+  children: ReactNode;
+}) {
   return (
-    <section className="mb-11">
-      <h2 className="font-[Georgia,serif] text-[20px] font-medium tracking-tight text-zinc-100">{title}</h2>
-      {kicker && (
-        <p className="mt-1 text-[11px] uppercase tracking-[0.12em] text-zinc-600">{kicker}</p>
-      )}
-      <div className={kicker ? 'mt-4' : 'mt-3'}>{children}</div>
+    <section className="mb-10">
+      <h2 className="text-[20px] font-medium text-[#f4f4f5]" style={{ fontFamily: SERIF }}>
+        {title}
+      </h2>
+      <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.13em] text-[#7f7f87]">
+        {sublabel}
+      </p>
+      <div className="mt-3">{children}</div>
     </section>
   );
 }
 
-/** A control row: label + helper on the left, control flush right, hairline divider. */
+/** A row: title + description on the left, control flush right, 0.5px top divider. */
 function Row({
-  label,
-  helper,
+  title,
+  desc,
   control,
-  first = false,
 }: {
-  label: ReactNode;
-  helper?: ReactNode;
+  title: string;
+  desc: ReactNode;
   control: ReactNode;
-  first?: boolean;
 }) {
   return (
-    <div className={`flex items-center gap-3 py-3 ${first ? '' : 'border-t border-zinc-800/70'}`}>
-      <div className="flex-1">
-        <div className="text-[14px] font-medium text-zinc-200">{label}</div>
-        {helper && <div className="mt-0.5 text-[13px] leading-relaxed text-zinc-500">{helper}</div>}
+    <div className="flex items-start gap-4 border-t-[0.5px] border-[#1f1f22] py-4">
+      <div className="min-w-0 flex-1">
+        <div className="text-[14px] font-medium text-[#ededf0]">{title}</div>
+        <p className="mt-1 text-[13px] leading-relaxed text-[#8a8a90]">{desc}</p>
       </div>
-      <div className="shrink-0">{control}</div>
+      {control && <div className="mt-0.5 shrink-0">{control}</div>}
     </div>
   );
 }
 
-function FaqItem({ q, a, defaultOpen = false }: { q: string; a: string; defaultOpen?: boolean }) {
-  const [open, setOpen] = useState(defaultOpen);
+/** Pill switch: ON = #3b82f6 + white knob, OFF = #3a3a3e. Keyboard-operable, reduced-motion aware. */
+function Toggle({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+}) {
   return (
-    <div className="border-t border-zinc-800/70">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="flex w-full items-center gap-3 py-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
-      >
-        <span className={`flex-1 text-[14px] ${open ? 'font-medium text-zinc-100' : 'text-zinc-200'}`}>{q}</span>
-        <svg
-          className={`h-4 w-4 shrink-0 text-zinc-600 transition-transform ${open ? 'rotate-180' : ''}`}
-          viewBox="0 0 20 20"
-          fill="currentColor"
-          aria-hidden="true"
-        >
-          <path fillRule="evenodd" d="M5.22 8.22a.75.75 0 011.06 0L10 11.94l3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0L5.22 9.28a.75.75 0 010-1.06z" clipRule="evenodd" />
-        </svg>
-      </button>
-      {open && (
-        <p className="-mt-0.5 pb-3.5 pr-7 text-[13px] leading-relaxed text-zinc-400">{a}</p>
-      )}
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className="relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full outline-none transition-colors duration-200 ease-out focus-visible:ring-2 focus-visible:ring-[#34d399] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0c0c0d] motion-reduce:transition-none"
+      style={{ backgroundColor: checked ? '#3b82f6' : '#3a3a3e' }}
+    >
+      <span
+        aria-hidden="true"
+        className={`inline-block h-[18px] w-[18px] transform rounded-full bg-white shadow-sm transition-transform duration-200 ease-out motion-reduce:transition-none ${
+          checked ? 'translate-x-[23px]' : 'translate-x-[3px]'
+        }`}
+      />
+    </button>
+  );
+}
+
+/** Secondary action button (Clear / Replay). */
+function ActionButton({
+  onClick,
+  disabled,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="rounded-md bg-[#1c1c1f] px-3 py-1.5 text-[13px] font-medium text-[#ededf0] ring-1 ring-[#2a2a2e] outline-none transition hover:bg-[#26262a] disabled:opacity-60 focus-visible:ring-2 focus-visible:ring-[#34d399] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0c0c0d]"
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Live generation-mode status: a dot + label reflecting real capability detection. */
+function GenerationStatus() {
+  const { caps, error } = useCapabilities();
+
+  let dot = '#6b6b70';
+  let text = 'Checking…';
+  let textColor = '#8a8a90';
+  let busy = false;
+
+  if (error) {
+    text = 'Unavailable';
+  } else if (!caps) {
+    busy = true; // detecting
+  } else if (caps.generationTier === 'builtin') {
+    dot = ACCENT;
+    text = 'Built-in AI · ready';
+    textColor = ACCENT;
+  } else {
+    dot = '#8a8a90';
+    text = 'Extractive';
+    textColor = '#c4c4c8';
+  }
+
+  return (
+    <div role="status" aria-live="polite" aria-busy={busy} className="flex items-center gap-2">
+      <span
+        aria-hidden="true"
+        className={`h-2 w-2 rounded-full ${busy ? 'animate-pulse motion-reduce:animate-none' : ''}`}
+        style={{ backgroundColor: dot }}
+      />
+      <span className="text-[13px] font-medium" style={{ color: textColor }}>
+        {text}
+      </span>
     </div>
   );
 }
 
-// ── page ────────────────────────────────────────────────────────────────────
+// ── page ──────────────────────────────────────────────────────────────────────
 
 export default function SettingsApp() {
-  const { caps } = useCapabilities();
   const { enabled: secFetch, setSecFetch } = useSecFetchPref();
+  const { prefs, setFlags } = useOverlayPrefs();
   const version = chrome.runtime.getManifest().version;
 
   const [cacheState, setCacheState] = useState<'idle' | 'clearing' | 'done'>('idle');
   const [replayed, setReplayed] = useState(false);
+  // Polite live region so screen readers hear the result of the one-shot actions.
+  const [announce, setAnnounce] = useState('');
 
   const clearCaches = useCallback(() => {
     setCacheState('clearing');
     void clearAllCaches()
       .then(() => {
         setCacheState('done');
+        setAnnounce('Cached analyses cleared.');
         setTimeout(() => setCacheState('idle'), 2500);
       })
       .catch(() => setCacheState('idle'));
   }, []);
 
   const replayOnboarding = useCallback(() => {
-    chrome.storage.local.remove(ONBOARDED_KEY).catch(() => {});
+    void chrome.storage.local.remove(ONBOARDED_KEY).catch(() => {});
     setReplayed(true);
+    setAnnounce('The welcome screen will show next time you open the side panel.');
     setTimeout(() => setReplayed(false), 2500);
   }, []);
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 selection:bg-sky-500/30">
-      <main className="mx-auto max-w-[560px] px-6 py-10">
-        {/* Masthead */}
+    <div className="min-h-screen bg-[#0c0c0d] text-[#c4c4c8] selection:bg-[#34d399]/25">
+      <main className="mx-auto max-w-[560px] px-5 py-12 sm:px-6">
+        {/* Header */}
         <header className="mb-12 flex flex-col items-center text-center">
-          <BrandLogo className="h-10 w-10" />
-          <h1 className="mt-2.5 font-[Georgia,serif] text-[25px] font-medium tracking-tight text-zinc-100">Disclora</h1>
-          <p className="mt-1 text-[14px] text-zinc-500">
-            Settings &amp; guide ·{' '}
-            <span className="font-mono text-[13px]" style={{ color: VERSION_ACCENT }}>v{version}</span>
+          <BrandLogo className="h-12 w-12" />
+          <h1
+            className="mt-3 text-[26px] font-medium tracking-tight text-[#f4f4f5]"
+            style={{ fontFamily: SERIF }}
+          >
+            Relic
+          </h1>
+          <p className="mt-1 text-[13px] text-[#8a8a90]">
+            Settings ·{' '}
+            <span className="font-medium" style={{ color: ACCENT }}>
+              v{version}
+            </span>
           </p>
         </header>
 
-        {/* Privacy & data */}
-        <Section title="Privacy & data" kicker="Your research stays on your computer">
-          <p className="flex items-start gap-2 text-[14px] leading-relaxed text-zinc-400">
-            <LockIcon className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+        {/* Privacy & data — read-only */}
+        <Section title="Privacy & data" sublabel="Your research stays on your computer">
+          <p className="flex items-start gap-2.5 text-[14px] leading-relaxed text-[#c4c4c8]">
+            <LockIcon className="mt-0.5 h-4 w-4 shrink-0 text-[#34d399]" />
             <span>
-              No filing text, summaries, or notes are uploaded — the models run on your device. The one
-              network request is below, and it only fires when you ask for a redline.
+              No filing text, summaries, or notes leave your device — the models run locally. The one
+              network request is the Changes lookup below, and it only fires when you compare against
+              last year&rsquo;s filing.
             </span>
           </p>
-          <div className="mt-4">
-            <Row
-              first
-              label="Fetch prior-year filings from SEC.gov"
-              helper="Powers the year-over-year Changes comparison. The only request Disclora makes."
-              control={<Switch checked={secFetch} onChange={setSecFetch} label="Fetch from SEC.gov" on="bg-sky-600" />}
-            />
-            <Row
-              label="Cached analyses"
-              helper="Kept on this device so re-opening a filing is instant."
-              control={
-                <button
-                  type="button"
-                  onClick={clearCaches}
-                  disabled={cacheState !== 'idle'}
-                  className="rounded-md bg-zinc-800 px-3 py-1.5 text-[13px] font-medium text-zinc-200 ring-1 ring-zinc-700 transition hover:bg-zinc-700 disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
-                >
-                  {cacheState === 'clearing' ? 'Clearing…' : cacheState === 'done' ? 'Cleared ✓' : 'Clear'}
-                </button>
-              }
-            />
-          </div>
         </Section>
 
-        {/* How it works */}
-        <Section title="How it works" kicker="From a filing to an investor read">
-          <ol className="flex flex-col gap-4">
-            {STEPS.map((s, i) => (
-              <li key={s.title} className="flex gap-3.5">
-                <span className="font-[Georgia,serif] text-[17px] leading-tight text-zinc-600" aria-hidden="true">{i + 1}</span>
-                <div>
-                  <p className="text-[14px] font-medium text-zinc-200">{s.title}</p>
-                  <p className="mt-0.5 text-[14px] leading-relaxed text-zinc-400">{s.detail}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-          <p className="mt-4 border-t border-zinc-800/70 pt-3 text-[13px] leading-relaxed text-zinc-500">
-            Most detailed on SEC EDGAR filings; enhanced on AnnualReports, StockAnalysis, Fool, and Benzinga;
-            quick summary and flags on any other site.
-          </p>
-        </Section>
-
-        {/* FAQ */}
-        <Section title="Frequently asked">
-          <div>
-            {FAQS.map((f, i) => (
-              <FaqItem key={f.q} q={f.q} a={f.a} defaultOpen={i === 0} />
-            ))}
-          </div>
-        </Section>
-
-        {/* About */}
-        <Section title="About" kicker="Bundled models & this device">
-          {BUNDLED_MODELS.map((m, i) => (
-            <Row key={m.name} first={i === 0} label={m.name} helper={m.role} control={null} />
+        {/* How to use — read-only walkthrough */}
+        <Section title="How to use" sublabel="From a filing to an investor read">
+          {STEPS.map((s) => (
+            <Row key={s.title} title={s.title} desc={s.detail} control={null} />
           ))}
-          {caps && (
-            <Row
-              label="Generation mode"
-              helper="Detected on this device"
-              control={
-                <div className="flex items-center gap-2">
-                  {caps.generationTier === 'builtin' && (
-                    <span className={`text-[12px] ${stateColor(caps.promptApi)}`}>{stateLabel(caps.promptApi)}</span>
-                  )}
-                  <TierBadge tier={caps.generationTier} />
-                </div>
-              }
-            />
-          )}
+        </Section>
+
+        {/* Settings — interactive */}
+        <Section title="Settings" sublabel="Everything you can control, in one place">
           <Row
-            label="Replay onboarding"
-            helper="Show the welcome screen again next time you open the side panel."
+            title="Fetch prior-year filings from SEC.gov"
+            desc="Powers the year-over-year Changes comparison. The only network request Relic makes."
             control={
-              <button
-                type="button"
-                onClick={replayOnboarding}
-                className="rounded-md bg-zinc-800 px-3 py-1.5 text-[13px] font-medium text-zinc-200 ring-1 ring-zinc-700 transition hover:bg-zinc-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
-              >
-                {replayed ? 'Reset ✓' : 'Replay'}
-              </button>
+              <Toggle
+                checked={secFetch}
+                onChange={setSecFetch}
+                label="Fetch prior-year filings from SEC.gov"
+              />
+            }
+          />
+          <Row
+            title="On-page highlights"
+            desc="Paint language flags onto the filing: uncertainty, weak-modal, litigious, negative."
+            control={
+              <Toggle checked={prefs.flags} onChange={setFlags} label="On-page highlights" />
+            }
+          />
+          <Row
+            title="Cached analyses"
+            desc="Kept on this device so re-opening a filing is instant."
+            control={
+              <ActionButton onClick={clearCaches} disabled={cacheState !== 'idle'}>
+                {cacheState === 'clearing' ? 'Clearing…' : cacheState === 'done' ? 'Cleared ✓' : 'Clear'}
+              </ActionButton>
+            }
+          />
+          <Row
+            title="Replay onboarding"
+            desc="Show the welcome screen next time you open the side panel."
+            control={
+              <ActionButton onClick={replayOnboarding}>
+                {replayed ? 'Replayed ✓' : 'Replay'}
+              </ActionButton>
             }
           />
         </Section>
+
+        {/* FAQ — read-only */}
+        <Section title="FAQ" sublabel="Questions, answered">
+          {FAQS.map((f) => (
+            <Row key={f.q} title={f.q} desc={f.a} control={null} />
+          ))}
+        </Section>
+
+        {/* On this device — read-only status */}
+        <Section title="On this device" sublabel="Detected automatically · nothing to set">
+          <Row
+            title="Generation mode"
+            desc="Chosen automatically from the page you’re viewing — Built-in AI when your browser supports it, otherwise the extractive model."
+            control={<GenerationStatus />}
+          />
+          <Row
+            title="Bundled models"
+            desc="FinBERT for financial sentiment, plus an on-device encoder for summaries and Changes matching."
+            control={null}
+          />
+        </Section>
+
+        {/* Footer */}
+        <footer className="mt-12 border-t-[0.5px] border-[#1f1f22] pt-6 text-center text-[12px] text-[#8a8a90]">
+          Relic summarizes filings. It isn&rsquo;t investment advice.
+        </footer>
+
+        {/* Polite announcements for one-shot actions (visually hidden). */}
+        <p role="status" aria-live="polite" className="sr-only">
+          {announce}
+        </p>
       </main>
     </div>
   );

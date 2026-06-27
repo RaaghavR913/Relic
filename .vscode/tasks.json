@@ -2,11 +2,11 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Disclora: Preview UI in Cursor",
+      "label": "Relic: Preview UI in Cursor",
       "dependsOrder": "sequence",
       "dependsOn": [
-        "Disclora: Start UI dev server",
-        "Disclora: Open Simple Browser"
+        "Relic: Start UI dev server",
+        "Relic: Open Simple Browser"
       ],
       "group": {
         "kind": "build",
@@ -15,7 +15,7 @@
       "problemMatcher": []
     },
     {
-      "label": "Disclora: Start UI dev server",
+      "label": "Relic: Start UI dev server",
       "type": "shell",
       "command": "npm run dev:ui",
       "isBackground": true,
@@ -33,7 +33,7 @@
       }
     },
     {
-      "label": "Disclora: Open Simple Browser",
+      "label": "Relic: Open Simple Browser",
       "command": "simpleBrowser.show",
       "type": "vscode",
       "args": ["http://localhost:5173/preview.html"]

@@ -1,5 +1,5 @@
 /**
- * Disclora — Session 2 chunker regression gates.
+ * Relic — Session 2 chunker regression gates.
  *
  * Locks in the two bugs found in the audit:
  *   1. No trailing-chunk explosion (advance never collapses to a 1-char spiral).

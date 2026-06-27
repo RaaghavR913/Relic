@@ -189,14 +189,14 @@ describe('hasExportableData', () => {
 
 describe('reportFilename', () => {
   it('builds a safe .pdf name from ticker + type + period', () => {
-    expect(reportFilename(fullData())).toBe('Disclora-MU-10-Q-2026-05-28.pdf');
+    expect(reportFilename(fullData())).toBe('Relic-MU-10-Q-2026-05-28.pdf');
   });
 
   it('falls back to company name and strips unsafe characters', () => {
     const { ticker: _ticker, ...rest } = doc();
     const d: DocumentModel = { ...rest, companyName: 'Acme/Co: Inc.' };
     const name = reportFilename({ ...fullData(), doc: d });
-    expect(name).toMatch(/^Disclora-Acme-Co-Inc\.-10-Q-2026-05-28\.pdf$/);
+    expect(name).toMatch(/^Relic-Acme-Co-Inc\.-10-Q-2026-05-28\.pdf$/);
     expect(name).not.toMatch(/[/:]/);
   });
 });

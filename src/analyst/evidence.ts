@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — Analyst pipeline: evidence verification + advice scrubbing
+// Relic — Analyst pipeline: evidence verification + advice scrubbing
 // ------------------------------------------------------------
 // Two hallucination/compliance guards applied to every model output:
 //

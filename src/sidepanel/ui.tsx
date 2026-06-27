@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — shared side-panel UI atoms (Session 7)
+// Relic — shared side-panel UI atoms (Session 7)
 // ------------------------------------------------------------
 // Small, accessible, dependency-light building blocks reused across every tab:
 // tier badge, degradation banner, progress bar, loading skeletons, spinner,

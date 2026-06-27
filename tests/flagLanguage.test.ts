@@ -1,5 +1,5 @@
 /**
- * Disclora — Session 5 acceptance tests for hedging/uncertainty language flagging.
+ * Relic — Session 5 acceptance tests for hedging/uncertainty language flagging.
  *
  * Coverage:
  *   (a) Canonical uncertainty phrases: "may adversely affect", "no assurance"

@@ -129,7 +129,7 @@ function copyModelsPlugin(isProd: boolean): Plugin {
 // vite-plugin-web-extension forces chunkFileNames to `[name].js`, so a chunk
 // shared by the offscreen + sidepanel entries (the redline/diff + extractive
 // utilities) drops a loose `diff.js` at the dist root. We name that shared code
-// via manualChunks so it lands at `assets/disclora-shared.js` instead.
+// via manualChunks so it lands at `assets/relic-shared.js` instead.
 //
 // manualChunks is only valid for code-split (ES, multi-entry) builds; the
 // service-worker and content scripts build as single-file IIFE libs where
@@ -143,7 +143,7 @@ function sharedChunkRouterPlugin(): Plugin {
       if (opts.format === 'es' && !opts.inlineDynamicImports && !opts.manualChunks) {
         opts.manualChunks = (id: string) =>
           id.includes('/src/redline/') || id.includes('/src/summarizer/')
-            ? 'assets/disclora-shared'
+            ? 'assets/relic-shared'
             : undefined;
       }
       return opts;

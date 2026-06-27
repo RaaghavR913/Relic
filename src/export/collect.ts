@@ -1,7 +1,7 @@
 // ============================================================
-// Disclora — gather cached analysis artifacts for export
+// Relic — gather cached analysis artifacts for export
 // ------------------------------------------------------------
-// Reads everything Disclora has already computed for the current filing out of
+// Reads everything Relic has already computed for the current filing out of
 // the on-device IndexedDB caches (no recomputation, no network) and hands it to
 // the pure report builder in ./report.ts.
 //

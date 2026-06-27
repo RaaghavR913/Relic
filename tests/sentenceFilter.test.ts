@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — regression tests for table-aware sentence filtering
+// Relic — regression tests for table-aware sentence filtering
 // Bug: sentiment `sentenceIdx` was taken into the post-filter array instead of
 // the original `sentences` array, so highlight offsets drifted on any section
 // containing a table.

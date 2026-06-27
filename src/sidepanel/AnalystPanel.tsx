@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — Analyst tab: investor-focused document analysis
+// Relic — Analyst tab: investor-focused document analysis
 // ------------------------------------------------------------
 // Renders the staged FilingAnalysis in the spec order:
 //   Snapshot → Takeaways → What This Means

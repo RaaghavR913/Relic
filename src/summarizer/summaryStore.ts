@@ -1,7 +1,7 @@
 // ============================================================
-// Disclora — Summary IndexedDB store (Session 3)
+// Relic — Summary IndexedDB store (Session 3)
 // ------------------------------------------------------------
-// One database ('disclora-summaries'), one object store ('summaries').
+// One database ('relic-summaries'), one object store ('summaries').
 // Cache key: `${rawTextHash}:${sectionId}:${register}`.
 // Both the offscreen doc (extractive write) and the side panel
 // (builtin write + all reads) use this store.
@@ -11,7 +11,7 @@
 
 import { evictToCap, txComplete } from '@/lib/idbEvict';
 
-const DB_NAME = 'disclora-summaries';
+const DB_NAME = 'relic-summaries';
 const DB_VERSION = 1;
 const STORE = 'summaries';
 /** Higher than the per-filing stores: this store holds one entry PER SECTION. */

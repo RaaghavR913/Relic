@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — FinBERT sentiment calibration (pure, no Chrome/Workers)
+// Relic — FinBERT sentiment calibration (pure, no Chrome/Workers)
 // ------------------------------------------------------------
 // FinBERT's top-1 label is taken at face value, which paints boilerplate and
 // legal prose with confident colour. A confidence floor pulls low-score

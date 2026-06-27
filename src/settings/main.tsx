@@ -4,7 +4,7 @@ import '../sidepanel/index.css';
 import SettingsApp from './SettingsApp';
 
 const root = document.getElementById('root');
-if (!root) throw new Error('Disclora: #root element missing from settings HTML');
+if (!root) throw new Error('Relic: #root element missing from settings HTML');
 
 createRoot(root).render(
   <StrictMode>

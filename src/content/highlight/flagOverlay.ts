@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — Flag overlay manager (Session 5)
+// Relic — Flag overlay manager (Session 5)
 // ------------------------------------------------------------
 // FlagOverlayManager wires LanguageFlag[] → CSS Custom Highlights + floating tooltip.
 //

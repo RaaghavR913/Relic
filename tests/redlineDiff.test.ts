@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — Session 6 tests: section diff engine
+// Relic — Session 6 tests: section diff engine
 // ============================================================
 
 import { describe, it, expect } from 'vitest';

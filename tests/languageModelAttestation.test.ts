@@ -1,9 +1,9 @@
 /**
- * Disclora — LanguageModel (Prompt API) language attestation tests.
+ * Relic — LanguageModel (Prompt API) language attestation tests.
  *
  * Chrome logs a side-panel error when LanguageModel.availability() or create()
  * is called without expectedOutputs declaring English. These tests pin every
- * Disclora entry point that touches LanguageModel.
+ * Relic entry point that touches LanguageModel.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';

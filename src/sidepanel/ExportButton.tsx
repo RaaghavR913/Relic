@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — header Export control
+// Relic — header Export control
 // ------------------------------------------------------------
 // One click gathers every cached artifact for the current filing (investor
 // analysis, section summaries, sentiment, YoY redline), renders them into a
@@ -43,7 +43,7 @@ export function ExportButton({ doc }: { doc: DocumentModel }) {
       downloadFilingReportPdf(data);
       setState('idle');
     } catch (err) {
-      console.warn('Disclora export failed', err);
+      console.warn('Relic export failed', err);
       setState('error');
       setTimeout(() => setState('idle'), 3500);
     }

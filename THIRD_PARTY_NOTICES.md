@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Disclora's own source code is licensed under the [MIT License](LICENSE). The
+Relic's own source code is licensed under the [MIT License](LICENSE). The
 MIT grant covers code authored in this repository **only**. The following
 bundled or referenced third-party components are **not** owned by this project
 and remain subject to their own licenses and terms. Nothing in this repository's

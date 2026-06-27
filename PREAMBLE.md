@@ -1,8 +1,8 @@
-# Disclora — Shared Context Preamble
+# Relic — Shared Context Preamble
 
-> **How to use this file:** This is not a task on its own — do not run it alone. It is the constant header for every Disclora work prompt. If you (the agent) have repo access, each work prompt will tell you to read this file first. If you don't, its contents are pasted above the work prompt. Either way, the rules below apply to **every** item you implement.
+> **How to use this file:** This is not a task on its own — do not run it alone. It is the constant header for every Relic work prompt. If you (the agent) have repo access, each work prompt will tell you to read this file first. If you don't, its contents are pasted above the work prompt. Either way, the rules below apply to **every** item you implement.
 
-## What Disclora is
+## What Relic is
 
 An on-device Chrome extension for SEC/EDGAR filing analysis. Everything runs locally; nothing about the user's reading is sent off-device.
 

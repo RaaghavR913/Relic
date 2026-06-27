@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Disclora: UI Preview (dev server)",
+      "name": "Relic: UI Preview (dev server)",
       "type": "node-terminal",
       "request": "launch",
       "command": "npm run dev:ui",

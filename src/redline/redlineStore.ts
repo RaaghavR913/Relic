@@ -1,7 +1,7 @@
 // ============================================================
-// Disclora — Redline IndexedDB store (Session 6)
+// Relic — Redline IndexedDB store (Session 6)
 // ------------------------------------------------------------
-// One database ('disclora-redlines'), one object store ('redlines').
+// One database ('relic-redlines'), one object store ('redlines').
 // Cache key: the current filing's rawTextHash. A cached entry records the
 // computed SectionDiff[] plus the resolved prior-filing metadata, so re-opening
 // the side panel for the same filing replays the redline without re-fetching
@@ -15,7 +15,7 @@ import type { SectionDiff } from '@/types';
 import type { AlignmentSummary, RedlinePriorInfo } from '@/messages/types';
 import { evictToCap, txComplete, DEFAULT_CACHE_CAP } from '@/lib/idbEvict';
 
-const DB_NAME = 'disclora-redlines';
+const DB_NAME = 'relic-redlines';
 const DB_VERSION = 1;
 const STORE = 'redlines';
 

@@ -47,7 +47,7 @@ const scenario = scenarioFromSearch(window.location.search);
 installChromeMock(scenario);
 
 const root = document.getElementById('root');
-if (!root) throw new Error('Disclora preview: #root missing');
+if (!root) throw new Error('Relic preview: #root missing');
 
 // ui.tsx reads chrome.runtime at module scope — load App only after the mock is installed.
 const { default: App } = await import('@/sidepanel/App');

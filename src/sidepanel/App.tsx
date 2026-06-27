@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — unified side panel shell (Session 7)
+// Relic — unified side panel shell (Session 7)
 // ------------------------------------------------------------
 // Composes Sessions 1–6 into one polished surface:
 //   • Header: company · filing type · period + generation-tier badge.
@@ -43,7 +43,7 @@ import {
   stateLabel,
 } from './ui';
 
-const ONBOARDED_KEY = 'disclora:onboarded';
+const ONBOARDED_KEY = 'relic:onboarded';
 
 // ── tabs ──────────────────────────────────────────────────────────────────────
 
@@ -108,7 +108,7 @@ function analyzeFailCopy(response: AnalyzePageResponse | undefined): string {
       case 'unsupported_url':
         return "This page can't be analyzed — browser pages, the Chrome Web Store, and local files (including PDFs) aren't supported.";
       case 'no_permission':
-        return 'Chrome needs a fresh grant — click the Disclora toolbar icon while on the page you want to analyze, then try again.';
+        return 'Chrome needs a fresh grant — click the Relic toolbar icon while on the page you want to analyze, then try again.';
       case 'no_tab':
         return "Couldn't find the current tab — switch to the page you want to analyze and try again.";
       case 'needs_optional_permission':
@@ -123,10 +123,10 @@ function analyzeFailCopy(response: AnalyzePageResponse | undefined): string {
 
 // ── filing support info guide ─────────────────────────────────────────────────
 
-const INFO_OPEN_KEY = 'disclora:infoOpen';
+const INFO_OPEN_KEY = 'relic:infoOpen';
 
 /**
- * Static cheat sheet for where Disclora works best. Shown on every page;
+ * Static cheat sheet for where Relic works best. Shown on every page;
  * the Info toggle persists across sessions via chrome.storage.local.
  */
 /** Three-tier support guide — always available; visibility controlled by the Info toggle. */
@@ -150,7 +150,7 @@ function WhereItWorks() {
 
   return (
     <section
-      aria-label="Where Disclora works best"
+      aria-label="Where Relic works best"
       className="rounded-lg bg-zinc-900/60 px-3 py-2.5 ring-1 ring-inset ring-zinc-800 text-[12px] font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]"
     >
       <div className="flex items-center justify-between gap-3">
@@ -191,7 +191,7 @@ function Header({ doc, hideDocMeta = false }: { doc: DocumentModel | null; hideD
     <header className="border-b border-zinc-800 px-4 py-3">
       <div className="flex items-center gap-2.5">
         <BrandLogo className="h-6 w-6" />
-        <span className="text-[19px] font-semibold tracking-tight font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">Disclora</span>
+        <span className="text-[19px] font-semibold tracking-tight font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">Relic</span>
         <div className="ml-auto flex items-center gap-1.5">
           <SettingsButton />
           <span
@@ -329,7 +329,7 @@ function NoFiling({
       {needsPermission && (
         <Banner tone="info" icon="ℹ">
           <span className="font-semibold">{needsPermission.label}</span> needs a one-time
-          permission grant before Disclora can analyze it.{' '}
+          permission grant before Relic can analyze it.{' '}
           <button
             onClick={onGrantPermission}
             className="font-medium text-sky-300 underline decoration-sky-400/50 underline-offset-2 transition hover:text-sky-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
@@ -355,7 +355,7 @@ function NoFiling({
       {gateState === 'paywall' && (
         <Banner tone="warn" icon="⚠">
           This page appears to have a{' '}
-          <span className="font-semibold">paywall or registration gate</span>. Disclora can
+          <span className="font-semibold">paywall or registration gate</span>. Relic can
           only analyze content that&rsquo;s visible to you — dismiss the gate and retry.
         </Banner>
       )}
@@ -505,7 +505,7 @@ export default function App() {
         if (granted) {
           void startAnalyze();
         } else {
-          setAnalyzeError("Permission denied — Disclora can't analyze this site.");
+          setAnalyzeError("Permission denied — Relic can't analyze this site.");
         }
       })
       .catch((err: unknown) => {
@@ -657,7 +657,7 @@ export default function App() {
                 {gateState === 'paywall' && (
                   <Banner tone="warn" icon="⚠">
                     This page appears to have a{' '}
-                    <span className="font-semibold">paywall or registration gate</span>. Disclora
+                    <span className="font-semibold">paywall or registration gate</span>. Relic
                     can only analyze content visible to you — dismiss the gate and retry.
                   </Banner>
                 )}

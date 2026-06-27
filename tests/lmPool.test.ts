@@ -1,5 +1,5 @@
 /**
- * Disclora — Phase 2.5: LM session pooling tests.
+ * Relic — Phase 2.5: LM session pooling tests.
  *
  * Covers the session-lifecycle contracts in changeSummary.ts without requiring a
  * real Chrome Prompt API — every LM call is replaced with a lightweight in-memory

@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — Session 3 tests: extractive algorithm
+// Relic — Session 3 tests: extractive algorithm
 // ============================================================
 
 import { describe, it, expect } from 'vitest';

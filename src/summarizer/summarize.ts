@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — Section summarization orchestrator (Session 3)
+// Relic — Section summarization orchestrator (Session 3)
 // ------------------------------------------------------------
 // Runs in the SIDE PANEL context (has access to Chrome AI APIs
 // and chrome.runtime.sendMessage).

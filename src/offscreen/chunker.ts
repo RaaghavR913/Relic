@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — section-aware chunker (Session 2)
+// Relic — section-aware chunker (Session 2)
 // ------------------------------------------------------------
 // Splits a DocumentModel into chunks suitable for embedding:
 //   - NEVER straddles section boundaries

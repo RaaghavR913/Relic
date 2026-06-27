@@ -1,5 +1,5 @@
 /**
- * Disclora — Session 1 section segmentation tests.
+ * Relic — Session 1 section segmentation tests.
  *
  * Covers the item-number segmenter (10-K / 10-Q / 8-K / 20-F), the title-pattern
  * segmenter (S-1 / DEF 14A), and TOC de-duplication.

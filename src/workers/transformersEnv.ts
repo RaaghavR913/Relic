@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — shared Transformers.js env for extension Web Workers
+// Relic — shared Transformers.js env for extension Web Workers
 // ------------------------------------------------------------
 // Models and ORT WASM glue load from chrome.runtime.getURL(...) paths.
 // Transformers.js defaults to env.useBrowserCache=true, which calls

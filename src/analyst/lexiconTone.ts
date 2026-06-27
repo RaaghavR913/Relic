@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — Analyst pipeline: lexicon tone proxy
+// Relic — Analyst pipeline: lexicon tone proxy
 // ------------------------------------------------------------
 // A fast, model-free tone signal for the deterministic Analyst. FinBERT sentiment
 // is a manual, on-demand pass, so on first view the analyst would otherwise read a

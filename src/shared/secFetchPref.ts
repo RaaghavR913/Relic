@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — "fetch prior-year filings from SEC.gov" preference
+// Relic — "fetch prior-year filings from SEC.gov" preference
 // ------------------------------------------------------------
 // The redline (Changes tab) is the only feature that makes a network request:
 // it fetches last year's comparable filing from EDGAR to diff against. This
@@ -12,7 +12,7 @@
 
 import { useEffect, useState } from 'react';
 
-const KEY = 'disclora:secFetch';
+const KEY = 'relic:secFetch';
 export const SEC_FETCH_DEFAULT = true;
 
 /** One-shot read, for non-React callers (e.g. just before a fetch). */

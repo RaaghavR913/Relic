@@ -45,7 +45,7 @@ function seedForScenario(scenario: PreviewScenario): {
   const session: Record<string, unknown> = {};
 
   if (scenario !== 'onboarding') {
-    local['disclora:onboarded'] = true;
+    local['relic:onboarded'] = true;
   }
 
   if (scenario === 'filing') {
@@ -66,7 +66,7 @@ export function installChromeMock(scenario: PreviewScenario): void {
 
   const chromeMock = {
     runtime: {
-      getManifest: () => ({ version: '1.2.7', name: 'Disclora' }),
+      getManifest: () => ({ version: '1.2.7', name: 'Relic' }),
       getURL: (resource: string) =>
         resource === 'brand-logo.png' ? '/brand-logo.png' : `chrome-extension://mock/${resource}`,
       openOptionsPage: () => {

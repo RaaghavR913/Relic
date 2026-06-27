@@ -1,4 +1,4 @@
-# Disclora — Phase 2.7: `MAX_SUMMARIZER_CHARS` multi-chunk for the builtin path
+# Relic — Phase 2.7: `MAX_SUMMARIZER_CHARS` multi-chunk for the builtin path
 
 **Problem:** `runBuiltin` called `.slice(0, 8_000)` unconditionally, silently
 truncating any Risk Factors section longer than 8,000 characters — which is
@@ -39,7 +39,7 @@ Phase 2.7 — multi-chunk builtin summarization: sections over `MAX_SUMMARIZER_C
 
 ---
 
-# Disclora — Phase 2.5: LM session pooling (Q&A and changeSummary)
+# Relic — Phase 2.5: LM session pooling (Q&A and changeSummary)
 
 **Problem:** each `LanguageModel.create()` call within a filing session pays a
 cold-start warm-up penalty even when the same system-prompt session is reused
@@ -56,7 +56,7 @@ warm-up; subsequent calls go directly to inference.
 
 ## Latency numbers (on-device, Gemini Nano, measured via `console.debug`)
 
-`[Disclora] …` lines in DevTools → Side Panel console, against a typical 10-K
+`[Relic] …` lines in DevTools → Side Panel console, against a typical 10-K
 (Risk Factors + MD&A sections):
 
 ### changeSummary (sequential section loop, 2 sections)
@@ -124,7 +124,7 @@ Phase 2.5 — pool the `LanguageModel` session per filing session for Q&A and ch
 
 ---
 
-# Disclora — Phase 2.1: Auto-summarize on filing load
+# Relic — Phase 2.1: Auto-summarize on filing load
 
 **Before:** ~18 clicks to read summaries for a 10-K's top sections (open panel → navigate to Summary tab → click "Summarize" for each section individually).  
 **After:** 0 clicks — opening a 10-K immediately produces streaming summaries for the top 2–3 priority sections (MD&A, Risk Factors, Business).
@@ -143,7 +143,7 @@ Phase 2.5 — pool the `LanguageModel` session per filing session for Q&A and ch
 
 ---
 
-# Disclora — Phase 1: Launch PR (blockers + quick wins + zero-egress)
+# Relic — Phase 1: Launch PR (blockers + quick wins + zero-egress)
 
 Minimum-viable-ship PR gating Chrome Web Store submission: the seven Phase-1
 items, **plus** the model-bundling work that makes the extension genuinely
@@ -166,7 +166,7 @@ zero-egress (no runtime Hugging Face dependency).
 - **1.4 web_accessible_resources** — `matches` narrowed to the three content-script
   hosts; `resources` now also exposes `models/*`.
 - **1.5 diff.js + WASM dedup** — Shared chunk routed to
-  `assets/disclora-shared.js` (no root `diff.js`); orphaned duplicate ONNX wasm
+  `assets/relic-shared.js` (no root `diff.js`); orphaned duplicate ONNX wasm
   deleted from `dist/assets/`. ~22.4 MiB off disk.
 - **1.6 resolvePrior pagination** — Continuation fetch via `filings.files[0]`
   through the rate-limited queue when `recent` has no prior. +3 tests.
@@ -184,7 +184,7 @@ zero-egress (no runtime Hugging Face dependency).
 
 ## Zero-egress: bundled model weights (the big change in this revision)
 
-**Decision:** make Disclora truly zero-egress by bundling weights, accepting the
+**Decision:** make Relic truly zero-egress by bundling weights, accepting the
 package-size hit for a clean privacy story and no third-party runtime dependency.
 
 **What changed**
@@ -265,11 +265,11 @@ Well within the Chrome Web Store package limit.
 comparisons, and UI settings, so a re-opened filing displays instantly. Nothing is
 transmitted; storage is local to the user's profile.
 
-**`sidePanel`** — Disclora's entire UI is a side panel beside the filing. The
+**`sidePanel`** — Relic's entire UI is a side panel beside the filing. The
 permission is required to open and render it.
 
 **`activeTab`** — Temporary access to the filing in the tab the user is actively
-viewing when they invoke Disclora, so it can read that document's text for
+viewing when they invoke Relic, so it can read that document's text for
 on-device analysis. Limited to the active tab on user action.
 
 **`tabs`** — Associates analysis state with the correct tab and detects navigation
@@ -280,14 +280,14 @@ document in focus. No browsing history is collected or transmitted.
 document via Web Workers + WebAssembly. The offscreen API is required to host this
 DOM-less compute context in Manifest V3. All processing stays on-device.
 
-**Host permission — `https://*.sec.gov/*`** — Disclora reads the SEC/EDGAR filing
+**Host permission — `https://*.sec.gov/*`** — Relic reads the SEC/EDGAR filing
 pages the user opens and fetches the prior comparable filing for redline diffs,
 directly from EDGAR, honoring SEC's fair-access rate limit (≤8 req/s, backoff).
 Only public filing documents are fetched; no user data is sent. This is the **only**
 external host the extension contacts (enforced by the CSP `connect-src`).
 
 **Host permissions — `https://*.fool.com/*`, `https://*.seekingalpha.com/*`** —
-Disclora also runs on earnings-call transcript pages on these sites, reading the
+Relic also runs on earnings-call transcript pages on these sites, reading the
 on-page transcript text for the same on-device analysis. Content is read locally on
 pages the user opens; nothing is transmitted.
 
@@ -298,11 +298,11 @@ bundled inside the extension.)*
 
 ## DRAFT — Privacy policy (host this and return the URL)
 
-### Disclora Privacy Policy
+### Relic Privacy Policy
 
 _Last updated: 2026-06-09_
 
-Disclora is an on-device SEC/EDGAR filing-analysis tool built around one
+Relic is an on-device SEC/EDGAR filing-analysis tool built around one
 principle: **nothing about what you read or ask ever leaves your device.**
 
 **Everything runs locally.**
@@ -316,8 +316,8 @@ stored **only on your computer** (browser local storage and IndexedDB). We run n
 servers that receive this data and do not collect, transmit, sell, or share any of
 it.
 
-**The only network requests Disclora makes.**
-Disclora contacts exactly one external service: the U.S. SEC's public EDGAR
+**The only network requests Relic makes.**
+Relic contacts exactly one external service: the U.S. SEC's public EDGAR
 system (`*.sec.gov`). It fetches the public filing documents you choose to view and
 the prior comparable filing used for year-over-year comparisons — the same public
 documents anyone can open in a browser. These requests carry only the public
@@ -327,7 +327,7 @@ access to SEC EDGAR and the extension's own bundled files. There are no model
 downloads, no analytics, no telemetry, no advertising, and no third-party trackers.
 
 **Permissions.**
-Disclora requests only the browser permissions needed to read the filing in your
+Relic requests only the browser permissions needed to read the filing in your
 active tab, show its side-panel interface, run on-device inference, and fetch public
 EDGAR documents. See the Chrome Web Store listing for a per-permission explanation.
 
@@ -337,12 +337,12 @@ extension, or clearing your browser's site/extension data, deletes all cached
 analysis and settings. We hold no copy, because none is ever sent to us.
 
 **Optional browser AI.**
-On devices where Chrome's built-in AI (Gemini Nano) is available, Disclora can
+On devices where Chrome's built-in AI (Gemini Nano) is available, Relic can
 use it for richer summaries. That model is downloaded and managed by Google Chrome
-itself, not by Disclora, and your filing content is processed on-device by it.
+itself, not by Relic, and your filing content is processed on-device by it.
 
 **Children's privacy.**
-Disclora is a financial-research tool for general/professional audiences and is
+Relic is a financial-research tool for general/professional audiences and is
 not directed to children.
 
 **Changes.**

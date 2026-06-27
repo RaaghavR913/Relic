@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — export data model + shared helpers
+// Relic — export data model + shared helpers
 // ------------------------------------------------------------
 // The artifacts gathered from the on-device caches (by ./collect.ts) and the
 // pure helpers shared by the PDF renderer (./pdf.ts): data presence, filename,
@@ -42,17 +42,17 @@ export function hasExportableData(d: FilingExportData): boolean {
   );
 }
 
-/** Safe download filename, e.g. `Disclora-MU-10-Q-2026-05-28.pdf`. */
+/** Safe download filename, e.g. `Relic-MU-10-Q-2026-05-28.pdf`. */
 export function reportFilename(d: FilingExportData, ext = 'pdf'): string {
   const id = d.doc.ticker || d.doc.companyName || 'filing';
   const period = d.doc.periodOfReport ? d.doc.periodOfReport.slice(0, 10) : '';
-  const safe = ['Disclora', id, d.doc.filingType, period]
+  const safe = ['Relic', id, d.doc.filingType, period]
     .filter(Boolean)
     .join('-')
     .replace(/[^a-z0-9._-]+/gi, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
-  return `${safe || 'Disclora-report'}.${ext}`;
+  return `${safe || 'Relic-report'}.${ext}`;
 }
 
 // ── dates ────────────────────────────────────────────────────────────────────

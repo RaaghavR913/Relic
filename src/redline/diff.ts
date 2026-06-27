@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — Section diff engine (Session 6)
+// Relic — Section diff engine (Session 6)
 // ------------------------------------------------------------
 // Pure functions — no Chrome APIs, no Workers, no IndexedDB.
 // Imported by offscreen.ts (which supplies sentence embeddings for the semantic

@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — canonical data model (source of truth)
+// Relic — canonical data model (source of truth)
 // All other modules must import from here; never redefine locally.
 // ============================================================
 

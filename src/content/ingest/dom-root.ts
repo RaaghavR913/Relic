@@ -1,5 +1,5 @@
 /**
- * DOM root selection for Disclora ingestion.
+ * DOM root selection for Relic ingestion.
  *
  * EDGAR renders filings inside <iframe> elements; this module picks the
  * same-origin document whose body has the most text content, which is

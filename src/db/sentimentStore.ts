@@ -1,7 +1,7 @@
 // ============================================================
-// Disclora — IndexedDB cache for FinBERT sentiment results (Session 4)
+// Relic — IndexedDB cache for FinBERT sentiment results (Session 4)
 // ------------------------------------------------------------
-// Store: 'disclora-sentiment'  key: rawTextHash
+// Store: 'relic-sentiment'  key: rawTextHash
 // Results include DOCUMENT-space SentenceSentiment[] so they can be replayed
 // immediately from cache without re-running the model.
 // ============================================================
@@ -9,7 +9,7 @@
 import type { SentenceSentiment } from '@/types';
 import { evictToCap, txComplete, DEFAULT_CACHE_CAP } from '@/lib/idbEvict';
 
-const DB_NAME = 'disclora-sentiment';
+const DB_NAME = 'relic-sentiment';
 const DB_VERSION = 1;
 const SENTIMENT_STORE = 'sentiments';
 

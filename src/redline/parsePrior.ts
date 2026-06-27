@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — Prior filing parser (Session 6)
+// Relic — Prior filing parser (Session 6)
 // ------------------------------------------------------------
 // Runs in the OFFSCREEN document (which has a real DOM + DOMParser). Turns the
 // raw HTML of a prior filing's primary document into a DocumentModel by reusing

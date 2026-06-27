@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — Session 6 tests: section alignment
+// Relic — Session 6 tests: section alignment
 // ============================================================
 
 import { describe, it, expect } from 'vitest';

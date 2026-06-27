@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — Analyst pipeline orchestrator
+// Relic — Analyst pipeline orchestrator
 // ------------------------------------------------------------
 // Runs in the SIDE PANEL (has Chrome AI APIs). Builds a FilingAnalysis through
 // staged Prompt API calls — Gemini Nano's context is too small for one-shot
@@ -339,7 +339,7 @@ export async function generateFilingAnalysis(
         return parseJson(raw);
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') throw err;
-        console.warn(`[Disclora] analyst stage "${stage}" failed:`, err);
+        console.warn(`[Relic] analyst stage "${stage}" failed:`, err);
         return null;
       } finally {
         session.destroy();

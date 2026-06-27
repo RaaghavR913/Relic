@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — pre-build dist cleaner (runs BEFORE `vite build`)
+// Relic — pre-build dist cleaner (runs BEFORE `vite build`)
 // ------------------------------------------------------------
 // Guarantees a HERMETIC build: dist/ ends up containing only what the current
 // build produced. Without this, dist/ silently accumulates artifacts across

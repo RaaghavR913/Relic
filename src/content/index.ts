@@ -1,5 +1,5 @@
 /**
- * Disclora content script — injected on EDGAR / IR filing pages.
+ * Relic content script — injected on EDGAR / IR filing pages.
  *
  * Session 1: pick the filing frame, build the DocumentModel + PositionMap, and
  * expose a dev demo proving multi-node range mapping.
@@ -42,7 +42,7 @@ import type {
   FlagResultsMsg,
 } from '@/messages/types';
 
-interface DiscloraDevApi {
+interface RelicDevApi {
   result: IngestResult | null;
   reingest: () => IngestResult;
   highlight: (substring: string) => DemoResult;
@@ -62,13 +62,13 @@ const RAG_HIGHLIGHT_LAYER = 'qa' as const;
 // We expose a re-ingest closure (bound to the first scope) on globalThis for the
 // new injection to call; it re-runs run(), which tears down the prior overlay
 // first so no duplicate tooltip / mouse listeners leak.
-interface DiscloraGlobal {
-  __discloraInjected?: boolean;
-  __discloraReingest?: () => void;
+interface RelicGlobal {
+  __relicInjected?: boolean;
+  __relicReingest?: () => void;
 }
-const DL_GLOBAL = globalThis as DiscloraGlobal;
-const ALREADY_INJECTED = DL_GLOBAL.__discloraInjected === true;
-DL_GLOBAL.__discloraInjected = true;
+const RELIC_GLOBAL = globalThis as RelicGlobal;
+const ALREADY_INJECTED = RELIC_GLOBAL.__relicInjected === true;
+RELIC_GLOBAL.__relicInjected = true;
 
 /** Minimum normalised-text length for a frame to be treated as the filing frame. */
 const MIN_FILING_CHARS = 500;
@@ -104,7 +104,7 @@ function visibleFlags(): LanguageFlag[] {
   );
 }
 
-async function run(): Promise<DiscloraDevApi> {
+async function run(): Promise<RelicDevApi> {
   // Re-analyze (run() called a second time in this scope): tear down the prior
   // ingestion's overlay so we don't leak a duplicate hover tooltip / mouse
   // listeners, and clear any stale highlight layers before re-ingesting.
@@ -137,7 +137,7 @@ async function run(): Promise<DiscloraDevApi> {
     const gateState = detectGateState(profile, document);
     if (gateState !== 'open') {
       console.debug(
-        `[Disclora] ${window.location.hostname}: content gated (${gateState}) — skipping analysis`,
+        `[Relic] ${window.location.hostname}: content gated (${gateState}) — skipping analysis`,
       );
       const gatedMsg: FilingGatedMsg = {
         target: 'sidepanel',
@@ -164,7 +164,7 @@ async function run(): Promise<DiscloraDevApi> {
   }
 
   console.debug(
-    `[Disclora] ingested ${model.filingType} — ${model.companyName ?? 'unknown company'} ` +
+    `[Relic] ingested ${model.filingType} — ${model.companyName ?? 'unknown company'} ` +
       `(${model.sections.length} sections, ${positionMap.text.length} chars, hash ${model.rawTextHash})`,
   );
 
@@ -211,7 +211,7 @@ async function run(): Promise<DiscloraDevApi> {
     _flagOverlay = flagOverlay;
 
     console.debug(
-      `[Disclora] flagged ${allFlags.length} language markers across ${model.sections.length} sections`,
+      `[Relic] flagged ${allFlags.length} language markers across ${model.sections.length} sections`,
     );
 
     // Persist flags so the side panel can recover them when opened after ingestion.
@@ -364,25 +364,25 @@ if (ALREADY_INJECTED) {
   // a fresh analysis and re-broadcast, instead of being a silent no-op. Running
   // in the original scope keeps the live message listeners and highlight state
   // consistent.
-  if (DL_GLOBAL.__discloraReingest) {
-    DL_GLOBAL.__discloraReingest();
+  if (RELIC_GLOBAL.__relicReingest) {
+    RELIC_GLOBAL.__relicReingest();
   } else {
     // Hook unset — e.g. the first pass never reached ingestion, or a content
     // script from a previous extension version is still resident in this tab
     // (content scripts don't hot-update until the page reloads). Fall back to
     // ingesting in this scope so the panel still gets a fresh FILING_READY
     // broadcast and "Analyze this page" is never a silent no-op.
-    run().catch((err) => console.error('[Disclora] re-ingestion failed', err));
+    run().catch((err) => console.error('[Relic] re-ingestion failed', err));
   }
 } else if (shouldIngestThisFrame()) {
   // Expose the re-ingest closure (bound to this scope) for a later re-analyze.
-  DL_GLOBAL.__discloraReingest = () => {
-    run().catch((err) => console.error('[Disclora] re-ingestion failed', err));
+  RELIC_GLOBAL.__relicReingest = () => {
+    run().catch((err) => console.error('[Relic] re-ingestion failed', err));
   };
   run().then((api) => {
-    (globalThis as unknown as { __Disclora?: DiscloraDevApi }).__Disclora = api;
-    console.debug('[Disclora] dev API ready: __Disclora.demo() / .highlight(text)');
+    (globalThis as unknown as { __Relic?: RelicDevApi }).__Relic = api;
+    console.debug('[Relic] dev API ready: __Relic.demo() / .highlight(text)');
   }).catch((err) => {
-    console.error('[Disclora] ingestion failed', err);
+    console.error('[Relic] ingestion failed', err);
   });
 }

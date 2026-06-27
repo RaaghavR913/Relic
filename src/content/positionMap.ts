@@ -1,5 +1,5 @@
 /**
- * Disclora positionMap — Session 1 linchpin.
+ * Relic positionMap — Session 1 linchpin.
  *
  * buildPositionMap(root) performs a single recursive DFS over the filing DOM,
  * producing:

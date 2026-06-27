@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — shared toggle control
+// Relic — shared toggle control
 // ============================================================
 
 export function Switch({

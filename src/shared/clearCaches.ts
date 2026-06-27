@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — on-device cache reset
+// Relic — on-device cache reset
 // ------------------------------------------------------------
 // Deletes every IndexedDB store that holds derived analysis for a filing:
 // investor analyses, year-over-year redlines, FinBERT sentiment, and extractive
@@ -9,12 +9,12 @@
 // settings page never opens a connection that would block its own deletion.
 // ============================================================
 
-/** Every IndexedDB database Disclora uses to cache derived analysis. */
+/** Every IndexedDB database Relic uses to cache derived analysis. */
 export const CACHE_DB_NAMES = [
-  'disclora-analyses',
-  'disclora-redlines',
-  'disclora-sentiment',
-  'disclora-summaries',
+  'relic-analyses',
+  'relic-redlines',
+  'relic-sentiment',
+  'relic-summaries',
 ] as const;
 
 function deleteDatabase(name: string): Promise<void> {

@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — Session 4 tests: FinBERT sentiment
+// Relic — Session 4 tests: FinBERT sentiment
 // ============================================================
 //
 // Tests cover:

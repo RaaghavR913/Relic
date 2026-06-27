@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — typed message bus (Session 2)
+// Relic — typed message bus (Session 2)
 // ------------------------------------------------------------
 // Every chrome.runtime.sendMessage / chrome.tabs.sendMessage call uses one of these
 // types. The `target` field routes messages; each context ignores messages whose target

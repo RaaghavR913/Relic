@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — cheap, stable string hash (cache key for DocumentModel.rawTextHash)
+// Relic — cheap, stable string hash (cache key for DocumentModel.rawTextHash)
 // cyrb53: fast, well-distributed, deterministic across sessions. NOT cryptographic.
 // ============================================================
 

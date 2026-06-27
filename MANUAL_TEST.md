@@ -1,4 +1,4 @@
-# Disclora — Session 7 Manual Test Script
+# Relic — Session 7 Manual Test Script
 
 Covers the unified side panel: first-run → first analyzed filing → all tabs
 (Summary · Sentiment · Flags · Changes) in **both** generation tiers (`builtin`
@@ -14,16 +14,16 @@ npm test               # 144 tests should pass
 
 1. Open `chrome://extensions`, enable **Developer mode**.
 2. **Load unpacked** → select the `dist/` folder.
-3. Pin **Disclora**. Click the toolbar icon to open the side panel.
+3. Pin **Relic**. Click the toolbar icon to open the side panel.
 
 ### Resetting between runs
 The first-run screen and overlay prefs persist in `chrome.storage.local`. To replay
 onboarding, open the side panel's service-worker/devtools console and run:
 ```js
 chrome.storage.local.remove([
-  'disclora:onboarded',
-  'disclora:sentimentEnabled',
-  'disclora:flagsEnabled',
+  'relic:onboarded',
+  'relic:sentimentEnabled',
+  'relic:flagsEnabled',
 ]);
 ```
 Then reopen the panel.
@@ -32,13 +32,13 @@ Then reopen the panel.
 
 ## 1. First-run (new user)
 
-**Open the panel with no filing tab focused, after clearing `disclora:onboarded`.**
+**Open the panel with no filing tab focused, after clearing `relic:onboarded`.**
 
-- [ ] A **Welcome to Disclora** screen appears (not the tabs).
+- [ ] A **Welcome to Relic** screen appears (not the tabs).
 - [ ] **Private by design** lists the on-device guarantees.
 - [ ] **What downloads to your device** lists exactly two encoder models —
       `mxbai-embed-xsmall` and `FinBERT` — with sizes. **Gemini Nano is NOT listed
-      as something Disclora downloads.**
+      as something Relic downloads.**
 - [ ] **Generation mode** shows a tier badge:
   - On Chrome with built-in AI → **Built-in AI** + a **Gemini Nano** status row
     (`Ready` / `Needs download` / `Downloading…`). If downloadable, the copy says
@@ -59,7 +59,7 @@ Navigate a tab to a real EDGAR document, e.g. a recent **10-K** primary document
 HTML. (Any 10-K / 10-Q / 8-K / S-1 / DEF 14A primary doc works.)
 
 - [ ] The content script ingests the filing (check the page console for
-      `[Disclora] ingested …`).
+      `[Relic] ingested …`).
 - [ ] In the side panel **header**: company name, ticker (if any), a **filing-type
       chip**, **Period**, and section count appear.
 - [ ] **Sections** navigator lists the filing's sections; clicking one scrolls the
@@ -163,7 +163,7 @@ exercising all tabs:
 - [ ] **Unsupported page:** open `chrome://version`, open the panel, click
       **Analyze this page** → friendly "can't be analyzed" message, no crash.
 - [ ] **Double injection:** click **Analyze this page** twice on the same page →
-      exactly one `[Disclora] ingested …` log in the page console; no duplicate
+      exactly one `[Relic] ingested …` log in the page console; no duplicate
       highlights or listeners.
 - [ ] **Privacy invariant:** DevTools Network on an analyzed IR page shows NO new
       outbound requests from the extension (ingestion is DOM-only).

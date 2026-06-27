@@ -1,7 +1,7 @@
 // ============================================================
-// Disclora — first-run experience (Session 7, light)
+// Relic — first-run experience (Session 7, light)
 // ------------------------------------------------------------
-// Shown once (gated by chrome.storage.local 'disclora:onboarded'):
+// Shown once (gated by chrome.storage.local 'relic:onboarded'):
 //   • Privacy explainer — 100% on-device.
 //   • Bundled models: embeddings + FinBERT ship inside the extension (no network
 //     fetch at runtime). Gemini Nano is downloaded + managed by Chrome itself.
@@ -41,7 +41,7 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
       {/* Hero */}
       <div className="flex flex-col items-center gap-2 pt-2 text-center">
         <BrandLogo className="h-12 w-12" />
-        <h1 className="text-[17px] font-semibold text-zinc-100 font-[Georgia,serif]">Welcome to Disclora</h1>
+        <h1 className="text-[17px] font-semibold text-zinc-100 font-[Georgia,serif]">Welcome to Relic</h1>
         <p className="max-w-xs text-base leading-relaxed text-zinc-400 font-[Georgia,serif]">
           Understand company filings like an investor.
         </p>
@@ -55,7 +55,7 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
         <ul className="flex flex-col gap-1.5 text-xs leading-relaxed text-zinc-400">
           <li className="flex gap-2"><Check /> Your research stays on your computer.</li>
           <li className="flex gap-2"><Check /> No filing text, summaries, or notes are uploaded.</li>
-          <li className="flex gap-2"><Check /> Disclora only connects to SEC EDGAR for the filings you are already viewing.</li>
+          <li className="flex gap-2"><Check /> Relic only connects to SEC EDGAR for the filings you are already viewing.</li>
         </ul>
       </section>
 
@@ -84,7 +84,7 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
         {builtin ? (
           <>
             <p className="text-xs leading-relaxed text-zinc-400 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
-              Disclora analyzes SEC filings privately on your device, turning them into clear summaries,
+              Relic analyzes SEC filings privately on your device, turning them into clear summaries,
               analyst notes, and change narratives powered by Gemini Nano with zero cloud.
             </p>
             <div className="mt-2 flex items-center justify-between rounded-lg bg-zinc-800/50 px-3 py-2 text-xs">
@@ -100,7 +100,7 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
           </>
         ) : (
           <Banner tone="positive" icon="✓">
-            Built-in AI isn’t available on this device, so Disclora runs in <strong>extractive mode</strong>:
+            Built-in AI isn’t available on this device, so Relic runs in <strong>extractive mode</strong>:
             summaries become the filing’s most important sentences. Sentiment, flags, and year-over-year
             changes are fully available — all on-device.
           </Banner>

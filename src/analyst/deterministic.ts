@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — Analyst pipeline: deterministic signals
+// Relic — Analyst pipeline: deterministic signals
 // ------------------------------------------------------------
 // Everything here runs without the Prompt API:
 //

@@ -1,5 +1,5 @@
 /**
- * Disclora — Analyst guard-rail unit tests: evidence verification,
+ * Relic — Analyst guard-rail unit tests: evidence verification,
  * advice scrubbing, and relevance-driven excerpt selection.
  */
 

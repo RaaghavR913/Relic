@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — Year-over-year Redline side-panel component (Session 6)
+// Relic — Year-over-year Redline side-panel component (Session 6)
 // ------------------------------------------------------------
 // "What changed" since last year's comparable filing. Triggers the SW redline
 // pipeline (resolve prior → fetch → parse → align → diff), renders per-section

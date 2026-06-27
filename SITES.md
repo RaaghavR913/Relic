@@ -1,6 +1,6 @@
-# Disclora — Site Support & Functionality Reference
+# Relic — Site Support & Functionality Reference
 
-> Source-of-truth notes on **which pages Disclora works on** and **how much
+> Source-of-truth notes on **which pages Relic works on** and **how much
 > functionality** each gets. Derived from the codebase, not marketing copy.
 > Primary sources: [`manifest.json`](manifest.json),
 > [`src/background/inject.ts`](src/background/inject.ts),
@@ -130,7 +130,7 @@ When demoted, on-page highlights are off by default but can be turned on manuall
 
 ## Known caveats & limitations
 
-1. **Consent walls / paywalls (Group C)** are detected, not bypassed. Disclora
+1. **Consent walls / paywalls (Group C)** are detected, not bypassed. Relic
    asks you to dismiss the banner and retry; it never auto-clicks.
 2. **Site detection selectors are mostly unverified best-guesses.** The CSS
    selectors used to detect real content, consent banners, and paywalls on
@@ -147,5 +147,5 @@ When demoted, on-page highlights are off by default but can be turned on manuall
 
 ---
 
-*This document reflects the codebase as of Disclora v1.2.7. It is reference
+*This document reflects the codebase as of Relic v1.2.7. It is reference
 material, not user-facing copy — adapt wording before shipping it in-product.*

@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — overlay preferences store (Session 7 · extended Session 8)
+// Relic — overlay preferences store (Session 7 · extended Session 8)
 // ------------------------------------------------------------
 // Single source of truth for the on-page language-flag overlay:
 //   • flags        — master show/hide switch
@@ -36,9 +36,9 @@ export interface OverlayPrefs {
   boilerplate: boolean;
 }
 
-const FLAGS_KEY = 'disclora:flagsEnabled';
-const TYPES_KEY = 'disclora:flagTypes';
-const BOILERPLATE_KEY = 'disclora:showBoilerplate';
+const FLAGS_KEY = 'relic:flagsEnabled';
+const TYPES_KEY = 'relic:flagTypes';
+const BOILERPLATE_KEY = 'relic:showBoilerplate';
 
 const ALL_TYPES_ON: Record<FlagCategory, boolean> = {
   uncertainty: true,

@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — language-flag category presentation
+// Relic — language-flag category presentation
 // ------------------------------------------------------------
 // Shared display metadata for the four flag categories: a human label, an
 // example trigger phrase, and the Tailwind text-decoration utility that mirrors

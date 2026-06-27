@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — encoder Web Worker (Session 2)
+// Relic — encoder Web Worker (Session 2)
 // ------------------------------------------------------------
 // RULES:
 //   - MUST NEVER reference chrome.* (this is a plain Web Worker).

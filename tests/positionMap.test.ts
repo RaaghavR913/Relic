@@ -1,5 +1,5 @@
 /**
- * Disclora — Session 1 acceptance gate (positionMap).
+ * Relic — Session 1 acceptance gate (positionMap).
  *
  * Implements the five required tests from the spec §6:
  *   (a) known-sentence highlight incl. a sentence containing an inline <b>/XBRL tag

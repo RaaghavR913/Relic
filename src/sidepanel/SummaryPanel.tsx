@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — Section Summaries side-panel component (Session 3)
+// Relic — Section Summaries side-panel component (Session 3)
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -13,7 +13,7 @@ import { isLowConfidenceGeneric, isEdgarExhibit } from '@/content/ingest/detect'
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
-const DEV_FORCE_KEY = 'disclora:devForceMode';
+const DEV_FORCE_KEY = 'relic:devForceMode';
 
 // Sections worth auto-summarizing first (by canonical id prefix).
 const PRIORITY_IDS = [

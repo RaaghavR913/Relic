@@ -5,7 +5,7 @@ import './index.css';
 import App from './App';
 
 const root = document.getElementById('root');
-if (!root) throw new Error('Disclora: #root element missing from side panel HTML');
+if (!root) throw new Error('Relic: #root element missing from side panel HTML');
 
 createRoot(root).render(
   <LazyMotion features={domMax} strict>

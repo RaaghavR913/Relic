@@ -1,5 +1,5 @@
 // ============================================================
-// Disclora — Sentiment side-panel component (Session 4)
+// Relic — Sentiment side-panel component (Session 4)
 // ------------------------------------------------------------
 // Features:
 //   • "Analyze Sentiment" button triggers FinBERT via offscreen worker.
