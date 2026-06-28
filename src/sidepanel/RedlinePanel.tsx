@@ -385,24 +385,25 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
   );
 
   return (
-    <section aria-labelledby="redline-heading" className="flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <p id="redline-heading" className="text-[13px] font-medium uppercase tracking-widest text-zinc-500 font-[Times,serif]">
-          What Changed (YoY)
-        </p>
-        {applicable && (
-          <span className="ml-auto">
-            <button
-              onClick={() => void run()}
-              disabled={state === 'running' || !secFetch}
-              title={!secFetch ? 'Turn on “Fetch from SEC.gov” in Settings to compare' : undefined}
-              className="rounded-md bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500"
-            >
-              {state === 'running' ? 'Comparing…' : state === 'done' || state === 'no_prior' || state === 'unsupported_form' ? 'Re-compare' : 'Compare to prior year'}
-            </button>
-          </span>
-        )}
-      </div>
+    <section aria-label="Redline" className="flex flex-col gap-3">
+      {applicable && (
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={() => void run()}
+            disabled={state === 'running' || !secFetch}
+            title={!secFetch ? 'Turn on “Fetch from SEC.gov” in Settings to compare' : undefined}
+            className="flex w-full items-center justify-center rounded-md bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500"
+          >
+            {state === 'running' ? 'Comparing…' : state === 'done' || state === 'no_prior' || state === 'unsupported_form' ? 'Re-compare' : 'Compare to prior year'}
+          </button>
+          {secFetch && state === 'idle' && (
+            <p className="text-[12px] leading-relaxed text-emerald-400 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">
+              Fetches last year’s comparable filing from EDGAR and shows what changed in the Risk Factors and
+              MD&amp;A.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Not a redline-capable form (UNKNOWN, ownership form, 6-K, etc.) — be
           honest rather than dead-ending at "No prior comparable UNKNOWN found". */}
@@ -511,12 +512,6 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
         </div>
       )}
 
-      {applicable && secFetch && state === 'idle' && (
-        <p className="text-[12px] leading-relaxed text-emerald-400 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">
-          Fetches last year’s comparable filing from EDGAR and shows what changed in the Risk Factors and
-          MD&amp;A — all diffing and summarization run on-device.
-        </p>
-      )}
     </section>
   );
 }

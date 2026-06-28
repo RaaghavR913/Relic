@@ -1,6 +1,13 @@
 import type { PreviewScenario } from './mock-data';
 import { MOCK_DOC, MOCK_FLAGS } from './mock-data';
 
+type StorageChange = { oldValue?: unknown; newValue?: unknown };
+type StorageAreaName = 'local' | 'session';
+type StorageChangeListener = (
+  changes: Record<string, StorageChange>,
+  areaName: StorageAreaName,
+) => void;
+
 type StorageArea = {
   get: (keys?: string | string[] | Record<string, unknown> | null) => Promise<Record<string, unknown>>;
   set: (items: Record<string, unknown>) => Promise<void>;
@@ -8,7 +15,11 @@ type StorageArea = {
   clear: () => Promise<void>;
 };
 
-function makeStorage(initial: Record<string, unknown>): StorageArea {
+function makeStorage(
+  initial: Record<string, unknown>,
+  area: StorageAreaName,
+  onChanged: (changes: Record<string, StorageChange>, area: StorageAreaName) => void,
+): StorageArea {
   const data = { ...initial };
   return {
     async get(keys) {
@@ -26,13 +37,28 @@ function makeStorage(initial: Record<string, unknown>): StorageArea {
       return out;
     },
     async set(items) {
+      const changes: Record<string, StorageChange> = {};
+      for (const [k, newValue] of Object.entries(items)) {
+        changes[k] = { oldValue: data[k], newValue };
+      }
       Object.assign(data, items);
+      if (Object.keys(changes).length > 0) onChanged(changes, area);
     },
     async remove(keys) {
-      for (const k of Array.isArray(keys) ? keys : [keys]) delete data[k];
+      const changes: Record<string, StorageChange> = {};
+      for (const k of Array.isArray(keys) ? keys : [keys]) {
+        changes[k] = { oldValue: data[k], newValue: undefined };
+        delete data[k];
+      }
+      if (Object.keys(changes).length > 0) onChanged(changes, area);
     },
     async clear() {
-      for (const k of Object.keys(data)) delete data[k];
+      const changes: Record<string, StorageChange> = {};
+      for (const k of Object.keys(data)) {
+        changes[k] = { oldValue: data[k], newValue: undefined };
+        delete data[k];
+      }
+      if (Object.keys(changes).length > 0) onChanged(changes, area);
     },
   };
 }
@@ -60,9 +86,18 @@ function seedForScenario(scenario: PreviewScenario): {
 
 export function installChromeMock(scenario: PreviewScenario): void {
   const { local, session } = seedForScenario(scenario);
-  const localStore = makeStorage(local);
-  const sessionStore = makeStorage(session);
   const messageListeners = new Set<(msg: unknown) => void>();
+  const storageChangeListeners = new Set<StorageChangeListener>();
+
+  const notifyStorageChanged = (
+    changes: Record<string, StorageChange>,
+    area: StorageAreaName,
+  ): void => {
+    for (const fn of storageChangeListeners) fn(changes, area);
+  };
+
+  const localStore = makeStorage(local, 'local', notifyStorageChanged);
+  const sessionStore = makeStorage(session, 'session', notifyStorageChanged);
 
   const chromeMock = {
     runtime: {
@@ -84,6 +119,10 @@ export function installChromeMock(scenario: PreviewScenario): void {
     storage: {
       local: localStore,
       session: sessionStore,
+      onChanged: {
+        addListener: (fn: StorageChangeListener) => storageChangeListeners.add(fn),
+        removeListener: (fn: StorageChangeListener) => storageChangeListeners.delete(fn),
+      },
     },
     tabs: {
       query: async () => [{ id: 1 }],

@@ -230,11 +230,13 @@ export function LockIcon({ className = 'h-4 w-4' }: { className?: string }) {
 
 // ── empty state ───────────────────────────────────────────────────────────────
 
-export function EmptyState({ title, body }: { title: string; body: ReactNode }) {
+export function EmptyState({ title, body }: { title: string; body?: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-2 rounded-xl bg-zinc-900/50 px-4 py-8 text-center ring-1 ring-dashed ring-zinc-800">
       <p className="text-[13px] font-medium text-zinc-400 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">{title}</p>
-      <p className="max-w-xs text-[13px] leading-relaxed text-zinc-600 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">{body}</p>
+      {body ? (
+        <p className="max-w-xs text-[13px] leading-relaxed text-zinc-600 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">{body}</p>
+      ) : null}
     </div>
   );
 }

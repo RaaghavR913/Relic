@@ -53,7 +53,7 @@ const TABS: Array<{ id: TabId; label: string }> = [
   { id: 'analyst', label: 'Analyst' },
   { id: 'summary', label: 'Summary' },
   { id: 'sentiment', label: 'Sentiment' },
-  { id: 'changes', label: 'Changes' },
+  { id: 'changes', label: 'Redline' },
 ];
 
 /** True when the document is a readable SEC data/report page, not a company filing. */
@@ -297,16 +297,7 @@ function NoFiling({
 }) {
   return (
     <div className="flex flex-col gap-4">
-      <EmptyState
-        title="No filing open"
-        body={
-          <>
-            Open a 10-K, 10-Q, 8-K, 20-F, S-1, or proxy on EDGAR — or use{' '}
-            <span className="font-medium text-zinc-400">Analyze this page</span> on a company IR
-            page or other financial document. PDF reports aren&rsquo;t supported yet.
-          </>
-        }
-      />
+      <EmptyState title="No filing open" />
       <button
         onClick={onAnalyze}
         disabled={analyzing}
