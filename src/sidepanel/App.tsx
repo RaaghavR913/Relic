@@ -22,6 +22,8 @@ import type {
   AnalyzePageResponse,
 } from '@/messages/types';
 import { isLowConfidenceGeneric, isEdgarExhibit } from '@/content/ingest/detect';
+import { classifyInjectability } from '@/background/inject';
+import { loadFilingFromSession, normalizePageUrl } from '@/shared/filingSession';
 import { setFlags as setFlagOverlayPref } from './overlayPrefs';
 import { AnalystPanel } from './AnalystPanel';
 import { ExportButton } from './ExportButton';
@@ -535,20 +537,27 @@ export default function App() {
     };
     chrome.runtime.onMessage.addListener(listener);
 
-    chrome.storage.session
-      .get('filing:current')
-      .then(async (data: Record<string, unknown>) => {
-        const current = data['filing:current'] as { hash: string } | undefined;
-        if (!current?.hash) return;
-        const hash = current.hash;
-        const [modelData, flagData] = await Promise.all([
-          chrome.storage.session.get(`filing:model:${hash}`),
-          chrome.storage.session.get(`filing:flags:${hash}`),
-        ]);
-        const model = modelData[`filing:model:${hash}`] as DocumentModel | undefined;
-        const flags = flagData[`filing:flags:${hash}`] as LanguageFlag[] | undefined;
-        if (model) setCurrentDoc(model);
-        if (flags) setCurrentFlags(flags);
+    void loadFilingFromSession()
+      .then(async ({ model, flags }) => {
+        if (model) {
+          const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+          const activeUrl = tabs[0]?.url;
+          if (
+            !activeUrl ||
+            normalizePageUrl(model.source.url) === normalizePageUrl(activeUrl)
+          ) {
+            setCurrentDoc(model);
+            if (flags) setCurrentFlags(flags);
+            return;
+          }
+        }
+
+        const tab = (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
+        if (tab?.id !== undefined && classifyInjectability(tab.url) === 'auto_host') {
+          chrome.tabs
+            .sendMessage(tab.id, { target: 'content', type: 'RESYNC_FILING' })
+            .catch(() => {});
+        }
       })
       .catch(console.warn);
 

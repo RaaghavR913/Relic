@@ -6,6 +6,12 @@ bundled or referenced third-party components are **not** owned by this project
 and remain subject to their own licenses and terms. Nothing in this repository's
 MIT license should be read as relicensing them.
 
+> **Language-flagging word lists.** The lexicons in `src/flagging/lexicons/*.json`
+> (multi-word phrases and single-word vocabulary across the negative / uncertainty
+> / litigious / weak_modal categories) are original, first-party content authored
+> for this repository and are covered by Relic's MIT license. They are **not**
+> third-party components and depend on no external dictionary.
+
 ## Bundled ML models (fetched at build time, not stored in this repo)
 
 Downloaded by `npm run fetch-models` into the gitignored `models/` directory and

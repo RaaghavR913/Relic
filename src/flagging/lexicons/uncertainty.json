@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "source": "Loughran-McDonald uncertainty wordlist (curated subset)",
+  "source": "Relic curated financial-phrase lexicon — uncertainty (original, MIT)",
   "description": "Phrases expressing uncertainty, qualification, and forward-looking hedges in SEC filings. Structured for merge with user-supplied custom dictionaries (Pro).",
   "entries": [
     { "term": "may adversely affect",       "note": "Forward-looking hedge indicating potential adverse outcome",                          "caseSensitive": false },

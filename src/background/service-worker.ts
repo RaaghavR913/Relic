@@ -29,11 +29,16 @@ import type {
   RedlineStage,
   RedlinePriorInfo,
   AnalyzePageResponse,
+  EnsureSessionStorageMsg,
+  PersistFilingMsg,
+  FilingReadyMsg,
+  FlagResultsMsg,
 } from '@/messages/types';
 import { RateLimitedQueue, fetchEdgarText } from './edgarQueue';
 import { resolvePriorFiling } from './resolvePrior';
 import { classifyInjectability } from './inject';
 import { getSiteProfile } from '@/content/ingest/siteProfiles';
+import { persistFilingToSession } from '@/shared/filingSession';
 
 /** Built content-script bundle — the path inside the packed extension. */
 const CONTENT_SCRIPT_FILE = 'src/content/index.js';
@@ -75,9 +80,11 @@ chrome.action.onClicked.addListener((tab) => {
 
 // Let the content script write filing models/flags to chrome.storage.session
 // (MV3 default restricts session storage to trusted contexts only).
-chrome.storage.session
-  .setAccessLevel({ accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS' })
-  .catch(console.error);
+async function ensureSessionStorageAccess(): Promise<void> {
+  await chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_AND_UNTRUSTED_CONTEXTS' });
+}
+
+ensureSessionStorageAccess().catch(console.error);
 
 // ── ensureOffscreen ───────────────────────────────────────────────────────────
 
@@ -353,6 +360,41 @@ chrome.runtime.onMessage.addListener(
           sendResponse({ ok: false, reason: 'error', error: String(err) } satisfies AnalyzePageResponse),
         );
       return true;
+    }
+
+    if (msg.type === 'ENSURE_SESSION_STORAGE') {
+      ensureSessionStorageAccess()
+        .then(() => sendResponse({ ok: true }))
+        .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }));
+      return true;
+    }
+
+    if (msg.type === 'PERSIST_FILING') {
+      const m = msg as PersistFilingMsg;
+      ensureSessionStorageAccess()
+        .then(() => persistFilingToSession(m.model, m.flags))
+        .then(() => sendResponse({ ok: true }))
+        .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }));
+      return true;
+    }
+
+    // Content script → side panel push: mirror into session storage from a trusted context.
+    if (msg.type === 'FILING_READY') {
+      const m = msg as FilingReadyMsg;
+      persistFilingToSession(m.model).catch(console.warn);
+      return false;
+    }
+    if (msg.type === 'FLAG_RESULTS') {
+      const m = msg as FlagResultsMsg;
+      chrome.storage.session
+        .get('filing:current')
+        .then((data) => {
+          const current = data['filing:current'] as { hash: string } | undefined;
+          if (!current?.hash) return;
+          return chrome.storage.session.set({ [`filing:flags:${current.hash}`]: m.flags });
+        })
+        .catch(console.warn);
+      return false;
     }
 
     // ── OFFSCREEN_IDLE — close the offscreen document ──

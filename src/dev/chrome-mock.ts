@@ -105,7 +105,15 @@ export function installChromeMock(scenario: PreviewScenario): void {
       getURL: (resource: string) =>
         resource === 'brand-logo.png' ? '/brand-logo.png' : `chrome-extension://mock/${resource}`,
       openOptionsPage: () => {
-        window.open('/src/settings/index.html', '_blank', 'noopener,noreferrer');
+        const onPreview =
+          window.location.pathname.endsWith('preview.html') || window.location.pathname === '/';
+        if (onPreview) {
+          const next = '#settings';
+          if (window.location.hash !== next) window.location.hash = next;
+          else window.dispatchEvent(new HashChangeEvent('hashchange'));
+          return;
+        }
+        window.location.assign(`/settings-preview.html${window.location.search}`);
       },
       sendMessage: async (msg: { type?: string }) => {
         if (msg?.type === 'ANALYZE_PAGE') return { ok: true };

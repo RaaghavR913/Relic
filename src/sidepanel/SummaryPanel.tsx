@@ -437,17 +437,7 @@ export function SummaryPanel({ doc, detectedTier }: SummaryPanelProps) {
   // ── render ─────────────────────────────────────────────────────────────────
 
   return (
-    <section aria-labelledby="summaries-heading" className="flex flex-col gap-3">
-      {/* Panel header */}
-      <div className="flex items-center gap-2">
-        <p
-          id="summaries-heading"
-          className="text-[13px] font-medium uppercase tracking-widest text-zinc-500 font-[Times,serif]"
-        >
-          Summaries
-        </p>
-      </div>
-
+    <section aria-label="Summaries" className="flex flex-col gap-3">
       {/* Extractive tier banner */}
       {extractiveTier && (
         <div

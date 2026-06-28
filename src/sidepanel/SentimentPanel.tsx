@@ -274,21 +274,14 @@ export function SentimentPanel({ doc }: SentimentPanelProps) {
   const isError = status === 'error';
 
   return (
-    <section aria-labelledby="sentiment-heading" className="flex flex-col gap-3">
-      {/* Header */}
-      <div className="flex items-center gap-2">
-        <p
-          id="sentiment-heading"
-          className="text-[13px] font-medium uppercase tracking-widest text-zinc-500 font-[Times,serif]"
-        >
-          Sentiment
-        </p>
-        {isDone && elapsedMs !== null && (
-          <span className="ml-auto text-[10px] text-zinc-600">
+    <section aria-label="Sentiment" className="flex flex-col gap-3">
+      {isDone && elapsedMs !== null && (
+        <div className="flex justify-end">
+          <span className="text-[10px] text-zinc-600">
             {fromCache ? 'cached' : `${elapsedMs.toLocaleString()} ms`}
           </span>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Analyze button */}
       {status !== 'done' && (

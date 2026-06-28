@@ -21,7 +21,7 @@ import { ingestDocument } from './ingest';
 import { isLowConfidenceGeneric } from './ingest/detect';
 import { waitForContent } from './ingest/ready';
 import { getSiteProfile, detectGateState } from './ingest/siteProfiles';
-import type { IngestResult, LanguageFlag } from '@/types';
+import type { DocumentModel, IngestResult, LanguageFlag } from '@/types';
 import {
   HighlightController,
   demoHighlight,
@@ -40,7 +40,9 @@ import type {
   FilingReadyMsg,
   FilingGatedMsg,
   FlagResultsMsg,
+  PersistFilingMsg,
 } from '@/messages/types';
+import { persistFilingToSession } from '@/shared/filingSession';
 
 interface RelicDevApi {
   result: IngestResult | null;
@@ -82,6 +84,8 @@ let _flagOverlay:         FlagOverlayManager | null = null;
 // so visibility (master switch, per-category, boilerplate) can flip without
 // re-analysis.
 let _allFlags:          LanguageFlag[] = [];
+let _lastModel:         DocumentModel | null = null;
+let _lastShownFlags:    LanguageFlag[] = [];
 let _flagsVisible     = true;
 // Per-category visibility + boilerplate inclusion, mirrored from the side panel's
 // overlay prefs. Defaults match the historical master-only behaviour: every
@@ -102,6 +106,51 @@ function visibleFlags(): LanguageFlag[] {
   return _allFlags.filter(
     (f) => _flagTypes[f.type] !== false && (_showBoilerplate || !f.boilerplate),
   );
+}
+
+async function persistFiling(model: DocumentModel, shownFlags: LanguageFlag[]): Promise<void> {
+  _lastModel = model;
+  _lastShownFlags = shownFlags;
+
+  // Wake the service worker and grant content-script session access before writing.
+  await chrome.runtime
+    .sendMessage({ target: 'sw', type: 'ENSURE_SESSION_STORAGE' })
+    .catch(() => {});
+
+  try {
+    await persistFilingToSession(model, shownFlags);
+  } catch (err) {
+    console.warn('[Relic] content-script session persist failed; retrying via SW', err);
+    const msg: PersistFilingMsg = { target: 'sw', type: 'PERSIST_FILING', model, flags: shownFlags };
+    await chrome.runtime.sendMessage(msg).catch(console.warn);
+  }
+}
+
+function broadcastFilingReady(model: DocumentModel, shownFlags: LanguageFlag[]): void {
+  const readyMsg: FilingReadyMsg = {
+    target: 'sidepanel',
+    type: 'FILING_READY',
+    url: model.source.url,
+    model,
+  };
+  chrome.runtime.sendMessage(readyMsg).catch(() => {});
+
+  const flagMsg: FlagResultsMsg = {
+    target: 'sidepanel',
+    type: 'FLAG_RESULTS',
+    flags: shownFlags,
+  };
+  chrome.runtime.sendMessage(flagMsg).catch(() => {});
+}
+
+async function commitFiling(model: DocumentModel, shownFlags: LanguageFlag[]): Promise<void> {
+  await persistFiling(model, shownFlags);
+  broadcastFilingReady(model, shownFlags);
+}
+
+function resyncFilingIfCached(): void {
+  if (!_lastModel) return;
+  void commitFiling(_lastModel, _lastShownFlags);
 }
 
 async function run(): Promise<RelicDevApi> {
@@ -176,14 +225,6 @@ async function run(): Promise<RelicDevApi> {
     _positionMap         = positionMap;
     _highlightController = controller;
 
-    // Session 2: persist DocumentModel so the side panel can fetch without messaging.
-    chrome.storage.session
-      .set({
-        [`filing:model:${model.rawTextHash}`]: model,
-        'filing:current': { url: model.source.url, hash: model.rawTextHash },
-      })
-      .catch(console.warn);
-
     // Phase 2.2: await full LM dictionary before flagging (pre-warm was started at
     // module load time, so this is usually a no-op by the time we reach here).
     await _lmPrewarm;
@@ -214,27 +255,7 @@ async function run(): Promise<RelicDevApi> {
       `[Relic] flagged ${allFlags.length} language markers across ${model.sections.length} sections`,
     );
 
-    // Persist flags so the side panel can recover them when opened after ingestion.
-    chrome.storage.session
-      .set({ [`filing:flags:${model.rawTextHash}`]: shownFlags })
-      .catch(console.warn);
-
-    // Broadcast FILING_READY to any open side panel.
-    const readyMsg: FilingReadyMsg = {
-      target: 'sidepanel',
-      type: 'FILING_READY',
-      url: model.source.url,
-      model,
-    };
-    chrome.runtime.sendMessage(readyMsg).catch(() => {});
-
-    // Broadcast FLAG_RESULTS so a freshly-opened side panel receives them immediately.
-    const flagMsg: FlagResultsMsg = {
-      target: 'sidepanel',
-      type: 'FLAG_RESULTS',
-      flags: shownFlags,
-    };
-    chrome.runtime.sendMessage(flagMsg).catch(() => {});
+    await commitFiling(model, shownFlags);
   }
 
   return {
@@ -314,6 +335,11 @@ if (!ALREADY_INJECTED) chrome.runtime.onMessage.addListener(
 
     if (msg.type === 'CLEAR_REDLINE') {
       _highlightController?.clear('redline');
+      return false;
+    }
+
+    if (msg.type === 'RESYNC_FILING') {
+      resyncFilingIfCached();
       return false;
     }
 

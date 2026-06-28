@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "source": "Loughran-McDonald negative financial wordlist (curated subset)",
+  "source": "Relic curated financial-phrase lexicon — negative (original, MIT)",
   "description": "Negative financial and operational language in SEC filings — impairments, defaults, losses, and deterioration indicators. Structured for merge with user-supplied custom dictionaries (Pro).",
   "entries": [
     { "term": "going concern",            "note": "Auditor doubt about company ability to continue as a going concern — severe signal", "caseSensitive": false },

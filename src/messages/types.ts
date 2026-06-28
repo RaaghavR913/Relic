@@ -122,6 +122,26 @@ export interface ContentClearMsg {
   type: 'CLEAR_HIGHLIGHTS';
 }
 
+/** Side panel → content script: re-broadcast the last ingested filing (if any). */
+export interface ContentResyncFilingMsg {
+  target: 'content';
+  type: 'RESYNC_FILING';
+}
+
+/** Content script → SW: wake the SW and ensure session storage is writable from content scripts. */
+export interface EnsureSessionStorageMsg {
+  target: 'sw';
+  type: 'ENSURE_SESSION_STORAGE';
+}
+
+/** Content script → SW: persist a filing model from a trusted context (fallback). */
+export interface PersistFilingMsg {
+  target: 'sw';
+  type: 'PERSIST_FILING';
+  model: DocumentModel;
+  flags?: LanguageFlag[];
+}
+
 // ── Summarization (Session 3) ─────────────────────────────────────────────────
 
 /**

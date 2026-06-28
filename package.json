@@ -7,7 +7,6 @@
   "type": "module",
   "scripts": {
     "fetch-models": "node scripts/fetch-models.mjs",
-    "fetch-lm-dict": "node scripts/fetch-lm-dict.mjs",
     "generate-icons": "node scripts/generate-icons.mjs",
     "dev": "node scripts/clean-dist.mjs && vite build --watch --mode development",
     "dev:ui": "vite --config vite.preview.config.ts",

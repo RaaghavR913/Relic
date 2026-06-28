@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "source": "Loughran-McDonald litigious wordlist (curated subset)",
+  "source": "Relic curated financial-phrase lexicon — litigious (original, MIT)",
   "description": "Litigation, legal proceedings, and regulatory enforcement language in SEC filings. Structured for merge with user-supplied custom dictionaries (Pro).",
   "entries": [
     { "term": "litigation",                "note": "Active or pending lawsuit or legal dispute — elevated liability risk",            "caseSensitive": false },

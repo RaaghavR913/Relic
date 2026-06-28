@@ -1,21 +1,20 @@
 // ============================================================
 // Relic — Lexicon loader + regex compiler
 // ------------------------------------------------------------
-// Two-layer lexicon:
-//   Layer 1 (base)  — 118-entry curated multi-word phrases with analyst notes.
-//                     Imported statically; compiled once on first call.
-//   Layer 2 (LM)    — curated/capped Loughran-McDonald subset: 1426 single words
-//                     (neg 700 / unc 250 / lit 450 / wm 26), capped from the full
-//                     ~3.5k set to balance coverage vs flag noise & bundle size.
-//                     Loaded lazily via dynamic import; merged into cache on first
-//                     call to awaitLexiconReady(). Run `npm run fetch-lm-dict` to
-//                     refresh from the authoritative Notre Dame CSV (caps/curation
-//                     live in scripts/fetch-lm-dict.mjs).
+// Two-layer lexicon — both layers are original, MIT-licensed lists authored for
+// this repo (no third-party dictionary dependency):
+//   Layer 1 (phrases) — 118-entry curated multi-word phrases with analyst notes.
+//                       Imported statically; compiled once on first call.
+//   Layer 2 (words)   — single-word financial-language vocabulary across the four
+//                       categories (negative / uncertainty / litigious / weak_modal).
+//                       Loaded lazily via dynamic import; merged into the cache on
+//                       first call to awaitLexiconReady(). Lists live in
+//                       src/flagging/lexicons/fin_*.json.
 //
 // Public API:
 //   loadCompiledLexicons()  – synchronous; returns whatever is in cache (layer 1
 //                             immediately, layer 1+2 after awaitLexiconReady()).
-//   awaitLexiconReady()     – async; resolves once LM layer is merged. Callers
+//   awaitLexiconReady()     – async; resolves once the word layer is merged. Callers
 //                             that need full coverage must await this first.
 //
 // Extension point (Pro): callers may supply extra entries per type via
@@ -61,8 +60,8 @@ interface RawLexicon {
   entries: LexiconEntry[];
 }
 
-/** Shape of the compact LM expansion files (flat word arrays). */
-interface RawLMWordList {
+/** Shape of the compact word-expansion files (flat word arrays). */
+interface RawWordList {
   version: string;
   source: string;
   words: string[];
@@ -75,12 +74,12 @@ const BASE_LEXICONS: Record<FlagType, RawLexicon> = {
   negative:    negativeRaw   as RawLexicon,
 };
 
-// ── generic notes for LM single-word expansion entries ────────────────────────
-const LM_NOTE: Record<FlagType, string> = {
-  negative:    'Loughran-McDonald negative word — financial distress or adverse-outcome signal',
-  uncertainty: 'Loughran-McDonald uncertainty qualifier — estimation or outcome hedge',
-  litigious:   'Loughran-McDonald litigious term — legal, regulatory, or enforcement context',
-  weak_modal:  'Loughran-McDonald weak modal — tentative or conditional assertion',
+// ── generic notes for single-word expansion entries ───────────────────────────
+const WORD_NOTE: Record<FlagType, string> = {
+  negative:    'Negative financial language — distress or adverse-outcome signal',
+  uncertainty: 'Uncertainty qualifier — estimation or outcome hedge',
+  litigious:   'Litigious term — legal, regulatory, or enforcement context',
+  weak_modal:  'Weak modal — tentative or conditional assertion',
 };
 
 // ── compilation ───────────────────────────────────────────────────────────────
@@ -114,35 +113,35 @@ function buildBaseCache(): Record<FlagType, CompiledEntry[]> {
   return result;
 }
 
-// ── LM lazy-load state ────────────────────────────────────────────────────────
+// ── word-expansion lazy-load state ────────────────────────────────────────────
 
-let _lmReady: Promise<void> | null = null;
+let _wordsReady: Promise<void> | null = null;
 
-async function _loadLMExpansion(): Promise<void> {
+async function _loadWordExpansion(): Promise<void> {
   const [negMod, uncMod, litMod, wmMod] = await Promise.all([
-    import('./lexicons/lm_negative.json'),
-    import('./lexicons/lm_uncertainty.json'),
-    import('./lexicons/lm_litigious.json'),
-    import('./lexicons/lm_weak_modal.json'),
+    import('./lexicons/fin_negative.json'),
+    import('./lexicons/fin_uncertainty.json'),
+    import('./lexicons/fin_litigious.json'),
+    import('./lexicons/fin_weak_modal.json'),
   ]);
 
-  const lmSources: Record<FlagType, RawLMWordList> = {
-    negative:    negMod.default as unknown as RawLMWordList,
-    uncertainty: uncMod.default as unknown as RawLMWordList,
-    litigious:   litMod.default as unknown as RawLMWordList,
-    weak_modal:  wmMod.default  as unknown as RawLMWordList,
+  const wordSources: Record<FlagType, RawWordList> = {
+    negative:    negMod.default as unknown as RawWordList,
+    uncertainty: uncMod.default as unknown as RawWordList,
+    litigious:   litMod.default as unknown as RawWordList,
+    weak_modal:  wmMod.default  as unknown as RawWordList,
   };
 
   // Ensure base cache exists (may have been built already by loadCompiledLexicons).
   if (!_cache) _cache = buildBaseCache();
 
-  for (const type of Object.keys(lmSources) as FlagType[]) {
+  for (const type of Object.keys(wordSources) as FlagType[]) {
     const existing = _cache[type]!;
     // Build a set of already-present terms (lower-cased) to skip duplicates.
     const seen = new Set(existing.map((e) => e.term.toLowerCase()));
 
-    const note = LM_NOTE[type];
-    for (const word of lmSources[type]!.words) {
+    const note = WORD_NOTE[type];
+    for (const word of wordSources[type]!.words) {
       if (seen.has(word.toLowerCase())) continue;
       seen.add(word.toLowerCase());
       existing.push(compileEntry({ term: word, note, caseSensitive: false }));
@@ -151,23 +150,23 @@ async function _loadLMExpansion(): Promise<void> {
 }
 
 /**
- * Start (or return the already-started) LM expansion load.
- * Resolves once all LM words have been compiled and merged into the cache.
+ * Start (or return the already-started) word-expansion load.
+ * Resolves once all single words have been compiled and merged into the cache.
  *
  * Call this as early as possible (e.g. at content-script startup) so the
  * dynamic imports are in-flight while the DOM walk is happening. Then await
  * before calling loadCompiledLexicons() to guarantee full coverage.
  */
 export function awaitLexiconReady(): Promise<void> {
-  if (!_lmReady) _lmReady = _loadLMExpansion();
-  return _lmReady;
+  if (!_wordsReady) _wordsReady = _loadWordExpansion();
+  return _wordsReady;
 }
 
 /**
  * Return compiled lexicons, synchronous.
  *
  * Returns the base (118-entry) set immediately; once awaitLexiconReady()
- * has resolved, subsequent calls return the full LM-expanded set.
+ * has resolved, subsequent calls return the full word-expanded set.
  *
  * @param overrides  Optional Pro custom entries merged after bundled defaults.
  *                   When provided the result is NOT cached (may differ per call).

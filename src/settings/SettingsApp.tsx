@@ -20,7 +20,7 @@ import { useCapabilities } from '@/runtime/useCapabilities';
 import { useSecFetchPref } from '@/shared/secFetchPref';
 import { useOverlayPrefs } from '@/sidepanel/overlayPrefs';
 import { clearAllCaches } from '@/shared/clearCaches';
-import { BrandLogo, LockIcon } from '@/sidepanel/ui';
+import { BrandLogo } from '@/sidepanel/ui';
 
 // Same storage key the side panel reads on open (src/sidepanel/App.tsx). Removing
 // it makes the next side-panel open show the welcome screen again.
@@ -39,7 +39,7 @@ const STEPS: ReadonlyArray<{ title: string; detail: string }> = [
   {
     title: 'Open a filing',
     detail:
-      'Go to a 10-K, 10-Q, 8-K, 20-F, S-1, or proxy on SEC EDGAR and open Relic from the side panel. On other financial pages, click the Relic toolbar icon and choose “Analyze this page.”',
+      'Go to a 10-K, 10-Q, 8-K, 20-F, S-1, or proxy on SEC EDGAR and click the Relic extension. On other financial pages, click the Relic icon and choose “Analyze this page.”',
   },
   {
     title: 'Read the analysis tabs',
@@ -57,7 +57,7 @@ const STEPS: ReadonlyArray<{ title: string; detail: string }> = [
 const FAQS: ReadonlyArray<{ q: string; a: string }> = [
   {
     q: 'Does any of my data leave my device?',
-    a: 'No. Filing text, summaries, and notes stay on your device. The only network request is the Changes lookup, which fetches last year’s filing from SEC.gov — and only when you ask. You can turn it off under Settings.',
+    a: 'No. Filing analysis text, summaries, and notes stay on your device. The only network request is the Redline lookup, which fetches last year’s filing from SEC.gov, and only when you request it. You can turn it off under Settings.',
   },
   {
     q: 'Why are some tabs missing on a page?',
@@ -69,7 +69,7 @@ const FAQS: ReadonlyArray<{ q: string; a: string }> = [
   },
   {
     q: 'Why is the first analysis slow?',
-    a: 'The first time you use Built-in AI, your browser downloads its on-device model — a one-time step it manages itself. Large filings also take up to a minute to read. Sentiment and highlights are ready immediately.',
+    a: 'Generation Mode may take a little longer the first time while your browser gets everything ready. This only happens once. Large filings can take up to a minute to read, but sentiment and highlights are available immediately.',
   },
 ];
 
@@ -81,7 +81,7 @@ function Section({
   children,
 }: {
   title: string;
-  sublabel: string;
+  sublabel?: string;
   children: ReactNode;
 }) {
   return (
@@ -89,9 +89,11 @@ function Section({
       <h2 className="text-[20px] font-medium text-[#f4f4f5]" style={{ fontFamily: SERIF }}>
         {title}
       </h2>
-      <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.13em] text-[#7f7f87]">
-        {sublabel}
-      </p>
+      {sublabel ? (
+        <p className="mt-1 text-[11px] font-medium uppercase tracking-[0.13em] text-[#7f7f87]">
+          {sublabel}
+        </p>
+      ) : null}
       <div className="mt-3">{children}</div>
     </section>
   );
@@ -251,33 +253,40 @@ export default function SettingsApp() {
           </h1>
           <p className="mt-1 text-[13px] text-[#8a8a90]">
             Settings ·{' '}
-            <span className="font-medium" style={{ color: ACCENT }}>
+            <span className="font-medium" style={{ color: '#39FF14' }}>
               v{version}
             </span>
           </p>
         </header>
 
-        {/* Privacy & data — read-only */}
-        <Section title="Privacy & data" sublabel="Your research stays on your computer">
-          <p className="flex items-start gap-2.5 text-[14px] leading-relaxed text-[#c4c4c8]">
-            <LockIcon className="mt-0.5 h-4 w-4 shrink-0 text-[#34d399]" />
-            <span>
-              No filing text, summaries, or notes leave your device — the models run locally. The one
-              network request is the Changes lookup below, and it only fires when you compare against
-              last year&rsquo;s filing.
-            </span>
+        {/* Privacy — read-only */}
+        <Section title="Privacy">
+          <p className="text-[14px] leading-relaxed text-[#c4c4c8]">
+            No filing analysis, summaries, or notes leave your device because the models run locally.
+            The one network request is the Redline lookup below, and it only fires when you compare
+            against a previous year&rsquo;s filing.
           </p>
         </Section>
 
         {/* How to use — read-only walkthrough */}
-        <Section title="How to use" sublabel="From a filing to an investor read">
+        <Section title="How to use">
           {STEPS.map((s) => (
             <Row key={s.title} title={s.title} desc={s.detail} control={null} />
           ))}
+          <div
+            className="mt-4 rounded-md border-l-2 bg-[#141416] px-4 py-3"
+            style={{ borderColor: ACCENT }}
+          >
+            <p className="text-[13px] leading-relaxed text-[#c4c4c8]">
+              <span className="font-medium text-[#ededf0]">Tip:</span> Pin Relic to your Chrome
+              toolbar for quick access on filings. Click the puzzle-piece icon, then select the pin
+              next to Relic.
+            </p>
+          </div>
         </Section>
 
         {/* Settings — interactive */}
-        <Section title="Settings" sublabel="Everything you can control, in one place">
+        <Section title="Settings">
           <Row
             title="Fetch prior-year filings from SEC.gov"
             desc="Powers the year-over-year Changes comparison. The only network request Relic makes."
@@ -317,14 +326,14 @@ export default function SettingsApp() {
         </Section>
 
         {/* FAQ — read-only */}
-        <Section title="FAQ" sublabel="Questions, answered">
+        <Section title="FAQ">
           {FAQS.map((f) => (
             <Row key={f.q} title={f.q} desc={f.a} control={null} />
           ))}
         </Section>
 
         {/* On this device — read-only status */}
-        <Section title="On this device" sublabel="Detected automatically · nothing to set">
+        <Section title="On this device">
           <Row
             title="Generation mode"
             desc="Chosen automatically from the page you’re viewing — Built-in AI when your browser supports it, otherwise the extractive model."
@@ -338,8 +347,14 @@ export default function SettingsApp() {
         </Section>
 
         {/* Footer */}
-        <footer className="mt-12 border-t-[0.5px] border-[#1f1f22] pt-6 text-center text-[12px] text-[#8a8a90]">
-          Relic summarizes filings. It isn&rsquo;t investment advice.
+        <footer className="mt-12 border-t-[0.5px] border-[#1f1f22] pt-6">
+          <div className="flex items-start gap-2 rounded-md border border-[#2a2a2f] bg-[#18181b] px-4 py-3 text-[11px] text-[#8a8a90]">
+            <span className="mt-px shrink-0 text-[#f59e0b]">⚠</span>
+            <p>
+              <span className="font-semibold text-[#c9a84c]">Disclaimer&ensp;</span>
+              Relic summarizes filings for informational purposes only. It does not provide investment advice.
+            </p>
+          </div>
         </footer>
 
         {/* Polite announcements for one-shot actions (visually hidden). */}

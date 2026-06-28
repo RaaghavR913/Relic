@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "source": "Loughran-McDonald weak modal words (curated subset)",
+  "source": "Relic curated financial-phrase lexicon — weak modal (original, MIT)",
   "description": "Weak modal verbs, hedging adverbs, and scoping qualifiers indicating tentative or conditional assertions. Structured for merge with user-supplied custom dictionaries (Pro).",
   "entries": [
     { "term": "could be",               "note": "Weak modal — tentative assertion subject to conditions",                    "caseSensitive": false },

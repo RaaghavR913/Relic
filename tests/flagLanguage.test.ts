@@ -445,68 +445,68 @@ describe('(l.pre) base-only flag count (118 curated entries, before LM load)', (
   });
 });
 
-// ── (l) LM expansion — Phase 2.2 ─────────────────────────────────────────────
+// ── (l) word expansion — Phase 2.2 ───────────────────────────────────────────
 //
-// These suites require the full Loughran-McDonald word lists to be loaded.
+// These suites require the full single-word financial-language lists to be loaded.
 // awaitLexiconReady() triggers the lazy dynamic import; once resolved,
-// loadCompiledLexicons() returns the merged base+LM cache used by all callers.
+// loadCompiledLexicons() returns the merged phrase+word cache used by all callers.
 
-describe('(l) LM expansion: individual negative words', () => {
+describe('(l) word expansion: individual negative words', () => {
   const pm = mockPositionMap();
 
   beforeAll(async () => {
     await awaitLexiconReady();
   });
 
-  it('flags "bankruptcy" (LM negative)', () => {
+  it('flags "bankruptcy" (negative)', () => {
     const section = makeSection('risk_factors', 'The Company may face bankruptcy proceedings.');
     expect(flagSection(section, pm).some((f) => f.type === 'negative' && /bankruptcy/i.test(f.term))).toBe(true);
   });
 
-  it('flags "fraud" (LM negative)', () => {
+  it('flags "fraud" (negative)', () => {
     const section = makeSection('risk_factors', 'Allegations of fraud were made against the Company.');
     expect(flagSection(section, pm).some((f) => f.type === 'negative' && /fraud/i.test(f.term))).toBe(true);
   });
 
-  it('flags "negligence" (LM negative)', () => {
+  it('flags "negligence" (negative)', () => {
     const section = makeSection('legal', 'A negligence claim was filed in connection with the incident.');
     expect(flagSection(section, pm).some((f) => f.type === 'negative' && /negligence/i.test(f.term))).toBe(true);
   });
 
-  it('flags "obsolete" (LM negative)', () => {
+  it('flags "obsolete" (negative)', () => {
     const section = makeSection('risk_factors', 'Our products may become obsolete as technology evolves.');
     expect(flagSection(section, pm).some((f) => f.type === 'negative' && /obsolete/i.test(f.term))).toBe(true);
   });
 
-  it('flags "inadequate" (LM negative)', () => {
+  it('flags "inadequate" (negative)', () => {
     const section = makeSection('controls', 'Disclosures were found to be inadequate by the auditor.');
     expect(flagSection(section, pm).some((f) => f.type === 'negative' && /inadequate/i.test(f.term))).toBe(true);
   });
 
-  it('flags "violations" (LM negative)', () => {
+  it('flags "violations" (negative)', () => {
     const section = makeSection('legal', 'Violations of environmental regulations may subject us to fines.');
     expect(flagSection(section, pm).some((f) => /violation/i.test(f.term))).toBe(true);
   });
 });
 
-describe('(m) LM expansion: individual litigious words', () => {
+describe('(m) word expansion: individual litigious words', () => {
   const pm = mockPositionMap();
 
   beforeAll(async () => {
     await awaitLexiconReady();
   });
 
-  it('flags "verdict" (LM litigious)', () => {
+  it('flags "verdict" (litigious)', () => {
     const section = makeSection('legal', 'The court rendered an unfavorable verdict against the Company.');
     expect(flagSection(section, pm).some((f) => f.type === 'litigious' && /verdict/i.test(f.term))).toBe(true);
   });
 
-  it('flags "testimony" (LM litigious)', () => {
+  it('flags "testimony" (litigious)', () => {
     const section = makeSection('legal', 'Witness testimony was admitted into evidence during the trial.');
     expect(flagSection(section, pm).some((f) => f.type === 'litigious' && /testimony/i.test(f.term))).toBe(true);
   });
 
-  it('flags "litigation" (LM litigious)', () => {
+  it('flags "litigation" (litigious)', () => {
     // NB: "sanction" (singular) is no longer litigious-tagged in the current LM
     // Master Dictionary; "litigation" is a stable high-frequency litigious term.
     const section = makeSection('legal', 'The Company is subject to ongoing litigation in multiple jurisdictions.');
@@ -514,19 +514,19 @@ describe('(m) LM expansion: individual litigious words', () => {
   });
 });
 
-describe('(n) LM expansion: individual uncertainty words', () => {
+describe('(n) word expansion: individual uncertainty words', () => {
   const pm = mockPositionMap();
 
   beforeAll(async () => {
     await awaitLexiconReady();
   });
 
-  it('flags "volatile" (LM uncertainty)', () => {
+  it('flags "volatile" (uncertainty)', () => {
     const section = makeSection('risk_factors', 'Market prices have been volatile and unpredictable.');
     expect(flagSection(section, pm).some((f) => f.type === 'uncertainty' && /volatile/i.test(f.term))).toBe(true);
   });
 
-  it('flags "fluctuations" (LM uncertainty)', () => {
+  it('flags "fluctuations" (uncertainty)', () => {
     const section = makeSection('risk_factors', 'Fluctuations in currency exchange rates affect our revenues.');
     expect(flagSection(section, pm).some((f) => f.type === 'uncertainty' && /fluctuation/i.test(f.term))).toBe(true);
   });

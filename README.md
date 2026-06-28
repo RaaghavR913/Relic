@@ -11,7 +11,7 @@ Open any filing on [EDGAR](https://www.sec.gov/edgar) and Relic activates in the
 | **Analyst** | Investor-focused document analysis: snapshot read (Bullish/Bearish/Mixed/Neutral) with 1–5 scores, top takeaways, what changed vs the prior filing, revenue/margin/cash-flow/share impact, risk signals, management narrative check, bull vs bear case, and a watch list — generated stage-by-stage on-device with evidence verified against the source text |
 | **Summary** | Plain-English section summaries, with analyst-style notes when Chrome's built-in AI is available |
 | **Sentiment** | Sentence-level FinBERT sentiment heatmap overlaid on the filing |
-| **Flags** | Highlights hedging, uncertainty, litigious, and negative language via lexicon + LM dictionary matching |
+| **Flags** | Highlights hedging, uncertainty, litigious, and negative language via a curated financial-language lexicon |
 | **Changes** | Year-over-year redline for comparable prior filings (risk factors, MD&A, and more) |
 
 Additional UI: section navigator, master overlay toggles, first-run onboarding, and jump-to-source highlighting for every insight.
@@ -94,8 +94,7 @@ src/
 └── types/            # Canonical data model (DocumentModel, Section, etc.)
 
 scripts/
-├── fetch-models.mjs  # Download ONNX weights into models/ (build-time only)
-└── fetch-lm-dict.mjs # Download LM dictionary shards for flagging
+└── fetch-models.mjs  # Download ONNX weights into models/ (build-time only)
 
 tests/                # Vitest unit tests (positionMap, redline, sentiment, …)
 public/icons/         # Extension icons
@@ -115,11 +114,6 @@ npm install
 
 # Download on-device model weights (~134 MB, build-time only)
 npm run fetch-models
-
-# (Optional) Regenerate LM dictionary shards for language flagging.
-# Lists are committed, so this is only needed to refresh from a new LM release.
-# Source: Loughran-McDonald Master Dictionary (free for academic research).
-npm run fetch-lm-dict
 
 # Production build → dist/
 npm run build
@@ -144,7 +138,6 @@ npm run dev
 | `npm run build` | Production build to `dist/` |
 | `npm run dev` | Watch build for development |
 | `npm run fetch-models` | Download FinBERT + mxbai-embed ONNX weights |
-| `npm run fetch-lm-dict` | Regenerate LM dictionary shards (academic-research license) |
 | `npm run typecheck` | TypeScript check (`tsc --noEmit`) |
 | `npm test` | Run Vitest unit tests |
 | `npm run test:watch` | Vitest in watch mode |
@@ -179,9 +172,9 @@ Weights are fetched at build time via `npm run fetch-models` and loaded from `ch
 
 ## License
 
-Relic's source code is released under the [MIT License](LICENSE).
+Relic's source code — including the language-flagging word lists — is released
+under the [MIT License](LICENSE).
 
-The MIT grant covers code authored in this repository only. Bundled or
-referenced third-party components — the Loughran-McDonald dictionary word lists,
-the on-device ML models, and the test fixtures — remain under their own terms.
-See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+The MIT grant covers code and data authored in this repository only. Bundled
+third-party components — the on-device ML models and the test fixtures — remain
+under their own terms. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
