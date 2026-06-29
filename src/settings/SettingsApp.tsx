@@ -113,7 +113,7 @@ function Row({
     <div className="flex items-start gap-4 border-t-[0.5px] border-[#1f1f22] py-4">
       <div className="min-w-0 flex-1">
         <div className="text-[14px] font-medium text-[#ededf0]">{title}</div>
-        <p className="mt-1 text-[13px] leading-relaxed text-[#8a8a90]">{desc}</p>
+        <p className="mt-1 text-[13px] leading-relaxed text-[#c4c4c8]">{desc}</p>
       </div>
       {control && <div className="mt-0.5 shrink-0">{control}</div>}
     </div>
@@ -187,7 +187,7 @@ function GenerationStatus() {
     busy = true; // detecting
   } else if (caps.generationTier === 'builtin') {
     dot = ACCENT;
-    text = 'Built-in AI · ready';
+    text = 'Ready';
     textColor = ACCENT;
   } else {
     dot = '#8a8a90';
@@ -274,10 +274,10 @@ export default function SettingsApp() {
             <Row key={s.title} title={s.title} desc={s.detail} control={null} />
           ))}
           <div
-            className="mt-4 rounded-md border-l-2 bg-[#141416] px-4 py-3"
+            className="mt-4 rounded-md border-l-4 bg-[#141416] px-5 py-4"
             style={{ borderColor: ACCENT }}
           >
-            <p className="text-[13px] leading-relaxed text-[#c4c4c8]">
+            <p className="text-[14px] leading-relaxed text-[#c4c4c8]">
               <span className="font-medium text-[#ededf0]">Tip:</span> Pin Relic to your Chrome
               toolbar for quick access on filings. Click the puzzle-piece icon, then select the pin
               next to Relic.
@@ -348,11 +348,13 @@ export default function SettingsApp() {
 
         {/* Footer */}
         <footer className="mt-12 border-t-[0.5px] border-[#1f1f22] pt-6">
-          <div className="flex items-start gap-2 rounded-md border border-[#2a2a2f] bg-[#18181b] px-4 py-3 text-[11px] text-[#8a8a90]">
-            <span className="mt-px shrink-0 text-[#f59e0b]">⚠</span>
-            <p>
-              <span className="font-semibold text-[#c9a84c]">Disclaimer&ensp;</span>
-              Relic summarizes filings for informational purposes only. It does not provide investment advice.
+          <div
+            className="rounded-md border-l-4 bg-[#141416] px-5 py-4"
+            style={{ borderColor: '#ef4444' }}
+          >
+            <p className="text-[14px] leading-relaxed text-[#c4c4c8]">
+              <span className="font-medium text-[#ededf0]">Disclaimer:</span> Relic summarizes
+              filings for informational purposes only. It does not provide investment advice.
             </p>
           </div>
         </footer>
