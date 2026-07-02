@@ -70,7 +70,7 @@ function isFilingIndex(doc: DocumentModel | null): boolean {
 
 /**
  * Tabs investor-context features require a company/security — Analyst (investment
- * thesis), Sentiment (read as thesis), and Changes (redline vs. a prior filing).
+ * thesis), Sentiment (read as thesis), and Redline (vs. a prior filing).
  * They're hidden for SEC data/report pages, EDGAR index pages, and low-confidence
  * generic pages (a stock-quote page, a press release — anything that isn't a
  * filing), all of which keep Summary only.

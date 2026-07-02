@@ -2,19 +2,21 @@ import { describe, it, expect } from 'vitest';
 import { classifyInjectability } from '../src/background/inject';
 
 describe('classifyInjectability', () => {
-  it('classifies manifest-matched hosts as auto_host', () => {
-    // SEC.gov (original)
+  it('classifies sec.gov (the only manifest-matched host) as auto_host', () => {
     expect(classifyInjectability('https://www.sec.gov/Archives/edgar/data/320193/000032019323000106/aapl-20230930.htm')).toBe('auto_host');
     expect(classifyInjectability('https://efts.sec.gov/LATEST/search-index?q=test')).toBe('auto_host');
     expect(classifyInjectability('https://sec.gov/')).toBe('auto_host');
-    // Group A
-    expect(classifyInjectability('https://stockanalysis.com/stocks/aapl/')).toBe('auto_host');
-    expect(classifyInjectability('https://www.annualreports.com/Company/apple')).toBe('auto_host');
-    expect(classifyInjectability('https://www.fool.com/earnings/call-transcripts/x/')).toBe('auto_host');
-    expect(classifyInjectability('https://www.benzinga.com/stock/AAPL')).toBe('auto_host');
-    // Group B
-    expect(classifyInjectability('https://sec.report/Document/0000320193-24-000006/')).toBe('auto_host');
-    expect(classifyInjectability('https://finviz.com/quote.ashx?t=AAPL')).toBe('auto_host');
+  });
+
+  it('classifies the formerly-auto (A/B) hosts as injectable (now optional-permission, toolbar-click reachable)', () => {
+    // Moved out of content_scripts into optional_host_permissions — no longer auto-run;
+    // reached via the activeTab toolbar click, so they inject on demand.
+    expect(classifyInjectability('https://stockanalysis.com/stocks/aapl/')).toBe('injectable');
+    expect(classifyInjectability('https://www.annualreports.com/Company/apple')).toBe('injectable');
+    expect(classifyInjectability('https://www.fool.com/earnings/call-transcripts/x/')).toBe('injectable');
+    expect(classifyInjectability('https://www.benzinga.com/stock/AAPL')).toBe('injectable');
+    expect(classifyInjectability('https://sec.report/Document/0000320193-24-000006/')).toBe('injectable');
+    expect(classifyInjectability('https://finviz.com/quote.ashx?t=AAPL')).toBe('injectable');
   });
 
   it('does not treat lookalike hosts as auto_host', () => {

@@ -22,6 +22,7 @@ import { segmentSections } from './segment.js';
 import { assessSegmentationConfidence } from '../segment.js';
 import { classifyPage, hostForCategory, isReadableNonFiling } from './classify.js';
 import { segmentByHeadings, readablePageName } from './readable.js';
+import { extractXbrlFacts } from './xbrl.js';
 
 export interface IngestOptions {
   document?: Document;
@@ -65,6 +66,15 @@ export function ingestDocument(opts: IngestOptions = {}): IngestResult {
 
   const meta = extractCompanyMeta(picked.document, url);
 
+  // Deterministic fundamentals from the filing's inline XBRL (exact us-gaap/dei
+  // facts, no network, no LM). Best-effort: any parse issue leaves xbrl undefined.
+  let xbrl;
+  try {
+    xbrl = extractXbrlFacts(picked.document, positionMap, meta.periodOfReport) ?? undefined;
+  } catch (err) {
+    console.debug('[Relic] XBRL extraction skipped:', err);
+  }
+
   const model: DocumentModel = {
     source: {
       url,
@@ -81,6 +91,7 @@ export function ingestDocument(opts: IngestOptions = {}): IngestResult {
     ...(meta.periodOfReport ? { periodOfReport: meta.periodOfReport } : {}),
     ...(meta.filedAt ? { filedAt: meta.filedAt } : {}),
     sections,
+    ...(xbrl ? { xbrl } : {}),
     rawTextHash: cyrb53(text),
   };
 

@@ -13,7 +13,7 @@
 ## TL;DR
 
 - **Best experience:** SEC EDGAR filings on `sec.gov` — auto-runs, full features,
-  and the **only** place the year-over-year redline ("Changes") works.
+  and the **only** place the year-over-year redline ("Redline") works.
 - **Good when the page parses as a real filing:** annualreports.com,
   stockanalysis.com, fool.com, benzinga.com, sec.report, finviz.com.
 - **On-demand (one-time permission grant):** Yahoo Finance, Macrotrends, BAM SEC,
@@ -62,8 +62,8 @@ Decided by **the page's content + URL path** (dynamic, per-page in
 ## Axis B — Functionality level (the page categories)
 
 Every reachable page is classified into a category, which decides the tabs.
-The four tabs are **Analyst · Summary · Sentiment · Changes**. The investor
-tabs (Analyst, Sentiment, Changes) are hidden — and not even loaded — on
+The four tabs are **Analyst · Summary · Sentiment · Redline**. The investor
+tabs (Analyst, Sentiment, Redline) are hidden — and not even loaded — on
 non-filing pages.
 
 | Page type | How it's detected | Features shown |
@@ -88,7 +88,7 @@ a real filing**:
   segment into sections, OR section boundaries looked unreliable.
 - 🔸 **EDGAR exhibits** (EX-21, EX-23, certifications) also drop to Summary-only.
 
-When demoted, on-page highlights are off by default but can be turned on manually.
+When demoted, language-flag underlines are off by default but can be turned on manually in Settings or via **show them anyway** in the side panel.
 
 ---
 
@@ -98,12 +98,12 @@ When demoted, on-page highlights are off by default but can be turned on manuall
 |-----|--------------|------------------------|--------------|
 | **Summary** | Plain-English key points per section | Chrome Summarizer API → extractive fallback | Works on any readable page |
 | **Analyst** | Investment thesis: takeaways, bull/bear, scores, narrative check | Chrome Prompt API → deterministic fallback | Needs a filing-like page |
-| **Sentiment** | Sentence-level positive/negative heatmap | FinBERT (on-device) | Needs a filing-like page |
-| **Changes (YoY redline)** | Diff vs. last year's comparable filing | EDGAR fetch + on-device diff | **EDGAR-only** + form-gated |
+| **Sentiment** | Sentence-level positive/negative/neutral scores in the side panel | FinBERT (on-device) | Needs a filing-like page |
+| **Redline (YoY)** | Diff vs. last year's comparable filing | EDGAR fetch + on-device diff | **EDGAR-only** + form-gated |
 
-### Two limits on "Changes" worth calling out
+### Two limits on "Redline" worth calling out
 1. **Effectively EDGAR-only.** The redline needs a company CIK to find the prior
-   filing, and the CIK only comes from EDGAR. On other sites the Changes tab may
+   filing, and the CIK only comes from EDGAR. On other sites the Redline tab may
    appear but can't complete.
 2. **Form-gated even on EDGAR.** Only 10-K, 10-Q, 20-F, S-1, DEF 14A, and 8-K are
    supported. Other forms (6-K, Form 3/4, unknown) show "not available yet."

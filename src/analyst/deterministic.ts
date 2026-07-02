@@ -25,6 +25,7 @@ import type {
   SectionDiff,
   SentenceSentiment,
   TimeHorizon,
+  XbrlFundamentals,
 } from '@/types';
 import type { RedlineEntry } from '@/redline/redlineStore';
 import { finalizeInsight } from './evidence';
@@ -112,8 +113,43 @@ export interface AuxSignals {
   tone?: ToneSignal | null;
 }
 
-export function buildHints(aux: AuxSignals): string {
+/** Compact "$383.3B" style formatting for USD figures in hint/summary text. */
+function fmtUsdCompact(v: number): string {
+  const abs = Math.abs(v);
+  const sign = v < 0 ? '-' : '';
+  if (abs >= 1e12) return `${sign}$${(abs / 1e12).toFixed(2)}T`;
+  if (abs >= 1e9) return `${sign}$${(abs / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(1)}M`;
+  if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(1)}K`;
+  return `${sign}$${abs.toFixed(2)}`;
+}
+
+/**
+ * One-line, exact-figure headline from the filing's own inline XBRL (revenue,
+ * net income, and diluted EPS, each with YoY when a prior period was found).
+ * Grounds both the LM hint context and the deterministic one-liner in real
+ * numbers instead of keyword-selected prose — the numbers ARE the source, so
+ * this needs no evidence verification.
+ */
+function xbrlHeadline(xbrl: XbrlFundamentals | undefined): string {
+  if (!xbrl || xbrl.facts.length === 0) return '';
+  const by = (label: string) => xbrl.facts.find((f) => f.label === label);
+  const parts: string[] = [];
+  for (const label of ['Revenue', 'Net income', 'Diluted EPS'] as const) {
+    const f = by(label);
+    if (!f) continue;
+    const value = f.unit === 'USD/shares' ? `$${f.currentValue.toFixed(2)}` : fmtUsdCompact(f.currentValue);
+    const yoy = f.yoyPct !== undefined ? ` (${f.yoyPct >= 0 ? '+' : ''}${(f.yoyPct * 100).toFixed(1)}% YoY)` : '';
+    parts.push(`${label} ${value}${yoy}`);
+  }
+  return parts.join(', ');
+}
+
+export function buildHints(doc: DocumentModel, aux: AuxSignals): string {
   const lines: string[] = [];
+
+  const headline = xbrlHeadline(doc.xbrl);
+  if (headline) lines.push(`XBRL fundamentals (exact, from the filing): ${headline}.`);
 
   const sents = aux.sentiments ?? [];
   if (sents.length > 0) {
@@ -320,6 +356,8 @@ function deterministicOneLiner(doc: DocumentModel, aux: AuxSignals, read: Overal
   const company = doc.companyName ?? 'The company';
   const dt = mapDocumentType(doc.filingType);
   const bits: string[] = [];
+  const headline = xbrlHeadline(doc.xbrl);
+  if (headline) bits.push(headline);
   const sents = aux.sentiments ?? [];
   if (sents.length >= 10) {
     const pos = Math.round((sents.filter((s) => s.label === 'positive').length / sents.length) * 100);

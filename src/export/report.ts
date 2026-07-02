@@ -38,7 +38,8 @@ export function hasExportableData(d: FilingExportData): boolean {
     d.analysis ||
       d.summaries.length > 0 ||
       (d.sentiment && d.sentiment.length > 0) ||
-      (d.redline && (d.redline.diffs.length > 0 || d.redline.alignment.length > 0)),
+      (d.redline && (d.redline.diffs.length > 0 || d.redline.alignment.length > 0)) ||
+      (d.doc.xbrl && d.doc.xbrl.facts.length > 0),
   );
 }
 

@@ -12,7 +12,7 @@
 // ============================================================
 
 import { jsPDF } from 'jspdf';
-import type { FilingAnalysis, FilingInsight, ScorePoint } from '@/types';
+import type { FilingAnalysis, FilingInsight, ScorePoint, XbrlUnit } from '@/types';
 import {
   type FilingExportData,
   type SentimentAgg,
@@ -288,6 +288,41 @@ class Pdf {
     this.gap(4);
   }
 
+  /** 4-column fundamentals table (metric + current/prior/YoY, right-aligned). */
+  fundamentalsTable(rows: Array<[string, string, string, string]>): void {
+    const { doc } = this;
+    const size = 8.5;
+    const rowH = 15;
+    const cols = [this.contentW - 220, 90, 90, 40];
+    const drawRow = (cells: string[], header: boolean, toneCol3?: Tone) => {
+      this.ensure(rowH);
+      doc.setFont('helvetica', header ? 'bold' : 'normal');
+      doc.setFontSize(size);
+      let cx = this.x;
+      cells.forEach((cell, i) => {
+        const right = i > 0;
+        const colW = cols[i]!;
+        doc.setTextColor(
+          ...(header ? COLORS.muted : i === 3 && toneCol3 ? COLORS[toneCol3] : COLORS.ink),
+        );
+        const tx = right ? cx + colW - doc.getTextWidth(clean(cell)) - 6 : cx;
+        doc.text(clean(cell), tx, this.y + rowH / 2, { baseline: 'middle' });
+        cx += colW;
+      });
+      this.y += rowH;
+      doc.setDrawColor(...COLORS.line);
+      doc.setLineWidth(0.5);
+      doc.line(this.x, this.y, this.x + this.contentW, this.y);
+    };
+    drawRow(['Metric', 'Current', 'Prior', 'YoY'], true);
+    for (const r of rows) {
+      const yoy = r[3];
+      const tone: Tone | undefined = yoy.startsWith('+') ? 'pos' : yoy.startsWith('-') ? 'neg' : undefined;
+      drawRow(r, false, tone);
+    }
+    this.gap(4);
+  }
+
   /** A filled callout box (cover disclaimer / degraded note). */
   box(str: string, fill: RGB, textColor: RGB): void {
     const size = 8.5;
@@ -451,6 +486,73 @@ function summariesSection(pdf: Pdf, data: FilingExportData): void {
   }
 }
 
+// ── fundamentals (XBRL) ─────────────────────────────────────────────────────
+
+function pdfFmtUsd(v: number): string {
+  const abs = Math.abs(v);
+  const sign = v < 0 ? '-' : '';
+  if (abs >= 1e12) return `${sign}$${(abs / 1e12).toFixed(2)}T`;
+  if (abs >= 1e9) return `${sign}$${(abs / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(1)}M`;
+  if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(1)}K`;
+  return `${sign}$${abs.toFixed(2)}`;
+}
+
+function pdfFmtShares(v: number): string {
+  const abs = Math.abs(v);
+  if (abs >= 1e9) return `${(abs / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `${(abs / 1e6).toFixed(1)}M`;
+  if (abs >= 1e3) return `${(abs / 1e3).toFixed(1)}K`;
+  return abs.toFixed(0);
+}
+
+function pdfFmtValue(v: number, unit: XbrlUnit): string {
+  switch (unit) {
+    case 'USD': return pdfFmtUsd(v);
+    case 'USD/shares': return `$${v.toFixed(2)}`;
+    case 'shares': return pdfFmtShares(v);
+    case 'pure': return `${(v * 100).toFixed(1)}%`;
+    default: return v.toLocaleString();
+  }
+}
+
+function pdfFmtPct(v: number): string {
+  const pct = v * 100;
+  return `${pct > 0 ? '+' : ''}${pct.toFixed(1)}%`;
+}
+
+function fundamentalsSection(pdf: Pdf, data: FilingExportData): void {
+  const xbrl = data.doc.xbrl;
+  if (!xbrl || xbrl.facts.length === 0) return;
+
+  pdf.heading(2, 'Fundamentals (XBRL)');
+  const period = [
+    xbrl.periodEnd ? fmtDate(xbrl.periodEnd) : '',
+    xbrl.priorPeriodEnd ? `vs ${fmtDate(xbrl.priorPeriodEnd)}` : '',
+  ].filter(Boolean).join('   ');
+  pdf.text(
+    `From the filing's own XBRL data - exact figures, not AI-generated.${period ? `  ${period}` : ''}`,
+    { size: 8.5, style: 'italic', color: COLORS.muted, gapAfter: 4 },
+  );
+
+  const rows: Array<[string, string, string, string]> = xbrl.facts.map((f) => [
+    f.label,
+    pdfFmtValue(f.currentValue, f.unit),
+    f.priorValue !== undefined ? pdfFmtValue(f.priorValue, f.unit) : '-',
+    f.yoyPct !== undefined ? pdfFmtPct(f.yoyPct) : '-',
+  ]);
+  for (const m of xbrl.metrics) {
+    const delta = m.prior !== undefined ? m.current - m.prior : undefined;
+    rows.push([
+      m.label,
+      `${(m.current * 100).toFixed(1)}%`,
+      m.prior !== undefined ? `${(m.prior * 100).toFixed(1)}%` : '-',
+      delta !== undefined ? `${delta > 0 ? '+' : ''}${(delta * 100).toFixed(1)}pt` : '-',
+    ]);
+  }
+  pdf.fundamentalsTable(rows);
+}
+
 function sentimentSection(pdf: Pdf, data: FilingExportData): void {
   const results = data.sentiment;
   if (!results || results.length === 0) return;
@@ -487,18 +589,18 @@ function redlineSection(pdf: Pdf, data: FilingExportData): void {
   if (!r) return;
 
   if (r.status === 'no_prior') {
-    pdf.heading(2, 'Year-over-year changes');
+    pdf.heading(2, 'Redline — year-over-year changes');
     pdf.text(`No prior comparable ${data.doc.filingType} was found on EDGAR for this company.`, { size: 9.5, style: 'italic', color: COLORS.muted });
     return;
   }
   if (r.status === 'unsupported_form') {
-    pdf.heading(2, 'Year-over-year changes');
+    pdf.heading(2, 'Redline — year-over-year changes');
     pdf.text(`A year-over-year comparison isn't available for ${data.doc.filingType} filings.`, { size: 9.5, style: 'italic', color: COLORS.muted });
     return;
   }
   if (r.diffs.length === 0 && r.alignment.length === 0) return;
 
-  pdf.heading(2, 'Year-over-year changes');
+  pdf.heading(2, 'Redline — year-over-year changes');
   if (r.prior) {
     pdf.text(
       `Compared against ${r.prior.form} filed ${r.prior.filingDate} (period ${r.prior.reportDate}).`,
@@ -561,12 +663,9 @@ export function buildFilingReportPdf(data: FilingExportData): jsPDF {
     );
     pdf.gap(4);
   }
-  pdf.box(
-    'AI-generated investor analysis - informational only, not investment advice. Verify every figure and quote against the original filing.',
-    [255, 247, 230], [122, 91, 0],
-  );
 
   // Body.
+  fundamentalsSection(pdf, data);
   if (a) {
     analysisSections(pdf, a);
   } else {

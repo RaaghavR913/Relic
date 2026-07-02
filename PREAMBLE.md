@@ -9,7 +9,7 @@ An on-device Chrome extension for SEC/EDGAR filing analysis. Everything runs loc
 ## Architecture (do not break these abstractions)
 
 - **positionMap** — a DFS DOM walker producing normalized, table-region-aware document coordinates with O(log n) binary-search lookup. **All DOM-coordinate access goes through this abstraction.** Don't read coordinates off the DOM directly.
-- **CSS Custom Highlight API overlay system** — 15 named, priority-stacked highlight layers. **No span injection** — zero DOM pollution, no conflict with inline XBRL interactive viewers. Sentiment, flag, redline, and Q&A-citation overlays all coexist on this system. Anything that highlights text uses these layers; never inject `<span>`s.
+- **CSS Custom Highlight API overlay system** — named, priority-stacked highlight layers for language flags, redline additions, and jump-to-source citations. **No span injection** — zero DOM pollution, no conflict with inline XBRL interactive viewers. Anything that highlights text uses these layers; never inject `<span>`s.
 - **Two-tier on-device generation** — a **builtin** path (Gemini Nano `LanguageModel` / `Summarizer`) and an **extractive** fallback path. ONNX Runtime Web powers Sentiment and Q&A embeddings.
 - **EDGAR access** — a `RateLimitedQueue` at ≤8 req/s with exponential backoff, `Retry-After` honored, and a 30-minute in-memory cache. **Every** request to `*.sec.gov` goes through this queue.
 - **Coordinate spaces** — the types distinguish **section-space** from **document-space** coordinates explicitly. Preserve that boundary; never silently mix them.

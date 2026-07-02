@@ -94,22 +94,22 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
             {(nanoState === 'downloadable' || nanoState === 'downloading') && (
               <p className="mt-2 text-[10px] leading-relaxed text-zinc-600">
                 Chrome will download and manage Gemini Nano the first time you generate an analyst note —
-                you’ll see its progress then. Sentiment and flags work right away in the meantime.
+                you’ll see its progress then. Language flags and sentiment analysis work right away in the meantime.
               </p>
             )}
           </>
         ) : (
           <Banner tone="positive" icon="✓">
             Built-in AI isn’t available on this device, so Relic runs in <strong>extractive mode</strong>:
-            summaries become the filing’s most important sentences. Sentiment, flags, and year-over-year
-            changes are fully available — all on-device.
+            summaries become the filing’s most important sentences. Sentiment scores, language-flag underlines, and the year-over-year
+            Redline are fully available — all on-device.
           </Banner>
         )}
       </section>
 
       {/* Progressive enablement note */}
       <p className="px-1 text-[13px] leading-relaxed text-emerald-400 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">
-        Info: Sentiment and language flags are available immediately on any site. Generative features switch on
+        Info: Language flags underline the filing immediately; sentiment scores run on demand in the Sentiment tab. Generative features switch on
         automatically once the model is ready.
       </p>
 

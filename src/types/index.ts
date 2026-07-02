@@ -56,7 +56,52 @@ export interface DocumentModel {
   periodOfReport?: string; // ISO date
   filedAt?: string;        // ISO date
   sections: Section[];
+  /**
+   * Deterministic fundamentals parsed from the filing's inline XBRL, when present.
+   * Exact us-gaap/dei facts — not model output — so they need no verification.
+   * Only populated for inline-XBRL EDGAR filings; absent otherwise.
+   */
+  xbrl?: XbrlFundamentals;
   rawTextHash: string;     // cache key
+}
+
+// ── XBRL fundamentals (deterministic, from inline XBRL) ───────────────────────
+
+export type XbrlUnit = 'USD' | 'shares' | 'USD/shares' | 'pure' | 'other';
+
+/** One curated line item extracted from inline XBRL, with its YoY comparison. */
+export interface XbrlFact {
+  /** Canonical concept, e.g. 'us-gaap:Revenues'. */
+  concept: string;
+  /** Friendly label, e.g. 'Revenue'. */
+  label: string;
+  unit: XbrlUnit;
+  /** Current-period value, already scale/sign-normalized. */
+  currentValue: number;
+  /** Prior comparable-period value, when present inline. */
+  priorValue?: number;
+  /** Year-over-year change as a fraction (0.12 = +12%); omitted when not computable. */
+  yoyPct?: number;
+  /** DOCUMENT-space range of the displayed current figure (jump-to-source). */
+  range?: [number, number];
+}
+
+/** A derived ratio (e.g. gross margin) as a fraction (0.42 = 42%). */
+export interface XbrlMetric {
+  label: string;
+  current: number;
+  prior?: number;
+}
+
+export interface XbrlFundamentals {
+  /** Curated line items in display order. */
+  facts: XbrlFact[];
+  /** Derived margins, when the inputs are present. */
+  metrics: XbrlMetric[];
+  /** ISO date of the current period end used for selection. */
+  periodEnd?: string;
+  /** ISO date of the prior comparable period end, when found. */
+  priorPeriodEnd?: string;
 }
 
 export interface Section {

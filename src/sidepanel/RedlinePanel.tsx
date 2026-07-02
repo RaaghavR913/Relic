@@ -409,7 +409,7 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
           honest rather than dead-ending at "No prior comparable UNKNOWN found". */}
       {!applicable && (
         <p className="rounded-lg bg-zinc-900/60 px-3 py-2.5 text-xs leading-relaxed text-zinc-400 ring-1 ring-zinc-800/60">
-          A year-over-year comparison isn’t available for this page. The Changes view diffs the
+          A year-over-year comparison isn’t available for this page. The Redline view diffs the
           Risk Factors and MD&amp;A of a <span className="font-medium text-zinc-300">10-K, 10-Q, 20-F,
           S-1, proxy (DEF&nbsp;14A), or 8-K</span> against the prior comparable filing. Open one of
           those filings to see what changed.
@@ -466,7 +466,7 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
       {/* unsupported form — a prior exists but this filing type has no focus coverage (M1) */}
       {state === 'unsupported_form' && (
         <p className="rounded-lg bg-zinc-900/60 px-3 py-2.5 text-xs text-zinc-400 ring-1 ring-zinc-800/60">
-          Changes view isn’t available for {doc.filingType} filings yet. The comparison runs on a fixed set
+          Redline view isn’t available for {doc.filingType} filings yet. The comparison runs on a fixed set
           of focus sections (Risk Factors, MD&amp;A) that aren’t mapped for this form type.
         </p>
       )}

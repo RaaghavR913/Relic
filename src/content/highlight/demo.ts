@@ -67,13 +67,13 @@ const LAYER_CSS: Record<HighlightLayer, string> = {
     'background-color: rgba(255, 213, 0, 0.45); color: inherit; text-decoration: underline dotted;',
   // ── Session 5 flag types ─────────────────────────────────────────────────
   'flag-uncertainty':
-    'background-color: rgba(245, 158, 11, 0.22); color: inherit; text-decoration: underline dashed;',
+    'background-color: rgba(245, 158, 11, 0.44); color: inherit; text-decoration: underline dashed; text-decoration-thickness: 2px; text-underline-offset: 2px;',
   'flag-weak_modal':
-    'background-color: rgba(14, 165, 233, 0.18); color: inherit; text-decoration: underline dotted;',
+    'background-color: rgba(14, 165, 233, 0.40); color: inherit; text-decoration: underline dotted; text-decoration-thickness: 2px; text-underline-offset: 2px;',
   'flag-litigious':
-    'background-color: rgba(239, 68, 68, 0.22); color: inherit; text-decoration: underline double;',
+    'background-color: rgba(239, 68, 68, 0.42); color: inherit; text-decoration: underline double; text-decoration-thickness: 2px; text-underline-offset: 2px;',
   'flag-negative':
-    'background-color: rgba(244, 63, 94, 0.20); color: inherit; text-decoration: underline wavy;',
+    'background-color: rgba(244, 63, 94, 0.40); color: inherit; text-decoration: underline wavy; text-decoration-thickness: 2px; text-underline-offset: 2px;',
   redline:
     'background-color: rgba(72, 187, 120, 0.28); color: inherit;',
   qa:

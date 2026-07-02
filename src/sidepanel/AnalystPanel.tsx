@@ -26,6 +26,7 @@ import { getCachedAnalysis, putAnalysis, clearAnalysis } from '@/analyst/analysi
 import { getCachedRedline } from '@/redline/redlineStore';
 import { getSentimentCache } from '@/db/sentimentStore';
 import { isLowConfidenceGeneric } from '@/content/ingest/detect';
+import { FundamentalsPanel } from './FundamentalsPanel';
 
 // Must match FINBERT_MODEL_ID in offscreen.ts (not imported — that module
 // hosts workers and must not be pulled into the side panel bundle).
@@ -118,13 +119,13 @@ function InsightCard({ insight }: { insight: FilingInsight }) {
       <p className="mt-1.5 text-xs leading-relaxed text-zinc-300">{insight.summary}</p>
       {insight.whyItMatters && (
         <p className="mt-1.5 text-xs leading-relaxed text-zinc-400">
-          <span className="font-medium text-[#39FF14]">Why it matters: </span>
+          <span className="font-medium text-[#00C68D]">Why it matters: </span>
           {insight.whyItMatters}
         </p>
       )}
       {insight.investorMeaning && (
         <p className="mt-1 text-xs leading-relaxed text-zinc-400">
-          <span className="font-medium text-[#39FF14]">Investor view: </span>
+          <span className="font-medium text-[#00C68D]">Investor view: </span>
           {insight.investorMeaning}
         </p>
       )}
@@ -421,6 +422,10 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
         </button>
       </div>
 
+      {/* Deterministic, exact fundamentals from the filing's own inline XBRL —
+          renders immediately, independent of the LM pipeline below. */}
+      <FundamentalsPanel doc={doc} />
+
       {/* First-use Gemini Nano download — show progress instead of looking frozen. */}
       {downloadProgress !== null && (
         <div
@@ -533,7 +538,7 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
                     </p>
                     {n.investorMeaning && (
                       <p className="mt-1.5 text-[11px] leading-relaxed text-zinc-400">
-                        <span className="font-medium text-[#39FF14]">Investor view: </span>{n.investorMeaning}
+                        <span className="font-medium text-[#00C68D]">Investor view: </span>{n.investorMeaning}
                       </p>
                     )}
                   </div>

@@ -44,12 +44,12 @@ const STEPS: ReadonlyArray<{ title: string; detail: string }> = [
   {
     title: 'Read the analysis tabs',
     detail:
-      'Analyst gives an investor read, Summary condenses each section, Sentiment scores tone with FinBERT, and Changes compares against last year’s filing. Each appears as it finishes — all on your device.',
+      'Analyst gives an investor read, Summary condenses each section, Sentiment scores tone with FinBERT, and Redline compares against last year’s filing. Each appears as it finishes — all on your device.',
   },
   {
     title: 'Use the on-page highlights',
     detail:
-      'Relic underlines cautious, litigious, and negative wording directly in the filing so the language that matters is easy to spot. Turn highlights on or off under Settings.',
+      'Relic underlines cautious, litigious, and negative wording directly in the filing so the language that matters is easy to spot. Hover a flagged phrase for details. Turn highlights on or off under Settings → On-page highlights.',
   },
 ];
 
@@ -61,15 +61,15 @@ const FAQS: ReadonlyArray<{ q: string; a: string }> = [
   },
   {
     q: 'Why are some tabs missing on a page?',
-    a: 'Analyst, Sentiment, and Changes need a real company filing. On SEC data pages, EDGAR index pages, exhibits, and pages that don’t look like a filing, Relic keeps Summary only.',
+    a: 'Analyst, Sentiment, and Redline need a real company filing. On SEC data pages, EDGAR index pages, exhibits, and pages that don’t look like a filing, Relic keeps Summary only.',
   },
   {
     q: 'What’s the difference between Built-in AI and Extractive?',
-    a: 'Built-in AI writes analyst notes and change narratives in natural language. Extractive instead surfaces the filing’s most important existing sentences. Sentiment, highlights, and Changes work fully in both.',
+    a: 'Built-in AI writes analyst notes and change narratives in natural language. Extractive instead surfaces the filing’s most important existing sentences. Sentiment scores, language flags, and Redline work fully in both.',
   },
   {
     q: 'Why is the first analysis slow?',
-    a: 'Generation Mode may take a little longer the first time while your browser gets everything ready. This only happens once. Large filings can take up to a minute to read, but sentiment and highlights are available immediately.',
+    a: 'Generation Mode may take a little longer the first time while your browser gets everything ready. This only happens once. Large filings can take up to a minute to read, but language flags appear immediately and sentiment analysis starts as soon as you request it.',
   },
 ];
 
@@ -289,7 +289,7 @@ export default function SettingsApp() {
         <Section title="Settings">
           <Row
             title="Fetch prior-year filings from SEC.gov"
-            desc="Powers the year-over-year Changes comparison. The only network request Relic makes."
+            desc="Powers the year-over-year Redline comparison. The only network request Relic makes."
             control={
               <Toggle
                 checked={secFetch}
@@ -300,7 +300,7 @@ export default function SettingsApp() {
           />
           <Row
             title="On-page highlights"
-            desc="Paint language flags onto the filing: uncertainty, weak-modal, litigious, negative."
+            desc="Underline uncertainty, weak-modal, litigious, and negative wording on the filing page. Hover flagged phrases for a tooltip."
             control={
               <Toggle checked={prefs.flags} onChange={setFlags} label="On-page highlights" />
             }
@@ -341,7 +341,7 @@ export default function SettingsApp() {
           />
           <Row
             title="Bundled models"
-            desc="FinBERT for financial sentiment, plus an on-device encoder for summaries and Changes matching."
+            desc="FinBERT for financial sentiment, plus an on-device encoder for summaries and Redline matching."
             control={null}
           />
         </Section>

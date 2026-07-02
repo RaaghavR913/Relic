@@ -1,8 +1,13 @@
 /**
  * Unit tests for src/content/ingest/siteProfiles.ts
  *
- * Verifies group classification, contentSelector presence for group B,
- * optionalHostPattern presence for group C, isGroupCSite(), and detectGateState().
+ * Verifies group classification, contentSelector presence for the content-gated
+ * sites, optionalHostPattern presence for every optional-permission (group 'C')
+ * profile, isGroupCSite(), and detectGateState().
+ *
+ * NOTE: every financial host except sec.gov now lives in optional_host_permissions
+ * (group 'C') so the install prompt stays "sec.gov only". The formerly-auto sites
+ * (annualreports/stockanalysis/fool/benzinga/sec.report/finviz) are group 'C' here.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -15,53 +20,53 @@ import {
 // ── getSiteProfile ────────────────────────────────────────────────────────────
 
 describe('getSiteProfile', () => {
-  it('returns group A for stockanalysis.com', () => {
+  it('returns group C for stockanalysis.com', () => {
     const p = getSiteProfile('https://stockanalysis.com/stocks/aapl/');
-    expect(p?.group).toBe('A');
+    expect(p?.group).toBe('C');
   });
 
-  it('returns group A for www.stockanalysis.com (www. variant)', () => {
+  it('returns group C for www.stockanalysis.com (www. variant)', () => {
     const p = getSiteProfile('https://www.stockanalysis.com/stocks/aapl/financials/');
-    expect(p?.group).toBe('A');
+    expect(p?.group).toBe('C');
   });
 
-  it('returns group A for annualreports.com', () => {
+  it('returns group C for annualreports.com', () => {
     const p = getSiteProfile('https://www.annualreports.com/Company/apple');
-    expect(p?.group).toBe('A');
+    expect(p?.group).toBe('C');
   });
 
-  it('returns group A for fool.com', () => {
+  it('returns group C for fool.com', () => {
     const p = getSiteProfile('https://www.fool.com/investing/stock-market/market-sectors/technology/apple/');
-    expect(p?.group).toBe('A');
+    expect(p?.group).toBe('C');
   });
 
-  it('returns group A for benzinga.com', () => {
+  it('returns group C for benzinga.com', () => {
     const p = getSiteProfile('https://www.benzinga.com/stock/AAPL');
-    expect(p?.group).toBe('A');
+    expect(p?.group).toBe('C');
   });
 
-  it('returns group B for sec.report', () => {
+  it('returns group C for sec.report', () => {
     const p = getSiteProfile('https://sec.report/Document/0000320193-24-000006/');
-    expect(p?.group).toBe('B');
+    expect(p?.group).toBe('C');
   });
 
-  it('returns group B for www.sec.report', () => {
+  it('returns group C for www.sec.report', () => {
     const p = getSiteProfile('https://www.sec.report/CIK/0000320193');
-    expect(p?.group).toBe('B');
+    expect(p?.group).toBe('C');
   });
 
-  it('group B sec.report has a contentSelector', () => {
+  it('sec.report keeps a contentSelector (content-gated)', () => {
     const p = getSiteProfile('https://sec.report/Document/0000320193-24-000006/');
     expect(typeof p?.contentSelector).toBe('string');
     expect(p!.contentSelector!.length).toBeGreaterThan(0);
   });
 
-  it('returns group B for finviz.com', () => {
+  it('returns group C for finviz.com', () => {
     const p = getSiteProfile('https://finviz.com/quote.ashx?t=AAPL');
-    expect(p?.group).toBe('B');
+    expect(p?.group).toBe('C');
   });
 
-  it('group B finviz has a contentSelector', () => {
+  it('finviz keeps a contentSelector (content-gated)', () => {
     const p = getSiteProfile('https://finviz.com/quote.ashx?t=AAPL');
     expect(typeof p?.contentSelector).toBe('string');
   });
@@ -91,15 +96,23 @@ describe('getSiteProfile', () => {
     expect(p?.group).toBe('C');
   });
 
-  it('every group C profile has an optionalHostPattern', () => {
-    const groupC = [
+  it('every optional-permission profile has an optionalHostPattern', () => {
+    const optionalHosts = [
+      // formerly auto-injected (Groups A/B)
+      'https://www.annualreports.com/Company/apple',
+      'https://stockanalysis.com/stocks/aapl/',
+      'https://www.fool.com/investing/apple/',
+      'https://www.benzinga.com/stock/AAPL',
+      'https://sec.report/Document/0000320193-24-000006/',
+      'https://finviz.com/quote.ashx?t=AAPL',
+      // always optional (Group C)
       'https://finance.yahoo.com/quote/AAPL/',
       'https://www.macrotrends.net/stocks/charts/AAPL/apple/revenue',
       'https://bamsec.com/company/320193',
       'https://www.cnbc.com/quotes/AAPL',
       'https://www.reuters.com/markets/companies/AAPL.OQ/',
     ];
-    for (const url of groupC) {
+    for (const url of optionalHosts) {
       const p = getSiteProfile(url);
       expect(p?.optionalHostPattern, `${url} missing optionalHostPattern`).toBeTruthy();
     }
@@ -125,20 +138,17 @@ describe('getSiteProfile', () => {
 // ── isGroupCSite ─────────────────────────────────────────────────────────────
 
 describe('isGroupCSite', () => {
-  it('returns true for group C URLs', () => {
+  it('returns true for always-optional URLs', () => {
     expect(isGroupCSite('https://finance.yahoo.com/quote/AAPL/')).toBe(true);
     expect(isGroupCSite('https://www.reuters.com/markets/companies/AAPL.OQ/')).toBe(true);
     expect(isGroupCSite('https://www.cnbc.com/quotes/AAPL')).toBe(true);
   });
 
-  it('returns false for group A URLs', () => {
-    expect(isGroupCSite('https://stockanalysis.com/stocks/aapl/')).toBe(false);
-    expect(isGroupCSite('https://www.fool.com/quote/aapl/')).toBe(false);
-  });
-
-  it('returns false for group B URLs', () => {
-    expect(isGroupCSite('https://sec.report/Document/0000320193-24-000006/')).toBe(false);
-    expect(isGroupCSite('https://finviz.com/quote.ashx?t=AAPL')).toBe(false);
+  it('returns true for the formerly-auto (A/B) URLs now moved to optional', () => {
+    expect(isGroupCSite('https://stockanalysis.com/stocks/aapl/')).toBe(true);
+    expect(isGroupCSite('https://www.fool.com/quote/aapl/')).toBe(true);
+    expect(isGroupCSite('https://sec.report/Document/0000320193-24-000006/')).toBe(true);
+    expect(isGroupCSite('https://finviz.com/quote.ashx?t=AAPL')).toBe(true);
   });
 
   it('returns false for unregistered URLs', () => {
@@ -178,10 +188,10 @@ describe('detectGateState', () => {
     expect(detectGateState(p, document)).toBe('paywall');
   });
 
-  it('returns open when no gate selector matches (group A profile has no selectors)', () => {
+  it('returns open when a profile has no consent/paywall selectors', () => {
     document.body.innerHTML = '<div id="consent-page">whatever</div>';
     const p = getSiteProfile('https://stockanalysis.com/stocks/aapl/')!;
-    // Group A has no consentSelector or paywallSelector — always open.
+    // This profile has no consentSelector or paywallSelector — always open.
     expect(detectGateState(p, document)).toBe('open');
   });
 });

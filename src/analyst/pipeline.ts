@@ -294,7 +294,7 @@ export async function generateFilingAnalysis(
 
   const lmFactory = opts.lmFactory ?? defaultLMFactory;
   const sig = opts.signal;
-  const hints = buildHints(aux);
+  const hints = buildHints(doc, aux);
 
   // Deterministic floor, then upgrade. We keep the full deterministic analysis
   // (snapshot one-liner, takeaways, per-dimension cards, risk signals, redline

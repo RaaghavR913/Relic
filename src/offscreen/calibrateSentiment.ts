@@ -3,7 +3,7 @@
 // ------------------------------------------------------------
 // FinBERT's top-1 label is taken at face value, which paints boilerplate and
 // legal prose with confident colour. A confidence floor pulls low-score
-// positive/negative predictions back to neutral so the heatmap reflects only
+// positive/negative predictions back to neutral so scores reflect only
 // predictions the model is reasonably sure about. Tunable in one place.
 // ============================================================
 

@@ -2,6 +2,7 @@
   "manifest_version": 3,
   "name": "Relic",
   "version": "1.2.7",
+  "minimum_chrome_version": "116",
   "description": "Turn SEC filings and investor documents into clear summaries, key takeaways, sentiment insights, and important changes.",
   "permissions": [
     "storage",
@@ -14,15 +15,15 @@
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://*.sec.gov"
   },
   "host_permissions": [
-    "https://*.sec.gov/*",
-    "*://*.annualreports.com/*",
-    "*://*.stockanalysis.com/*",
-    "*://*.fool.com/*",
-    "*://*.benzinga.com/*",
-    "*://*.sec.report/*",
-    "*://finviz.com/*"
+    "https://*.sec.gov/*"
   ],
   "optional_host_permissions": [
+    "https://*.annualreports.com/*",
+    "https://*.stockanalysis.com/*",
+    "https://*.fool.com/*",
+    "https://*.benzinga.com/*",
+    "https://*.sec.report/*",
+    "https://finviz.com/*",
     "*://finance.yahoo.com/*",
     "*://*.macrotrends.net/*",
     "*://*.bamsec.com/*",
@@ -41,24 +42,6 @@
       "js": ["src/content/index.ts"],
       "run_at": "document_idle",
       "all_frames": true
-    },
-    {
-      "matches": [
-        "*://*.annualreports.com/*",
-        "*://*.stockanalysis.com/*",
-        "*://*.fool.com/*",
-        "*://*.benzinga.com/*"
-      ],
-      "js": ["src/content/index.ts"],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": [
-        "*://*.sec.report/*",
-        "*://finviz.com/*"
-      ],
-      "js": ["src/content/index.ts"],
-      "run_at": "document_idle"
     }
   ],
   "side_panel": {
@@ -82,13 +65,5 @@
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": ["assets/*", "wasm/*", "models/*"],
-      "matches": [
-        "<all_urls>"
-      ]
-    }
-  ]
+  }
 }

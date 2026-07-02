@@ -1,7 +1,7 @@
 # Relic — Session 7 Manual Test Script
 
 Covers the unified side panel: first-run → first analyzed filing → all tabs
-(Summary · Sentiment · Flags · Changes) in **both** generation tiers (`builtin`
+(Analyst · Summary · Sentiment · Redline) in **both** generation tiers (`builtin`
 vs `extractive`).
 
 ## 0. Build & load
@@ -22,7 +22,6 @@ onboarding, open the side panel's service-worker/devtools console and run:
 ```js
 chrome.storage.local.remove([
   'relic:onboarded',
-  'relic:sentimentEnabled',
   'relic:flagsEnabled',
 ]);
 ```
@@ -64,8 +63,9 @@ HTML. (Any 10-K / 10-Q / 8-K / S-1 / DEF 14A primary doc works.)
       chip**, **Period**, and section count appear.
 - [ ] **Sections** navigator lists the filing's sections; clicking one scrolls the
       page to that section and briefly flashes it.
-- [ ] **Overlays** strip shows **Heatmap** (off) and **Flags** (on) switches and a
-      **Legend** disclosure with non-colour cues (underline styles + markers).
+- [ ] **Language flags** — flagged phrases (uncertainty, weak-modal, litigious,
+      negative) are underlined on the filing page. Hovering a flagged phrase shows a
+      tooltip with the flag type.
 
 ### Tabs
 - [ ] **Analyst** (default tab) — analysis auto-starts on document load.
@@ -87,23 +87,16 @@ HTML. (Any 10-K / 10-Q / 8-K / S-1 / DEF 14A primary doc works.)
     *Analyst* toggle is disabled with a tooltip, and an amber degradation banner shows.
 - [ ] **Sentiment** — click *Analyze Sentiment*.
   - FinBERT model-load progress bar, then per-section progress.
-  - Document-level + per-section sentiment bars populate.
-  - With **Heatmap** overlay on, sentence underlines appear **on the page**,
-    progressively, without freezing scroll.
-- [ ] **Flags** — tab shows a count badge. Per-section flag chips; clicking a chip
-      jumps to the first occurrence on the page. Hovering a flagged phrase on the
-      page shows a tooltip.
-- [ ] **Changes** — click *Compare to prior year*. Resolves the prior filing from
+  - Document-level + per-section sentiment bars populate in the side panel.
+- [ ] **Redline** — click *Compare to prior year*. Resolves the prior filing from
       EDGAR (watch progress: resolving → fetching → parsing → aligning → diffing),
       then shows per-section diffs with magnitude bars and +/− passages.
       *Show on page* highlights additions. (builtin upgrades the templated summary
       to natural language.)
 
-### Overlay master toggles
-- [ ] Turn **Heatmap** off → page underlines disappear; turn on → they return
-      **without re-running analysis**.
-- [ ] Turn **Flags** off → page flag underlines + tooltip disappear; on → return.
-- [ ] Reload the side panel → toggle states persist.
+### On-page highlights (Settings)
+- [ ] Settings → **On-page highlights** off → flag underlines + tooltip disappear; on → return.
+- [ ] Reload the side panel → toggle state persists.
 
 ---
 
@@ -111,8 +104,7 @@ HTML. (Any 10-K / 10-Q / 8-K / S-1 / DEF 14A primary doc works.)
 
 - [ ] Focus a non-filing tab and reopen the panel → **No filing open** empty state +
       an **On-device capabilities** card + privacy note.
-- [ ] **Flags** tab with no detected flags → "No language flags" empty state.
-- [ ] **Changes** with no prior comparable filing → neutral "No prior comparable…"
+- [ ] **Redline** with no prior comparable filing → neutral "No prior comparable…"
       message (not an error).
 - [ ] Disable WebGPU (`chrome://flags` → WebGPU Disabled) → encoders still run via
       WASM fallback (slower but functional); capabilities card shows *WASM fallback*.
@@ -123,8 +115,8 @@ HTML. (Any 10-K / 10-Q / 8-K / S-1 / DEF 14A primary doc works.)
 
 - [ ] Tab bar: arrow keys move between tabs; focus ring visible; `aria-selected` and
       `role="tabpanel"` wiring correct (inspect).
-- [ ] Every overlay distinguishes meaning by **shape**, not colour alone (sentiment
-      solid vs wavy underline; four distinct flag underline styles).
+- [ ] Flag underlines distinguish meaning by **shape**, not colour alone (four
+      distinct underline styles: dashed, dotted, double, wavy).
 - [ ] Enable OS **Reduce Motion** → progress bars/expanders settle without animation;
       skeletons stop pulsing.
 - [ ] All text meets WCAG AA contrast on the zinc-950 background.
@@ -156,10 +148,10 @@ exercising all tabs:
       panel renders results with a ⚠ "doesn't look like an SEC filing" banner;
       flag underlines are NOT painted on the page.
 - [ ] **Opt-in flags:** click **show them anyway** in the banner → flag underlines
-      appear on the page; the Flags overlay toggle reflects the state.
+      appear on the page; Settings → On-page highlights reflects the state.
 - [ ] **IR-hosted real filing:** open an HTML 10-K/10-Q hosted off-EDGAR → analyze →
       type is detected from text, NO warning banner, sections segment normally;
-      **Changes** reports no prior filing (no CIK) rather than erroring.
+      **Redline** reports no prior filing (no CIK) rather than erroring.
 - [ ] **Unsupported page:** open `chrome://version`, open the panel, click
       **Analyze this page** → friendly "can't be analyzed" message, no crash.
 - [ ] **Double injection:** click **Analyze this page** twice on the same page →

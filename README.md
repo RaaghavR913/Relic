@@ -2,7 +2,7 @@
 
 On-device SEC filing analysis for Chrome. Relic runs entirely on your machine — summaries, sentiment, language flags, and year-over-year redlines never leave your device.
 
-Open any filing on [EDGAR](https://www.sec.gov/edgar) and Relic activates in the side panel with overlays painted directly on the filing page.
+Open any filing on [EDGAR](https://www.sec.gov/edgar) and Relic activates in the side panel. Language flags are underlined directly on the filing page as you read.
 
 ## Features
 
@@ -10,11 +10,10 @@ Open any filing on [EDGAR](https://www.sec.gov/edgar) and Relic activates in the
 |-----|--------------|
 | **Analyst** | Investor-focused document analysis: snapshot read (Bullish/Bearish/Mixed/Neutral) with 1–5 scores, top takeaways, what changed vs the prior filing, revenue/margin/cash-flow/share impact, risk signals, management narrative check, bull vs bear case, and a watch list — generated stage-by-stage on-device with evidence verified against the source text |
 | **Summary** | Plain-English section summaries, with analyst-style notes when Chrome's built-in AI is available |
-| **Sentiment** | Sentence-level FinBERT sentiment heatmap overlaid on the filing |
-| **Flags** | Highlights hedging, uncertainty, litigious, and negative language via a curated financial-language lexicon |
-| **Changes** | Year-over-year redline for comparable prior filings (risk factors, MD&A, and more) |
+| **Sentiment** | Sentence-level FinBERT tone scores in the side panel (positive / negative / neutral breakdown per section) |
+| **Redline** | Year-over-year redline for comparable prior filings (risk factors, MD&A, and more) |
 
-Additional UI: section navigator, master overlay toggles, first-run onboarding, and jump-to-source highlighting for every insight.
+Language flags (hedging, uncertainty, litigious, and negative wording) are underlined on the filing page automatically. Additional UI: section navigator, first-run onboarding, jump-to-source highlighting for insights, and a Settings toggle for on-page flags.
 
 ## Privacy
 
@@ -25,6 +24,8 @@ Relic is built around a zero-egress guarantee:
 - **Only `*.sec.gov` network access** — used to fetch prior-year filings for redline comparison, routed through a rate-limited queue (≤8 req/s, exponential backoff, 30-minute cache).
 
 Your filing text and derived analysis never leave the device.
+
+See [PRIVACY.md](PRIVACY.md) for the full privacy policy.
 
 ## Chrome Web Store submission notes
 
@@ -55,7 +56,7 @@ EDGAR page
 content script ──► ingest + positionMap + CSS Custom Highlight overlays
     │
     ▼
-side panel (React) ──► Summary · Sentiment · Flags · Changes tabs
+side panel (React) ──► Analyst · Summary · Sentiment · Redline tabs
     │
     ▼
 service worker ──► message router, EDGAR queue, offscreen document lifecycle
@@ -69,7 +70,7 @@ offscreen document ──► ONNX encoder/sentiment Web Workers (FinBERT + mxbai
 - **builtin** — Chrome Summarizer + Prompt API for summaries, analyst notes, and change narratives.
 - **extractive** — embedding-centrality sentence selection for summaries; all other analysis (sentiment, flags, redline) is identical.
 
-**Highlighting.** All on-page overlays use the [CSS Custom Highlight API](https://developer.mozilla.org/en-US/docs/Web/API/CSS_Custom_Highlight_API) — 15 named, priority-stacked layers. No `<span>` injection, so XBRL interactive viewers stay intact.
+**Highlighting.** On-page overlays use the [CSS Custom Highlight API](https://developer.mozilla.org/en-US/docs/Web/API/CSS_Custom_Highlight_API) — language-flag underlines, redline additions, and jump-to-source citations each get their own layer. No `<span>` injection, so XBRL interactive viewers stay intact.
 
 **Coordinates.** A `positionMap` abstraction maps normalized document text to DOM ranges with O(log n) lookup. All highlighting and scroll-to-source flows go through it.
 
@@ -80,8 +81,8 @@ src/
 ├── background/       # MV3 service worker — routing, EDGAR queue, offscreen lifecycle
 ├── content/          # Content script — ingestion, positionMap, highlight overlays
 │   ├── ingest/       # DOM walk, section detection, metadata extraction
-│   └── highlight/    # Sentiment, flag, redline, and citation highlight layers
-├── sidepanel/        # React side panel — tabs, onboarding, overlay controls
+│   └── highlight/    # Flag, redline, and citation highlight layers
+├── sidepanel/        # React side panel — tabs and onboarding
 ├── offscreen/        # Offscreen document — embedding/sentiment worker host
 ├── workers/          # FinBERT sentiment + mxbai embedding Web Workers (ONNX)
 ├── analyst/          # Investor analysis pipeline — staged Prompt API calls, evidence guards

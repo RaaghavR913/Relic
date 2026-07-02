@@ -4,11 +4,13 @@
  * All site-specific knowledge lives here, isolated from the extraction pipeline.
  * The pipeline itself is host-agnostic; this module supplies the overrides.
  *
- * Group A — static content_scripts matches; content readable on document_idle.
- * Group B — static matches; must gate extraction on a content selector to avoid
- *            parsing JS-redirect interstitials (sec.report) or anti-bot placeholders.
- * Group C — optional_host_permissions only; not auto-injected at install.
- *            Requires explicit user consent to grant access.
+ * Only sec.gov is a static content_scripts match (auto-injected at install).
+ * Every other financial host lives in optional_host_permissions (group 'C') so the
+ * install prompt stays "sec.gov only"; those sites are reached on demand — a toolbar
+ * click grants activeTab and injects in the gesture, or the side panel requests the
+ * host's optionalHostPattern for panel-driven injection. Some group-'C' profiles also
+ * carry a contentSelector (gate extraction past a JS-redirect / anti-bot interstitial)
+ * and/or consent/paywall selectors (detect-only, never auto-dismissed).
  */
 
 export type SiteGroup = 'sec' | 'A' | 'B' | 'C';
@@ -60,26 +62,32 @@ export interface SiteProfile {
 // and inspecting outerHTML.
 
 const PROFILES: readonly SiteProfile[] = [
-  // ── Group A ─────────────────────────────────────────────────────────────────
-  // Static pages. Content readable at document_idle. No special gating needed.
-  { group: 'A', label: 'Annual Reports' },
-  { group: 'A', label: 'Stock Analysis' },
-  { group: 'A', label: 'The Motley Fool' },
-  { group: 'A', label: 'Benzinga' },
+  // ── Former Group A (now optional-permission) ─────────────────────────────────
+  // Static pages readable at document_idle. Moved out of install-time host
+  // permissions into optional_host_permissions so the install prompt stays
+  // "sec.gov only". Reached on demand: a toolbar click (activeTab) injects in the
+  // gesture, or the side panel requests optionalHostPattern for panel-driven runs.
+  { group: 'C', label: 'Annual Reports', optionalHostPattern: 'https://*.annualreports.com/*' },
+  { group: 'C', label: 'Stock Analysis', optionalHostPattern: 'https://*.stockanalysis.com/*' },
+  { group: 'C', label: 'The Motley Fool', optionalHostPattern: 'https://*.fool.com/*' },
+  { group: 'C', label: 'Benzinga', optionalHostPattern: 'https://*.benzinga.com/*' },
 
-  // ── Group B ─────────────────────────────────────────────────────────────────
-  // Auto-injected but must gate on a known content selector before ingesting.
+  // ── Former Group B (now optional-permission, still content-gated) ─────────────
+  // Optional-permission like the rest, but keep the content selector so extraction
+  // waits for real page content instead of parsing an interstitial.
   {
-    group: 'B',
+    group: 'C',
     label: 'SEC Report Viewer',
+    optionalHostPattern: 'https://*.sec.report/*',
     // sec.report wraps filings in a viewer element. The Cloudflare interstitial
     // ("Redirecting…") has no article-class element, so extraction waits for it.
     // UNVERIFIED — inspect live outerHTML to confirm selector.
     contentSelector: 'article, .filing-document, .document-viewer, [class*="viewer-content"]',
   },
   {
-    group: 'B',
+    group: 'C',
     label: 'Finviz',
+    optionalHostPattern: 'https://finviz.com/*',
     // Finviz is static HTML. Anti-bot applies only to server-side fetches; the
     // in-browser content script sees the real page. Selector acts as a sanity
     // gate in case a rate-limit placeholder is served.
