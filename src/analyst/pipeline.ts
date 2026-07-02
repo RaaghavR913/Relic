@@ -52,7 +52,9 @@ import {
   whatChangedFromRedline,
   type AuxSignals,
 } from './deterministic';
-import { selectOverviewText, selectRelevantText, type Dimension } from './relevance';
+import { selectOverviewText, type Dimension } from './relevance';
+import { SemanticExcerptSelector, type Embedder } from './semanticRerank';
+import type { EmbedTextsMsg, EmbedTextsResponse } from '@/messages/types';
 
 // ── LM abstraction (injectable for tests) ────────────────────────────────────
 
@@ -103,6 +105,23 @@ const defaultLMFactory: AnalystLMFactory = async (systemPrompt, signal, onDownlo
       },
       ...(signal !== undefined ? { signal } : {}),
     });
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Default embedder — routes through the service worker to the offscreen
+ * document's encoder worker (src/messages/types.ts EMBED_TEXTS). Resolves to
+ * `null` (never throws) whenever `chrome.runtime` isn't available or the call
+ * fails, so SemanticExcerptSelector always has a clean fallback signal.
+ */
+const defaultEmbedder: Embedder = async (texts) => {
+  if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return null;
+  try {
+    const msg: EmbedTextsMsg = { target: 'sw', type: 'EMBED_TEXTS', texts };
+    const resp = (await chrome.runtime.sendMessage(msg)) as EmbedTextsResponse | undefined;
+    return resp?.ok ? resp.vectors : null;
   } catch {
     return null;
   }
@@ -278,6 +297,8 @@ export interface GenerateAnalysisOptions {
   onDownloadProgress?: (loaded: number) => void;
   /** Test seam — defaults to the Chrome Prompt API. */
   lmFactory?: AnalystLMFactory;
+  /** Test seam — defaults to routing through the service worker/offscreen encoder. */
+  embedder?: Embedder;
 }
 
 export async function generateFilingAnalysis(
@@ -295,6 +316,11 @@ export async function generateFilingAnalysis(
   const lmFactory = opts.lmFactory ?? defaultLMFactory;
   const sig = opts.signal;
   const hints = buildHints(doc, aux);
+  // Blends keyword-scored excerpt selection with on-device embedding
+  // similarity; falls back to pure keyword ranking whenever the encoder is
+  // unavailable. One instance per run so the candidate pool + query vectors
+  // are embedded once and reused across every dimension stage below.
+  const excerptSelector = new SemanticExcerptSelector(opts.embedder ?? defaultEmbedder);
 
   // Deterministic floor, then upgrade. We keep the full deterministic analysis
   // (snapshot one-liner, takeaways, per-dimension cards, risk signals, redline
@@ -415,7 +441,7 @@ export async function generateFilingAnalysis(
   ];
 
   for (const d of dimensionStages) {
-    const excerpts = selectRelevantText(doc, d.dims, DIMENSION_BUDGET);
+    const excerpts = await excerptSelector.select(doc, d.dims, DIMENSION_BUDGET);
     if (excerpts.length < MIN_EXCERPT_CHARS) {
       // Not enough source material — honest empty (UI renders "Not enough information").
       markDone(d.stage);
@@ -433,7 +459,7 @@ export async function generateFilingAnalysis(
   }
 
   // 9 ── management narrative check
-  const mgmtText = selectRelevantText(doc, ['management'], DIMENSION_BUDGET);
+  const mgmtText = await excerptSelector.select(doc, ['management'], DIMENSION_BUDGET);
   if (mgmtText.length >= MIN_EXCERPT_CHARS) {
     const narrRaw = await ask('narrative', mgmtText, narrativeSchema, hints);
     if (Array.isArray(narrRaw)) {

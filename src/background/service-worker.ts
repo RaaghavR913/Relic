@@ -23,8 +23,11 @@ import type {
   OffscreenExtractiveMsg,
   OffscreenSentimentMsg,
   OffscreenRedlineMsg,
+  OffscreenEmbedMsg,
   ExtractiveResponse,
   SentimentResponse,
+  EmbedTextsMsg,
+  EmbedTextsResponse,
   RedlineResponse,
   RedlineProgressMsg,
   RedlineStage,
@@ -131,7 +134,8 @@ async function forwardToOffscreen<T>(
   msg:
     | OffscreenExtractiveMsg
     | OffscreenSentimentMsg
-    | OffscreenRedlineMsg,
+    | OffscreenRedlineMsg
+    | OffscreenEmbedMsg,
 ): Promise<T> {
   await ensureOffscreen();
   return chrome.runtime.sendMessage(msg) as Promise<T>;
@@ -355,6 +359,16 @@ chrome.runtime.onMessage.addListener(
         sections: m.sections,
       };
       forwardToOffscreen<SentimentResponse>(fwd)
+        .then(sendResponse)
+        .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }));
+      return true;
+    }
+
+    // ── EMBED_TEXTS — forward to offscreen (semantic excerpt reranking, Session E2) ──
+    if (msg.type === 'EMBED_TEXTS') {
+      const m = msg as EmbedTextsMsg;
+      const fwd: OffscreenEmbedMsg = { target: 'offscreen', type: 'EMBED_TEXTS', texts: m.texts };
+      forwardToOffscreen<EmbedTextsResponse>(fwd)
         .then(sendResponse)
         .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }));
       return true;

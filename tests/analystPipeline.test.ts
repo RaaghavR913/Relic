@@ -250,6 +250,23 @@ describe('generateFilingAnalysis — builtin tier', () => {
     expect(analysis.stagesDone).toContain('synthesis');
   });
 
+  it('routes excerpt selection through an injected embedder, and still completes when it fails soft', async () => {
+    const { factory } = makeFactory();
+    // Deliberately resolves null (as the real embedder does when the offscreen
+    // encoder is unavailable) — the pipeline must still assemble a full,
+    // non-degraded analysis using SemanticExcerptSelector's keyword fallback.
+    const embedder = vi.fn(async () => null);
+    const analysis = await generateFilingAnalysis(makeDoc(), {
+      tier: 'builtin',
+      lmFactory: factory,
+      embedder,
+    });
+
+    expect(embedder).toHaveBeenCalled();
+    expect(analysis.degraded).toBe(false);
+    expect(analysis.revenueImpact.length).toBeGreaterThan(0);
+  });
+
   it('verifies real evidence (DOCUMENT-space range) and drops fabricated quotes', async () => {
     const { factory } = makeFactory();
     const doc = makeDoc();

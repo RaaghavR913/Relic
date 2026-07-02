@@ -29,7 +29,9 @@ const PRIORITY_SECTION_PREFIXES = [
   'item_8', 'item_1_business', 'part_i_item_1',
 ];
 
-const KEYWORDS: Record<Exclude<Dimension, 'overview'>, RegExp> = {
+// Exported so the semantic reranker (semanticRerank.ts) can test candidate
+// sentences against a specific dimension's keyword set without duplicating it.
+export const KEYWORDS: Record<Exclude<Dimension, 'overview'>, RegExp> = {
   revenue:
     /\b(revenues?|net sales|total sales|sales (?:grew|growth|increased?|decreased?|declined?)|bookings|billings|backlog|subscription|recurring|arr|average selling price|pricing|volume|units shipped|same.store|organic growth|segment)\b/i,
   margins:
@@ -116,17 +118,11 @@ export function sectionPriority(section: Section): number {
 }
 
 /**
- * Select up to `maxChars` of the most relevant sentences for the given
- * dimensions, returned in document order. Empty string when nothing matches —
- * callers use that to skip the model call entirely (sparse docs like a Form 4).
+ * Greedily pack sentences (already sorted by relevance) into a `maxChars`
+ * budget, then re-sort by document order so the model sees coherent prose.
+ * Shared by the keyword-only and semantic-reranked excerpt selectors.
  */
-export function selectRelevantText(
-  doc: DocumentModel,
-  dims: ReadonlyArray<Exclude<Dimension, 'overview'>>,
-  maxChars: number,
-): string {
-  const scored = scoreSentences(doc, dims);
-
+export function packSentencesByBudget(scored: ReadonlyArray<ScoredSentence>, maxChars: number): string {
   const picked: ScoredSentence[] = [];
   let used = 0;
   for (const s of scored) {
@@ -141,11 +137,25 @@ export function selectRelevantText(
 }
 
 /**
+ * Select up to `maxChars` of the most relevant sentences for the given
+ * dimensions, returned in document order. Empty string when nothing matches —
+ * callers use that to skip the model call entirely (sparse docs like a Form 4).
+ */
+export function selectRelevantText(
+  doc: DocumentModel,
+  dims: ReadonlyArray<Exclude<Dimension, 'overview'>>,
+  maxChars: number,
+): string {
+  return packSentencesByBudget(scoreSentences(doc, dims), maxChars);
+}
+
+/**
  * Score every sentence in the document against the given dimensions and return
  * them sorted by relevance (descending), then document order. Shared by
- * selectRelevantText (LM excerpt budgeting) and the deterministic insight tier.
+ * selectRelevantText (LM excerpt budgeting), the deterministic insight tier,
+ * and the semantic reranker's candidate pool.
  */
-function scoreSentences(
+export function scoreSentences(
   doc: DocumentModel,
   dims: ReadonlyArray<Exclude<Dimension, 'overview'>>,
 ): ScoredSentence[] {

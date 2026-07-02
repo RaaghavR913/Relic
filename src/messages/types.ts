@@ -431,6 +431,37 @@ export interface SentimentOkResponse {
 export interface SentimentErrResponse { ok: false; error: string }
 export type SentimentResponse = SentimentOkResponse | SentimentErrResponse;
 
+// ── Session E2: semantic excerpt reranking (analyst pipeline) ────────────────
+//
+// Side panel → SW → Offscreen, same forwardToOffscreen() pattern as
+// SUMMARIZE_SECTION / ANALYZE_SENTIMENT. Offscreen embeds the given texts with
+// the same encoder worker used for summaries/redline (EMBED/EMBED_RESULT,
+// internal to offscreen.ts) and returns one vector per input text, same order.
+// Callers (src/analyst/semanticRerank.ts) must fail soft to keyword-only
+// ranking when this errors or the offscreen document is unavailable.
+
+/** Side panel → SW: embed a batch of texts for semantic excerpt reranking. */
+export interface EmbedTextsMsg {
+  target: 'sw';
+  type: 'EMBED_TEXTS';
+  texts: string[];
+}
+
+/** SW → Offscreen: embed a batch of texts. */
+export interface OffscreenEmbedMsg {
+  target: 'offscreen';
+  type: 'EMBED_TEXTS';
+  texts: string[];
+}
+
+export interface EmbedTextsOkResponse {
+  ok: true;
+  /** One embedding vector per input text, same order as `texts`. */
+  vectors: Float32Array[];
+}
+export interface EmbedTextsErrResponse { ok: false; error: string }
+export type EmbedTextsResponse = EmbedTextsOkResponse | EmbedTextsErrResponse;
+
 // ── Session 7: master overlay toggle ──────────────────────────────────────────
 //
 // The content script caches the document's flags, so the side-panel "Overlay

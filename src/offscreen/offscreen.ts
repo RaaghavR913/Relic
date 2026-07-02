@@ -33,6 +33,8 @@ import type {
   RedlineProgressMsg,
   RedlineStage,
   AlignmentSummary,
+  OffscreenEmbedMsg,
+  EmbedTextsResponse,
 } from '@/messages/types';
 import type { DocumentModel, Section, SentenceSentiment, SectionDiff } from '@/types';
 import { filterNonTableSentences } from './sentenceFilter';
@@ -697,6 +699,21 @@ async function extractiveSummarize(sectionText: string): Promise<ExtractiveRespo
   return { ok: true, sentences: top };
 }
 
+// ── EMBED_TEXTS (Session E2 — semantic excerpt reranking) ────────────────────
+
+/**
+ * Embed an arbitrary batch of texts for a caller-side reranking blend (the
+ * analyst pipeline's semantic excerpt selector). Shares the same encoder
+ * worker/lifecycle as extractive summarization and the redline semantic pass.
+ */
+async function embedTexts(m: OffscreenEmbedMsg): Promise<EmbedTextsResponse> {
+  resetIdleTimer();
+  if (m.texts.length === 0) return { ok: true, vectors: [] };
+  await ensureWorker();
+  const vectors = await embedAll(m.texts);
+  return { ok: true, vectors };
+}
+
 // ── COMPUTE_REDLINE (Session 6) ───────────────────────────────────────────────
 
 function sendRedlineProgress(stage: RedlineStage, progress: number, detail?: string): void {
@@ -870,6 +887,14 @@ chrome.runtime.onMessage.addListener(
     if (msg.type === 'COMPUTE_REDLINE') {
       const m = msg as OffscreenRedlineMsg;
       computeRedline(m)
+        .then(sendResponse)
+        .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }));
+      return true;
+    }
+
+    if (msg.type === 'EMBED_TEXTS') {
+      const m = msg as OffscreenEmbedMsg;
+      embedTexts(m)
         .then(sendResponse)
         .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }));
       return true;
