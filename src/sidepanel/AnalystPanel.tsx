@@ -278,6 +278,25 @@ function SnapshotCard({ analysis }: { analysis: FilingAnalysis }) {
 
       {analysis.scores && (
         <div className="mt-3 flex flex-col gap-1.5 border-t border-zinc-800 pt-2.5">
+          <div className="group relative flex items-center gap-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+              Model impression
+            </span>
+            <span
+              tabIndex={0}
+              className="flex h-3 w-3 shrink-0 cursor-help items-center justify-center rounded-full bg-zinc-800 text-[8px] font-bold text-zinc-500 ring-1 ring-zinc-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+              aria-label="What is Model impression?"
+            >
+              i
+            </span>
+            <span
+              role="tooltip"
+              className="pointer-events-none absolute left-0 top-full z-10 mt-1.5 hidden w-56 rounded bg-zinc-800 px-2 py-1.5 text-[10px] font-normal normal-case leading-relaxed tracking-normal text-zinc-300 shadow-lg ring-1 ring-zinc-700 group-hover:block group-focus-within:block"
+            >
+              The on-device model's qualitative read of its own analysis — not a computed
+              metric. Treat these as impressions, not scores.
+            </span>
+          </div>
           <ScoreRow name="Revenue strength" value={analysis.scores.revenueStrength} />
           <ScoreRow name="Margin quality" value={analysis.scores.marginQuality} />
           <ScoreRow name="Cash flow quality" value={analysis.scores.cashFlowQuality} />
