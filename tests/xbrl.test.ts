@@ -159,3 +159,69 @@ describe('extractXbrlFacts', () => {
     expect(rev.range![1]).toBeGreaterThan(rev.range![0]);
   });
 });
+
+// ── financial-sector concepts (Session F2) ────────────────────────────────────
+// Banks/insurers/REITs don't report the commercial revenue concepts; these
+// facsimiles reuse the shared RESOURCES contexts with sector-specific facts.
+
+const BANK_FACTS = `
+  <p>Total revenue net of interest expense
+    <ix:nonFraction name="us-gaap:RevenuesNetOfInterestExpense" contextRef="dur_2023" unitRef="usd" scale="6">158,000</ix:nonFraction>
+    <ix:nonFraction name="us-gaap:RevenuesNetOfInterestExpense" contextRef="dur_2022" unitRef="usd" scale="6">128,000</ix:nonFraction>
+  </p>
+  <p>Net interest income
+    <ix:nonFraction name="us-gaap:InterestIncomeExpenseNet" contextRef="dur_2023" unitRef="usd" scale="6">89,000</ix:nonFraction>
+  </p>
+  <p>Noninterest income
+    <ix:nonFraction name="us-gaap:NoninterestIncome" contextRef="dur_2023" unitRef="usd" scale="6">69,000</ix:nonFraction>
+  </p>
+  <p>Net income
+    <ix:nonFraction name="us-gaap:NetIncomeLoss" contextRef="dur_2023" unitRef="usd" scale="6">49,000</ix:nonFraction>
+  </p>
+`;
+
+const INSURER_FACTS = `
+  <p>Total revenues
+    <ix:nonFraction name="us-gaap:Revenues" contextRef="dur_2023" unitRef="usd" scale="6">92,000</ix:nonFraction>
+  </p>
+  <p>Premiums earned, net
+    <ix:nonFraction name="us-gaap:PremiumsEarnedNet" contextRef="dur_2023" unitRef="usd" scale="6">63,000</ix:nonFraction>
+  </p>
+  <p>Net income
+    <ix:nonFraction name="us-gaap:NetIncomeLoss" contextRef="dur_2023" unitRef="usd" scale="6">9,000</ix:nonFraction>
+  </p>
+`;
+
+describe('extractXbrlFacts — financial-sector concepts', () => {
+  it('populates Revenue + net/noninterest income for a bank filing', () => {
+    const doc = docFrom(`<!doctype html><html><body>${RESOURCES}${BANK_FACTS}</body></html>`);
+    const f = extractXbrlFacts(doc, null, '2023-09-30')!;
+    expect(f).not.toBeNull();
+    // No commercial revenue concept present → Revenue falls through to the bank line.
+    expect(f.facts.find((x) => x.label === 'Revenue')?.currentValue).toBe(158_000_000_000);
+    expect(f.facts.find((x) => x.label === 'Net interest income')?.currentValue).toBe(89_000_000_000);
+    expect(f.facts.find((x) => x.label === 'Noninterest income')?.currentValue).toBe(69_000_000_000);
+  });
+
+  it('computes YoY on the bank total-revenue concept', () => {
+    const doc = docFrom(`<!doctype html><html><body>${RESOURCES}${BANK_FACTS}</body></html>`);
+    const rev = extractXbrlFacts(doc, null, '2023-09-30')!.facts.find((x) => x.label === 'Revenue')!;
+    expect(rev.yoyPct).toBeCloseTo((158000 - 128000) / 128000, 5);
+  });
+
+  it('populates Revenue + premiums earned for an insurer filing', () => {
+    const doc = docFrom(`<!doctype html><html><body>${RESOURCES}${INSURER_FACTS}</body></html>`);
+    const f = extractXbrlFacts(doc, null, '2023-09-30')!;
+    // Insurers usually tag total revenue as us-gaap:Revenues; premiums are a detail row.
+    expect(f.facts.find((x) => x.label === 'Revenue')?.currentValue).toBe(92_000_000_000);
+    expect(f.facts.find((x) => x.label === 'Premiums earned')?.currentValue).toBe(63_000_000_000);
+  });
+
+  it('leaves the financial-sector rows absent for a standard commercial filing', () => {
+    const doc = docFrom(FILING);
+    const f = extractXbrlFacts(doc, null, '2023-09-30')!;
+    expect(f.facts.find((x) => x.label === 'Net interest income')).toBeUndefined();
+    expect(f.facts.find((x) => x.label === 'Premiums earned')).toBeUndefined();
+    expect(f.facts.find((x) => x.label === 'Rental revenue')).toBeUndefined();
+  });
+});

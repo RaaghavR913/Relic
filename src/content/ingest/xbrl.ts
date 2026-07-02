@@ -39,6 +39,23 @@ const CONCEPTS: readonly ConceptRow[] = [
     'us-gaap:RevenueFromContractWithCustomerIncludingAssessedTax',
     'us-gaap:Revenues',
     'us-gaap:SalesRevenueNet',
+    // Banks / broker-dealers report a "total revenue net of interest expense" top
+    // line; the commercial concepts above are absent from their filings.
+    'us-gaap:RevenuesNetOfInterestExpense',
+  ] },
+  // ── financial-sector line items ──────────────────────────────────────────────
+  // Populate only for banks, insurers, and REITs — the concepts are absent from
+  // standard commercial filings, so a commercial 10-K's Fundamentals table is
+  // unchanged (rows with no matching fact are dropped, not shown empty).
+  { label: 'Net interest income', unit: 'USD', concepts: [
+    'us-gaap:InterestIncomeExpenseNet',
+    'us-gaap:InterestIncomeExpenseAfterProvisionForLoanLoss',
+  ] },
+  { label: 'Noninterest income', unit: 'USD', concepts: ['us-gaap:NoninterestIncome'] },
+  { label: 'Premiums earned', unit: 'USD', concepts: ['us-gaap:PremiumsEarnedNet'] },
+  { label: 'Rental revenue', unit: 'USD', concepts: [
+    'us-gaap:RealEstateRevenueNet',
+    'us-gaap:OperatingLeaseLeaseIncome',
   ] },
   { label: 'Gross profit', unit: 'USD', concepts: ['us-gaap:GrossProfit'] },
   { label: 'Operating income', unit: 'USD', concepts: ['us-gaap:OperatingIncomeLoss'] },
