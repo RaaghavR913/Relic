@@ -11,13 +11,14 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { m, AnimatePresence, useReducedMotion } from 'framer-motion';
-import type { DocumentModel, SentenceSentiment } from '@/types';
+import type { DocumentModel, LanguageFlag, SentenceSentiment } from '@/types';
 import type {
   AnalyzeSentimentMsg,
   SentimentSectionDoneMsg,
   SentimentProgressMsg,
   SentimentResponse,
 } from '@/messages/types';
+import { calibratedCounts, isRiskSectionId, baselineAdjustedNet } from '@/analyst/sentimentCalibration';
 import { useReportAnalysisActivity } from './analysisActivity';
 
 // ── types ─────────────────────────────────────────────────────────────────────
@@ -33,16 +34,12 @@ interface SentimentAggregate {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-function computeAggregate(results: SentenceSentiment[]): SentimentAggregate {
-  let positive = 0;
-  let negative = 0;
-  let neutral = 0;
-  for (const r of results) {
-    if (r.label === 'positive') positive++;
-    else if (r.label === 'negative') negative++;
-    else neutral++;
-  }
-  return { positive, negative, neutral, total: results.length };
+// Counts are boilerplate-damped (src/analyst/sentimentCalibration.ts) before
+// display: safe-harbor / forward-looking disclaimers don't drive the reading
+// the user sees, even though the underlying cached scores are untouched.
+function computeAggregate(results: SentenceSentiment[], flags: LanguageFlag[]): SentimentAggregate {
+  const counts = calibratedCounts(results, flags);
+  return { ...counts };
 }
 
 function pct(n: number, total: number): number {
@@ -76,7 +73,20 @@ function consensusSummary(agg: SentimentAggregate): string {
     lean = `Positive (${posP}%) and negative (${negP}%) statements are roughly balanced, leaving no strong directional bias.`;
   }
 
-  return `The filing's tone is ${composition}. ${lean}`;
+  return `The filing's tone is ${composition}. ${lean} This reads the language FinBERT sees, not the underlying business — safe-harbor and forward-looking disclaimers are excluded.`;
+}
+
+// Plain-language read of a Risk Factors section's baseline-adjusted net tone.
+// FinBERT reads dense legal hedging as negative in every filing, so "net" is
+// reported relative to what's typical for that section, not an absolute 0.
+function riskFactorsNote(net: number): string {
+  if (net >= 0.1) {
+    return "This section reads more measured than typical Risk Factors language, once ordinary hedging and boilerplate are accounted for.";
+  }
+  if (net <= -0.15) {
+    return 'Even after normalizing for the hedged, cautionary language typical of a Risk Factors section, this one still reads more negative than usual — worth a closer read.';
+  }
+  return "This section's tone is in line with typical Risk Factors language once ordinary hedging and safe-harbor boilerplate are accounted for.";
 }
 
 // ── SentimentBar ─────────────────────────────────────────────────────────────
@@ -145,9 +155,10 @@ function SentimentBar({
 
 interface SentimentPanelProps {
   doc: DocumentModel;
+  flags: LanguageFlag[];
 }
 
-export function SentimentPanel({ doc }: SentimentPanelProps) {
+export function SentimentPanel({ doc, flags }: SentimentPanelProps) {
   const reducedMotion = useReducedMotion() ?? false;
 
   const [status, setStatus] = useState<AnalysisStatus>('idle');
@@ -159,6 +170,8 @@ export function SentimentPanel({ doc }: SentimentPanelProps) {
   // Accumulate results keyed by sectionId to build the document-level aggregate.
   const resultsRef = useRef<Map<string, SentenceSentiment[]>>(new Map());
   const [aggregates, setAggregates] = useState<Record<string, SentimentAggregate>>({});
+  const flagsRef = useRef(flags);
+  flagsRef.current = flags;
 
   // ── listen for progressive section results ─────────────────────────────────
 
@@ -180,7 +193,7 @@ export function SentimentPanel({ doc }: SentimentPanelProps) {
 
         setAggregates((prev) => ({
           ...prev,
-          [m.sectionId]: computeAggregate(merged),
+          [m.sectionId]: computeAggregate(merged, flagsRef.current),
         }));
       }
 
@@ -267,6 +280,29 @@ export function SentimentPanel({ doc }: SentimentPanelProps) {
     return { positive: pos, negative: neg, neutral: neu, total: pos + neg + neu };
   }, [aggregates]);
 
+  // Risk Factors reads negative in nearly every filing because FinBERT scores
+  // hedged, forward-looking legal prose as negative — report this section's
+  // net tone as a delta against the typical Risk Factors baseline instead of
+  // an absolute 0, so a "normal" filing doesn't paint red by default.
+  const riskAggregate = useMemo<SentimentAggregate | null>(() => {
+    const riskEntries = Object.entries(aggregates).filter(([id]) => isRiskSectionId(id));
+    if (riskEntries.length === 0) return null;
+    let pos = 0;
+    let neg = 0;
+    let neu = 0;
+    for (const [, agg] of riskEntries) {
+      pos += agg.positive;
+      neg += agg.negative;
+      neu += agg.neutral;
+    }
+    return { positive: pos, negative: neg, neutral: neu, total: pos + neg + neu };
+  }, [aggregates]);
+
+  const riskNet = useMemo(
+    () => (riskAggregate && riskAggregate.total > 0 ? baselineAdjustedNet(riskAggregate, 'item_1a_risk_factors') : null),
+    [riskAggregate],
+  );
+
   const isLoading = status === 'loading';
   const isDone = status === 'done';
   const isError = status === 'error';
@@ -348,6 +384,16 @@ export function SentimentPanel({ doc }: SentimentPanelProps) {
           <p className="mt-3 border-t border-zinc-800/60 pt-2.5 text-[11px] leading-relaxed text-zinc-400">
             {consensusSummary(docAggregate)}
           </p>
+        </div>
+      )}
+
+      {/* Risk Factors, normalized against a typical-risk-language baseline */}
+      {riskAggregate && riskAggregate.total > 0 && riskNet !== null && (
+        <div className="rounded-xl bg-zinc-900 p-3 ring-1 ring-zinc-800">
+          <p className="mb-1 text-[10px] font-medium uppercase tracking-widest text-zinc-500">
+            Risk Factors, normalized
+          </p>
+          <p className="text-[11px] leading-relaxed text-zinc-400">{riskFactorsNote(riskNet)}</p>
         </div>
       )}
 

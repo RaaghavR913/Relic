@@ -743,7 +743,7 @@ export default function App() {
                     aria-labelledby="tab-sentiment"
                     hidden={activeTab !== 'sentiment'}
                   >
-                    <SentimentPanel doc={currentDoc} />
+                    <SentimentPanel doc={currentDoc} flags={currentFlags} />
                   </div>
                 )}
                 {!hidesInvestorTabs(currentDoc) && (
