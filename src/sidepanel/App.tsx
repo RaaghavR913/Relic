@@ -42,7 +42,6 @@ import {
   SettingsButton,
   LockIcon,
   TryRealFilingLink,
-  VERSION_ACCENT,
   stateColor,
   stateLabel,
 } from './ui';
@@ -233,7 +232,7 @@ function Header({ doc, hideDocMeta = false, analysisActive = false }: { doc: Doc
           <SettingsButton />
           <span
             className="text-xs"
-            style={{ color: VERSION_ACCENT }}
+            style={{ color: '#39FF14' }}
           >
             v{chrome.runtime.getManifest().version}
           </span>

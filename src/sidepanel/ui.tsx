@@ -181,8 +181,7 @@ export function BrandLogo({ className = 'h-6 w-6' }: { className?: string }) {
   );
 }
 
-/** Emerald accent used for the version label and settings control in the header —
- *  matches the settings page accent (#34d399). */
+/** Emerald accent for the settings control in the header — matches the settings page accent (#34d399). */
 export const VERSION_ACCENT = '#34d399';
 
 /** Standard settings cog. */

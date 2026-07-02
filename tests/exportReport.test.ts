@@ -15,7 +15,7 @@ import {
   sentimentConsensus,
   type FilingExportData,
 } from '@/export/report';
-import { buildFilingReportPdf } from '@/export/pdf';
+import { buildFilingReportPdf, clean } from '@/export/pdf';
 import type {
   DocumentModel,
   FilingAnalysis,
@@ -172,6 +172,25 @@ describe('buildFilingReportPdf', () => {
   it('handles a no-prior redline status', () => {
     const redline: RedlineEntry = { rawTextHash: 'hash-mu', status: 'no_prior', diffs: [], alignment: [], cachedAt: 1 };
     expect(pdfHeader(fullData({ redline })).head).toBe('%PDF-');
+  });
+});
+
+describe('clean', () => {
+  it('folds unicode punctuation to CP1252-safe equivalents', () => {
+    expect(clean('“smart” ‘quotes’ — dash • bullet … ellipsis')).toBe(
+      '"smart" \'quotes\' - dash - bullet ... ellipsis',
+    );
+  });
+
+  it('collapses the newline/whitespace runs a flattened SEC table extracts to', () => {
+    // Evidence quotes slice verbatim from the filing; a table comes through as
+    // one cell per line, often with blank lines — the panels' `<p>` folds this
+    // in the browser, and the PDF must too or it spews one cell per line.
+    const flattenedTable =
+      'Total Other Income, Net\n\nInterest income\n\n$\n540\n\n$\n515\n\nInterest expense\n\n(102)';
+    expect(clean(flattenedTable)).toBe(
+      'Total Other Income, Net Interest income $ 540 $ 515 Interest expense (102)',
+    );
   });
 });
 

@@ -38,11 +38,13 @@ Permission rationale, for reviewers:
   No broad host permission is requested for non-SEC pages; analysis is opt-in per page.
 - **`offscreen`** — runs the ONNX Web Workers (DOM-less inference) off the service worker.
 - **`storage` / `sidePanel`** — session-scoped model/flag cache and the side-panel UI.
-- **`web_accessible_resources: <all_urls>`** — kept broad to support "Analyze this page" as
-  it expands across arbitrary financial domains. The exposed resources are **non-sensitive
-  bundled ML assets only** (quantized ONNX weights + ORT WASM); they contain no user data and
-  expose no analysis. (Today these load only inside the offscreen document; the broad scope is
-  forward-looking and can be narrowed to specific hosts on request.)
+- **`optional_host_permissions`** (annualreports, stockanalysis, finviz, yahoo finance, etc.) —
+  not granted at install. Relic requests one of these via `chrome.permissions.request()` only
+  when the user explicitly chooses to analyze that specific non-SEC financial site.
+
+No `web_accessible_resources` are declared: the bundled ML assets (quantized ONNX weights + ORT
+WASM) load only inside the offscreen document and its workers, which are extension pages, so they
+reach the assets via `chrome.runtime.getURL(...)` without being web-accessible.
 
 The CSP (`script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' https://*.sec.gov`) blocks
 all egress except SEC, reinforcing the zero-egress guarantee at the platform level.
