@@ -41,6 +41,7 @@ import type {
 import { RateLimitedQueue, fetchEdgarText } from './edgarQueue';
 import { resolvePriorFiling } from './resolvePrior';
 import { classifyInjectability } from './inject';
+import { debugLog } from '@/lib/debug';
 import { getSiteProfile } from '@/content/ingest/siteProfiles';
 import { persistFilingToSession } from '@/shared/filingSession';
 
@@ -74,7 +75,7 @@ chrome.action.onClicked.addListener((tab) => {
   // that depends on the grant still being live. The content script's
   // re-injection guard keeps a redundant inject harmless.
   const injectability = classifyInjectability(tab.url);
-  console.debug(`[Relic] action click — ${injectability} — ${tab.url ?? '(url hidden)'}`);
+  debugLog(`[Relic] action click — ${injectability} — ${tab.url ?? '(url hidden)'}`);
   if (tab.id !== undefined && injectability === 'injectable') {
     chrome.scripting
       .executeScript({ target: { tabId: tab.id }, files: [CONTENT_SCRIPT_FILE] })
@@ -342,6 +343,8 @@ chrome.runtime.onMessage.addListener(
         rawTextHash: m.rawTextHash,
         sectionId: m.sectionId,
         sectionText: m.sectionText,
+        ...(m.charStart !== undefined ? { charStart: m.charStart } : {}),
+        ...(m.tables !== undefined ? { tables: m.tables } : {}),
       };
       forwardToOffscreen<ExtractiveResponse>(fwd)
         .then(sendResponse)

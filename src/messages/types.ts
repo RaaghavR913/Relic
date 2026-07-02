@@ -156,6 +156,10 @@ export interface SummarizeSectionMsg {
   sectionId: string;
   /** section.text — stays on-device; routed SW → offscreen → encoder worker */
   sectionText: string;
+  /** section.charRange[0] — lifts sentence ranges into document space for table exclusion. */
+  charStart?: number;
+  /** Document-space table regions overlapping this section (section.tables). */
+  tables?: ReadonlyArray<readonly [number, number]>;
 }
 
 /** SW → Offscreen: run embedding-centrality ranking on section sentences. */
@@ -165,6 +169,8 @@ export interface OffscreenExtractiveMsg {
   rawTextHash: string;
   sectionId: string;
   sectionText: string;
+  charStart?: number;
+  tables?: ReadonlyArray<readonly [number, number]>;
 }
 
 /** One selected sentence from extractive ranking. Range is SECTION-space. */

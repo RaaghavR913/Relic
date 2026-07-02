@@ -11,6 +11,7 @@
 // ============================================================
 
 import type { DocumentModel, Section } from '@/types';
+import { filterNonTableSentences } from '@/lib/sentenceFilter';
 
 export type Dimension =
   | 'overview'
@@ -172,7 +173,12 @@ export function scoreSentences(
     // text ("…appears on pages 46–160") never feeds the analysis.
     if (section.incorporatedByReference) continue;
     const prio = sectionPriority(section);
-    for (const span of splitSentenceSpans(section.text)) {
+    const proseSpans = filterNonTableSentences(
+      splitSentenceSpans(section.text),
+      section.charRange[0],
+      section.tables,
+    ).map(({ sent }) => sent);
+    for (const span of proseSpans) {
       order++;
       let score = 0;
       for (const re of regexes) {
@@ -225,7 +231,14 @@ export function selectOverviewText(doc: DocumentModel, maxChars: number): string
   let used = 0;
   for (const section of sections) {
     if (section.incorporatedByReference) continue;
-    const body = section.text.trim();
+    const proseSpans = filterNonTableSentences(
+      splitSentenceSpans(section.text),
+      section.charRange[0],
+      section.tables,
+    ).map(({ sent }) => sent.text);
+    const body = proseSpans.length > 0
+      ? proseSpans.join(' ')
+      : section.text.trim();
     if (!body) continue;
     const budget = Math.min(Math.floor(maxChars / 3), maxChars - used);
     if (budget < 200) break;

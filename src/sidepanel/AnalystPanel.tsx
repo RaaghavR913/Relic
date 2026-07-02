@@ -79,7 +79,7 @@ function labelText(label: string): string {
 
 function LabelChip({ label }: { label: InsightLabel }) {
   return (
-    <span className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold ring-1 ring-inset font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif] ${LABEL_STYLES[label]}`}>
+    <span className={`shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${LABEL_STYLES[label]}`}>
       {labelText(label)}
     </span>
   );
@@ -112,7 +112,7 @@ async function clearDocHighlights(): Promise<void> {
 
 function InsightCard({ insight }: { insight: FilingInsight }) {
   return (
-    <div className="rounded-lg bg-zinc-900 px-3 py-2.5 ring-1 ring-zinc-800 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
+    <div className="rounded-lg bg-zinc-900 px-3 py-2.5 ring-1 ring-zinc-800">
       <div className="flex items-start gap-2">
         <p className="flex-1 text-xs font-medium leading-snug text-zinc-200">{insight.title}</p>
         <LabelChip label={insight.label} />
@@ -139,7 +139,7 @@ function InsightCard({ insight }: { insight: FilingInsight }) {
             <button
               onClick={() => void highlightEvidence(insight.evidenceRange!).catch(() => {})}
               title="Highlight in document"
-              className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] text-zinc-500 transition hover:bg-sky-900/20 hover:text-sky-400 focus-visible:outline focus-visible:outline-sky-500"
+              className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-zinc-500 transition hover:bg-sky-900/20 hover:text-sky-400 focus-visible:outline focus-visible:outline-sky-500"
               aria-label="Highlight evidence in document"
             >
               ↗
@@ -153,21 +153,21 @@ function InsightCard({ insight }: { insight: FilingInsight }) {
         <div className="mt-1.5 flex flex-wrap items-center gap-3">
           <button
             onClick={() => void highlightEvidence(insight.evidenceRange!).catch(() => {})}
-            className="rounded px-1.5 py-0.5 text-[10px] font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] text-sky-500 transition hover:text-sky-300 focus-visible:outline focus-visible:outline-sky-500"
+            className="rounded px-1.5 py-0.5 text-[10px] text-sky-500 transition hover:text-sky-300 focus-visible:outline focus-visible:outline-sky-500"
             aria-label="Show this passage in the document"
           >
             ↗ Show in document
           </button>
           <button
             onClick={() => void clearDocHighlights().catch(() => {})}
-            className="rounded px-1.5 py-0.5 text-[10px] font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] text-zinc-500 transition hover:bg-zinc-900/20 hover:text-zinc-300 focus-visible:outline focus-visible:outline-sky-500"
+            className="rounded px-1.5 py-0.5 text-[10px] text-zinc-500 transition hover:bg-zinc-900/20 hover:text-zinc-300 focus-visible:outline focus-visible:outline-sky-500"
             aria-label="Remove highlight from filing"
           >
             Remove highlight
           </button>
         </div>
       )}
-      <p className="mt-1.5 text-[9px] text-zinc-600 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
+      <p className="mt-1.5 text-[9px] text-zinc-600">
         {insight.category} · severity {insight.severity} · {insight.timeHorizon} · confidence {insight.confidence}
       </p>
     </div>
@@ -208,12 +208,12 @@ function Collapse({
         aria-expanded={open}
         className="flex w-full items-center gap-2 px-3 py-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
       >
-        <span className="flex-1 text-xs font-semibold uppercase tracking-wider text-zinc-400 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">
+        <span className="flex-1 text-xs font-semibold uppercase tracking-wider text-zinc-400">
           {title}
         </span>
         {pending && <span className="animate-pulse text-[10px] text-sky-400">…</span>}
         {count !== undefined && count > 0 && (
-          <span className="rounded-full bg-zinc-800 px-1.5 text-[10px] font-semibold tabular-nums text-zinc-400 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">{count}</span>
+          <span className="rounded-full bg-zinc-800 px-1.5 text-[10px] font-semibold tabular-nums text-zinc-400">{count}</span>
         )}
         <svg
           className={`h-3 w-3 shrink-0 text-zinc-600 transition-transform ${open ? 'rotate-180' : ''}`}
@@ -261,7 +261,7 @@ function ScoreRow({ name, value, inverted = false }: { name: string; value: Scor
 function SnapshotCard({ analysis }: { analysis: FilingAnalysis }) {
   return (
     <div className="rounded-xl bg-zinc-900 p-3.5 ring-1 ring-zinc-800">
-      <div className="flex flex-wrap items-center gap-1.5 font-[Times,serif]">
+      <div className="flex flex-wrap items-center gap-1.5">
         <span className={`rounded-md px-2 py-1 text-[12px] font-bold ring-1 ring-inset ${READ_STYLES[analysis.overallRead]}`}>
           {labelText(analysis.overallRead)}
         </span>
@@ -428,7 +428,7 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
   return (
     <section aria-labelledby="analyst-heading" className="flex flex-col gap-3">
       <div className="flex items-center gap-2">
-        <p id="analyst-heading" className="text-[13px] font-medium uppercase tracking-widest text-zinc-500 font-[Times,serif]">
+        <p id="analyst-heading" className="text-[13px] font-medium uppercase tracking-widest text-zinc-500 font-display">
           Investor Analysis
         </p>
         {running && currentStage && (

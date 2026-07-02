@@ -208,6 +208,8 @@ async function runExtractive(
     rawTextHash,
     sectionId: section.id,
     sectionText: section.text,
+    charStart: section.charRange[0],
+    ...(section.tables !== undefined ? { tables: section.tables } : {}),
   };
 
   const resp: ExtractiveResponse = await (

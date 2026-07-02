@@ -18,6 +18,7 @@
  */
 
 import { ingestDocument } from './ingest';
+import { debugLog } from '@/lib/debug';
 import { isLowConfidenceGeneric } from './ingest/detect';
 import { waitForContent } from './ingest/ready';
 import { getSiteProfile, detectGateState } from './ingest/siteProfiles';
@@ -185,7 +186,7 @@ async function run(): Promise<RelicDevApi> {
   if (profile?.group === 'C') {
     const gateState = detectGateState(profile, document);
     if (gateState !== 'open') {
-      console.debug(
+      debugLog(
         `[Relic] ${window.location.hostname}: content gated (${gateState}) — skipping analysis`,
       );
       const gatedMsg: FilingGatedMsg = {
@@ -212,7 +213,7 @@ async function run(): Promise<RelicDevApi> {
     }
   }
 
-  console.debug(
+  debugLog(
     `[Relic] ingested ${model.filingType} — ${model.companyName ?? 'unknown company'} ` +
       `(${model.sections.length} sections, ${positionMap.text.length} chars, hash ${model.rawTextHash})`,
   );
@@ -251,7 +252,7 @@ async function run(): Promise<RelicDevApi> {
     if (_flagsVisible) flagOverlay.activate(visibleFlags(), positionMap);
     _flagOverlay = flagOverlay;
 
-    console.debug(
+    debugLog(
       `[Relic] flagged ${allFlags.length} language markers across ${model.sections.length} sections`,
     );
 
@@ -407,7 +408,7 @@ if (ALREADY_INJECTED) {
   };
   run().then((api) => {
     (globalThis as unknown as { __Relic?: RelicDevApi }).__Relic = api;
-    console.debug('[Relic] dev API ready: __Relic.demo() / .highlight(text)');
+    debugLog('[Relic] dev API ready: __Relic.demo() / .highlight(text)');
   }).catch((err) => {
     console.error('[Relic] ingestion failed', err);
   });

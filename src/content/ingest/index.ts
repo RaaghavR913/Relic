@@ -14,6 +14,7 @@ import type {
   PositionMap,
 } from '../../types/index.js';
 import { cyrb53 } from '../../lib/hash.js';
+import { debugLog } from '../../lib/debug.js';
 import { pickFilingRoot, type FilingRoot } from './dom-root.js';
 import { buildNormalizedText } from './position-map.js';
 import { detectFilingTypeWithConfidence } from './detect.js';
@@ -72,7 +73,7 @@ export function ingestDocument(opts: IngestOptions = {}): IngestResult {
   try {
     xbrl = extractXbrlFacts(picked.document, positionMap, meta.periodOfReport) ?? undefined;
   } catch (err) {
-    console.debug('[Relic] XBRL extraction skipped:', err);
+    debugLog('[Relic] XBRL extraction skipped:', err);
   }
 
   const model: DocumentModel = {

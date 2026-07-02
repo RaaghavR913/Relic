@@ -13,6 +13,7 @@
 import { LANGUAGE_MODEL_LANGUAGE, type GenerationTier } from '@/runtime/capabilities';
 import type { SectionDiff } from '@/types';
 import { templatedChangeSummary, type DiffStats } from './diff';
+import { debugLog } from '@/lib/debug';
 
 export interface LMSession {
   prompt(text: string, opts?: { signal?: AbortSignal }): Promise<string>;
@@ -125,7 +126,7 @@ export async function generateChangeSummary(
         initialPrompts: [{ role: 'system', content: REDLINE_SYSTEM_PROMPT }],
         ...(sig !== undefined ? { signal: sig } : {}),
       });
-      console.debug(`[Relic] changeSummary: session created in ${Math.round(performance.now() - t0)}ms`);
+      debugLog(`[Relic] changeSummary: session created in ${Math.round(performance.now() - t0)}ms`);
     } catch {
       return templated;
     }
@@ -137,7 +138,7 @@ export async function generateChangeSummary(
       buildPrompt(label, stats, diff),
       ...(sig !== undefined ? [{ signal: sig }] : []),
     );
-    console.debug(
+    debugLog(
       `[Relic] changeSummary prompt (${ownSession ? 'new session' : 'pooled'}): ${Math.round(performance.now() - t1)}ms`,
     );
     const cleaned = out.trim();

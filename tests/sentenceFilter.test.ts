@@ -6,7 +6,7 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest';
-import { filterNonTableSentences } from '../src/offscreen/sentenceFilter';
+import { filterNonTableSentences } from '@/lib/sentenceFilter';
 
 interface Sent {
   text: string;

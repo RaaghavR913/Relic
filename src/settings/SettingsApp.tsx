@@ -26,8 +26,10 @@ import { BrandLogo } from '@/sidepanel/ui';
 // it makes the next side-panel open show the welcome screen again.
 const ONBOARDED_KEY = 'relic:onboarded';
 
-// Self-hosted system serif stack — no remote font fetch (privacy + Web Store review).
-const SERIF = '"Iowan Old Style", Palatino, Georgia, serif';
+// Display serif for header + section titles — Times New Roman, matching the side
+// panel's --font-display token. No remote font fetch (privacy + Web Store review);
+// body text falls back to Roboto (font-sans) for consistency across surfaces.
+const SERIF = "'Times New Roman', Times, serif";
 
 // Accent teal-green: version string, status dots, lock icon, focus rings.
 const ACCENT = '#34d399';
@@ -69,7 +71,7 @@ const FAQS: ReadonlyArray<{ q: string; a: string }> = [
   },
   {
     q: 'Why is the first analysis slow?',
-    a: 'Generation Mode may take a little longer the first time while your browser gets everything ready. This only happens once. Large filings can take up to a minute to read, but language flags appear immediately and sentiment analysis starts as soon as you request it.',
+    a: 'On Built-in AI devices, the first analyst note is slower because Chrome downloads and manages the Gemini Nano model (~2 GB) on its own — this is a one-time Chrome download, not a Relic upload, and the model then runs entirely on your device. Large filings can take up to a minute to read, but language flags appear immediately and sentiment analysis starts as soon as you request it.',
   },
 ];
 
@@ -187,12 +189,14 @@ function GenerationStatus() {
     busy = true; // detecting
   } else if (caps.generationTier === 'builtin') {
     dot = ACCENT;
-    text = 'Ready';
+    text = 'Built-in AI · Ready';
     textColor = ACCENT;
   } else {
-    dot = '#8a8a90';
-    text = 'Extractive';
-    textColor = '#c4c4c8';
+    // Extractive is a fully-working tier, not a degraded one — show it as healthy
+    // (emerald dot, "Ready") so the gray dot never implies something is broken.
+    dot = ACCENT;
+    text = 'Extractive · Ready';
+    textColor = ACCENT;
   }
 
   return (
@@ -240,7 +244,7 @@ export default function SettingsApp() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#0c0c0d] text-[#c4c4c8] selection:bg-[#34d399]/25">
+    <div className="min-h-screen bg-[#0c0c0d] font-sans text-[#c4c4c8] selection:bg-[#34d399]/25">
       <main className="mx-auto max-w-[560px] px-5 py-12 sm:px-6">
         {/* Header */}
         <header className="mb-12 flex flex-col items-center text-center">
@@ -253,7 +257,7 @@ export default function SettingsApp() {
           </h1>
           <p className="mt-1 text-[13px] text-[#8a8a90]">
             Settings ·{' '}
-            <span className="font-medium" style={{ color: '#39FF14' }}>
+            <span className="font-medium" style={{ color: ACCENT }}>
               v{version}
             </span>
           </p>
@@ -336,7 +340,7 @@ export default function SettingsApp() {
         <Section title="On this device">
           <Row
             title="Generation mode"
-            desc="Chosen automatically from the page you’re viewing — Built-in AI when your browser supports it, otherwise the extractive model."
+            desc="Chosen automatically from your device’s capabilities — Built-in AI (Gemini Nano) when Chrome supports it on this hardware, otherwise Relic’s extractive mode."
             control={<GenerationStatus />}
           />
           <Row

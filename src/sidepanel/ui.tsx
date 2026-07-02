@@ -40,7 +40,7 @@ export function TierBadge({ tier }: { tier: GenerationTier }) {
   if (tier === 'builtin') {
     return (
       <span
-        className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-300 ring-1 ring-inset ring-emerald-500/30 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]"
+        className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-300 ring-1 ring-inset ring-emerald-500/30"
         title="Chrome built-in AI (Gemini Nano) is available — generative summaries and analyst notes run on-device."
       >
         Built-in AI
@@ -49,7 +49,7 @@ export function TierBadge({ tier }: { tier: GenerationTier }) {
   }
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-full bg-zinc-700/60 px-2.5 py-0.5 text-xs font-semibold text-zinc-300 ring-1 ring-inset ring-zinc-600/40 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]"
+      className="inline-flex items-center gap-1 rounded-full bg-zinc-700/60 px-2.5 py-0.5 text-xs font-semibold text-zinc-300 ring-1 ring-inset ring-zinc-600/40"
       title="Extractive mode — key-sentence summaries run fully on-device."
     >
       Extractive
@@ -181,8 +181,9 @@ export function BrandLogo({ className = 'h-6 w-6' }: { className?: string }) {
   );
 }
 
-/** Lime accent used for the version label and settings control in the header. */
-export const VERSION_ACCENT = '#39FF14';
+/** Emerald accent used for the version label and settings control in the header —
+ *  matches the settings page accent (#34d399). */
+export const VERSION_ACCENT = '#34d399';
 
 /** Standard settings cog. */
 export function SettingsIcon({ className = 'h-[18px] w-[18px]' }: { className?: string }) {
@@ -204,7 +205,7 @@ export function SettingsButton() {
     <button
       type="button"
       onClick={() => chrome.runtime.openOptionsPage()}
-      className="group relative -mr-0.5 flex shrink-0 items-center rounded p-0.5 text-[18px] font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] transition hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+      className="group relative -mr-0.5 flex shrink-0 items-center rounded p-0.5 text-[18px] transition hover:opacity-80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
       style={{ color: VERSION_ACCENT }}
       aria-label="How it works & Settings"
     >
@@ -228,14 +229,43 @@ export function LockIcon({ className = 'h-4 w-4' }: { className?: string }) {
   );
 }
 
+// ── "try it on a real filing" ─────────────────────────────────────────────────
+
+/**
+ * Stable, well-known large-cap 10-K used as the onboarding demo — Apple's FY2023
+ * filing on the SEC inline-XBRL viewer. Verified to return 200 from sec.gov.
+ * The content script auto-runs on sec.gov, so opening this lights up the panel.
+ */
+export const DEMO_FILING_URL =
+  'https://www.sec.gov/ix?doc=/Archives/edgar/data/320193/000032019323000106/aapl-20230930.htm';
+
+/**
+ * "Try it on a real filing →" — opens the demo 10-K in a new tab. Rendered as an
+ * anchor (not chrome.tabs.create) so it works identically in the extension side
+ * panel and the mock dev preview, and honors zero-egress (a user-initiated GET to
+ * sec.gov, which the CSP already allows).
+ */
+export function TryRealFilingLink({ className = '' }: { className?: string }) {
+  return (
+    <a
+      href={DEMO_FILING_URL}
+      target="_blank"
+      rel="noreferrer"
+      className={`inline-flex items-center justify-center gap-1 text-[13px] font-medium text-sky-400 underline decoration-sky-400/40 underline-offset-2 transition hover:text-sky-300 hover:decoration-sky-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 ${className}`}
+    >
+      Try it on a real filing →
+    </a>
+  );
+}
+
 // ── empty state ───────────────────────────────────────────────────────────────
 
 export function EmptyState({ title, body }: { title: string; body?: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-2 rounded-xl bg-zinc-900/50 px-4 py-8 text-center ring-1 ring-dashed ring-zinc-800">
-      <p className="text-[13px] font-medium text-zinc-400 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">{title}</p>
+      <p className="text-[13px] font-medium text-zinc-400">{title}</p>
       {body ? (
-        <p className="max-w-xs text-[13px] leading-relaxed text-zinc-600 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">{body}</p>
+        <p className="max-w-xs text-[13px] leading-relaxed text-zinc-600">{body}</p>
       ) : null}
     </div>
   );

@@ -62,7 +62,7 @@ export function ExportButton({ doc }: { doc: DocumentModel }) {
       disabled={state === 'busy'}
       title="Download all analysis for this filing as a PDF"
       aria-label="Export all analysis for this filing as a PDF"
-      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-medium text-zinc-300 transition hover:border-sky-500/50 hover:bg-zinc-800 hover:text-sky-300 disabled:cursor-default disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]"
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] font-medium text-zinc-300 transition hover:border-sky-500/50 hover:bg-zinc-800 hover:text-sky-300 disabled:cursor-default disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
     >
       <ExportIcon />
       {label}

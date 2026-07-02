@@ -47,7 +47,7 @@ function MarkdownText({ md }: { md: string }) {
         if (!stripped.trim()) return null;
         const isBullet = /^\s*[*\-•]/.test(line);
         return (
-          <p key={i} className={`text-xs leading-relaxed text-zinc-300 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] ${isBullet ? 'pl-3 border-l border-zinc-700' : ''}`}>
+          <p key={i} className={`text-xs leading-relaxed text-zinc-300 ${isBullet ? 'pl-3 border-l border-zinc-700' : ''}`}>
             {stripped}
           </p>
         );
@@ -114,7 +114,7 @@ function SectionCard({
         role={isDone ? 'button' : undefined}
         aria-expanded={isDone ? expanded : undefined}
       >
-        <span className="flex-1 text-xs font-medium text-zinc-200 leading-snug truncate font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
+        <span className="flex-1 text-xs font-medium text-zinc-200 leading-snug truncate">
           {section.label}
         </span>
 
@@ -198,14 +198,14 @@ function SectionCard({
                       <div className="flex flex-wrap items-center gap-3">
                         <button
                           onClick={() => onJumpTo(anchors[0]!)}
-                          className="self-start text-[11px] font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] text-sky-500 hover:text-sky-300 transition focus-visible:outline focus-visible:outline-sky-500"
+                          className="self-start text-[11px] text-sky-500 hover:text-sky-300 transition focus-visible:outline focus-visible:outline-sky-500"
                           aria-label="Jump to section in filing"
                         >
                           ↗ Jump to section
                         </button>
                         <button
                           onClick={() => void clearDocHighlights()}
-                          className="self-start text-[11px] font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] text-zinc-500 hover:text-zinc-300 transition focus-visible:outline focus-visible:outline-sky-500"
+                          className="self-start text-[11px] text-zinc-500 hover:text-zinc-300 transition focus-visible:outline focus-visible:outline-sky-500"
                           aria-label="Remove highlight from filing"
                         >
                           Remove highlight

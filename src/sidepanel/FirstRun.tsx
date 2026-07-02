@@ -11,7 +11,7 @@
 
 import { m, useReducedMotion } from 'framer-motion';
 import type { Capabilities } from '@/runtime/capabilities';
-import { TierBadge, Banner, BrandLogo, LockIcon, stateLabel, stateColor } from './ui';
+import { TierBadge, Banner, BrandLogo, LockIcon, TryRealFilingLink, stateLabel, stateColor } from './ui';
 
 const ENCODER_MODELS = [
   { name: 'Encoder', role: 'Extractive summary & redline matching' },
@@ -41,14 +41,14 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
       {/* Hero */}
       <div className="flex flex-col items-center gap-2 pt-2 text-center">
         <BrandLogo className="h-12 w-12" />
-        <h1 className="text-[17px] font-semibold text-zinc-100 font-[Georgia,serif]">Welcome to Relic</h1>
-        <p className="max-w-xs text-base leading-relaxed text-zinc-400 font-[Georgia,serif]">
+        <h1 className="font-display text-[17px] font-semibold text-zinc-100">Welcome to Relic</h1>
+        <p className="font-display max-w-xs text-base leading-relaxed text-zinc-400">
           Understand company filings like an investor.
         </p>
       </div>
 
       {/* Privacy explainer */}
-      <section className="rounded-xl bg-zinc-900 p-4 ring-1 ring-zinc-800 text-[13px] font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
+      <section className="rounded-xl bg-zinc-900 p-4 ring-1 ring-zinc-800 text-[13px]">
         <p className="mb-2 flex items-center gap-1.5 font-semibold uppercase text-zinc-200">
           <LockIcon className="h-3.5 w-3.5 text-emerald-400" /> Private by design
         </p>
@@ -60,7 +60,7 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
       </section>
 
       {/* Downloads */}
-      <section className="rounded-xl bg-zinc-900 p-4 ring-1 ring-zinc-800 text-[13px] font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
+      <section className="rounded-xl bg-zinc-900 p-4 ring-1 ring-zinc-800 text-[13px]">
         <p className="mb-2 font-semibold uppercase text-zinc-200">
           Models bundled with the extension
         </p>
@@ -75,7 +75,7 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
       </section>
 
       {/* Generation tier */}
-      <section className="rounded-xl bg-zinc-900 p-4 ring-1 ring-zinc-800 text-[13px] font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
+      <section className="rounded-xl bg-zinc-900 p-4 ring-1 ring-zinc-800 text-[13px]">
         <div className="mb-2 flex items-center gap-2">
           <p className="font-semibold uppercase text-zinc-200">Generation mode</p>
           <span className="ml-auto"><TierBadge tier={caps.generationTier} /></span>
@@ -83,7 +83,7 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
 
         {builtin ? (
           <>
-            <p className="text-xs leading-relaxed text-zinc-400 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
+            <p className="text-xs leading-relaxed text-zinc-400">
               Relic analyzes SEC filings privately on your device, turning them into clear summaries,
               analyst notes, and change narratives powered by Gemini Nano with zero cloud.
             </p>
@@ -108,7 +108,7 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
       </section>
 
       {/* Progressive enablement note */}
-      <p className="px-1 text-[13px] leading-relaxed text-emerald-400 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">
+      <p className="px-1 text-[13px] leading-relaxed text-emerald-400">
         Info: Language flags underline the filing immediately; sentiment scores run on demand in the Sentiment tab. Generative features switch on
         automatically once the model is ready.
       </p>
@@ -116,10 +116,13 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
       {/* CTA */}
       <button
         onClick={onDone}
-        className="w-full rounded-lg bg-sky-600 py-2.5 text-base font-semibold font-[Georgia,serif] text-white transition hover:bg-sky-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500"
+        className="w-full rounded-lg bg-sky-600 py-2.5 text-base font-semibold text-white transition hover:bg-sky-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500"
       >
         Get Started
       </button>
+
+      {/* Nudge people who installed from the Web Store (not on EDGAR) toward a live filing. */}
+      <TryRealFilingLink className="self-center" />
     </m.div>
   );
 }

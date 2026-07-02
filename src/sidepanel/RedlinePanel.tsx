@@ -431,7 +431,7 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
             {state === 'running' ? 'Comparing…' : state === 'done' || state === 'no_prior' || state === 'unsupported_form' ? 'Re-compare' : 'Compare to prior year'}
           </button>
           {secFetch && state === 'idle' && (
-            <p className="text-[12px] leading-relaxed text-emerald-400 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">
+            <p className="text-[12px] leading-relaxed text-emerald-400">
               Fetches last year’s comparable filing from EDGAR and shows what changed in the Risk Factors and
               MD&amp;A.
             </p>

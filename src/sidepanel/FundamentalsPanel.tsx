@@ -136,19 +136,19 @@ export function FundamentalsPanel({ doc }: { doc: DocumentModel }) {
       <div className="flex items-center justify-between gap-2">
         <p
           id="fundamentals-heading"
-          className="text-[13px] font-medium uppercase tracking-widest text-zinc-500 font-[Times,serif]"
+          className="text-[13px] font-medium uppercase tracking-widest text-zinc-500 font-display"
         >
           Fundamentals
         </p>
         {xbrl.periodEnd && (
-          <span className="text-[10px] text-zinc-600 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
+          <span className="text-[10px] text-zinc-600">
             {fmtDate(xbrl.periodEnd)}
             {xbrl.priorPeriodEnd ? ` vs ${fmtDate(xbrl.priorPeriodEnd)}` : ''}
           </span>
         )}
       </div>
       <div className="mt-2.5 overflow-x-auto">
-        <table className="w-full border-collapse font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">
+        <table className="w-full border-collapse">
           <thead>
             <tr>
               <th className="pb-1 text-left text-[9px] font-semibold uppercase tracking-wider text-zinc-600">Metric</th>

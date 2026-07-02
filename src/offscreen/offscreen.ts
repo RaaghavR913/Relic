@@ -38,6 +38,7 @@ import type {
 } from '@/messages/types';
 import type { DocumentModel, Section, SentenceSentiment, SectionDiff } from '@/types';
 import { filterNonTableSentences } from './sentenceFilter';
+import { debugLog } from '@/lib/debug';
 import { calibrateSentimentLabel } from './calibrateSentiment';
 import {
   splitSentences,
@@ -140,7 +141,7 @@ let idleTimer: ReturnType<typeof setTimeout> | null = null;
 function resetIdleTimer(): void {
   if (idleTimer !== null) clearTimeout(idleTimer);
   idleTimer = setTimeout(() => {
-    console.debug('[offscreen] idle timeout — unloading workers');
+    debugLog('[offscreen] idle timeout — unloading workers');
     terminateWorkers();
     // Ask the SW to close this offscreen document.
     chrome.runtime.sendMessage({ target: 'sw', type: 'OFFSCREEN_IDLE' }).catch(() => {});
@@ -182,7 +183,7 @@ function handleWorkerMsg(e: MessageEvent): void {
 
   if (msg.type === 'READY') {
     workerDevice = msg.device;
-    if (msg.diag) console.debug(`[offscreen] encoder ready on ${msg.device} —`, msg.diag.attempts);
+    if (msg.diag) debugLog(`[offscreen] encoder ready on ${msg.device} —`, msg.diag.attempts);
     pendingInit?.resolve(msg.device);
     pendingInit = null;
     return;
@@ -305,7 +306,7 @@ function handleSentimentWorkerMsg(e: MessageEvent): void {
 
   if (msg.type === 'READY') {
     sentimentWorkerDevice = msg.device;
-    if (msg.diag) console.debug(`[offscreen] FinBERT ready on ${msg.device} —`, msg.diag.attempts);
+    if (msg.diag) debugLog(`[offscreen] FinBERT ready on ${msg.device} —`, msg.diag.attempts);
     sentimentPendingInit?.resolve(msg.device);
     sentimentPendingInit = null;
     return;
@@ -481,7 +482,7 @@ async function analyzeSentiment(
   const cached = await getSentimentCache(rawTextHash, FINBERT_MODEL_ID);
   if (cached) {
     const elapsed = Math.round(performance.now() - t0);
-    console.debug(`[offscreen] sentiment cache hit for ${rawTextHash} (${cached.length} results)`);
+    debugLog(`[offscreen] sentiment cache hit for ${rawTextHash} (${cached.length} results)`);
 
     // Replay section-done events for progressive highlighting from cache.
     const bySectionId = new Map<string, SentenceSentiment[]>();
@@ -520,7 +521,7 @@ async function analyzeSentiment(
   sendSentimentProgress('model_load', 0, 'Loading FinBERT…');
   const tModel = performance.now();
   const device = await ensureSentimentWorker();
-  console.debug(`[offscreen] FinBERT ready on ${device} in ${(performance.now() - tModel).toFixed(0)} ms`);
+  debugLog(`[offscreen] FinBERT ready on ${device} in ${(performance.now() - tModel).toFixed(0)} ms`);
   sendSentimentProgress('model_load', 1);
 
   // ── 3. Prepare sentences for every section, in PRIORITY order ─────────────────
@@ -612,7 +613,7 @@ async function analyzeSentiment(
     allResults.push(...sectionResults);
 
     const sectionElapsed = Math.round(performance.now() - tSection);
-    console.debug(
+    debugLog(
       `[offscreen] sentiment: ${section.id} — ${nonTableSentences.length} sentences in ${sectionElapsed} ms`,
     );
 
@@ -633,7 +634,7 @@ async function analyzeSentiment(
 
   const elapsed = Math.round(performance.now() - t0);
   sendSentimentProgress('complete', 1);
-  console.debug(
+  debugLog(
     `[offscreen] sentiment complete: ${allResults.length} sentences in ${elapsed} ms`,
   );
 
@@ -665,10 +666,18 @@ function sendProgress(stage: EmbedProgressMsg['stage'], progress: number, detail
  * Sentence-centrality extractive summarization for one section.
  * The encoder worker init is idempotent and shared with the redline semantic pass.
  */
-async function extractiveSummarize(sectionText: string): Promise<ExtractiveResponse> {
+async function extractiveSummarize(
+  sectionText: string,
+  charStart = 0,
+  tables?: ReadonlyArray<readonly [number, number]>,
+): Promise<ExtractiveResponse> {
   resetIdleTimer();
 
-  const spans = splitSentences(sectionText);
+  const spans = filterNonTableSentences(
+    splitSentences(sectionText),
+    charStart,
+    tables,
+  ).map(({ sent }) => sent);
 
   // Trivial cases — no embeddings needed.
   if (spans.length === 0) {
@@ -862,7 +871,7 @@ chrome.runtime.onMessage.addListener(
 
     if (msg.type === 'EXTRACTIVE_SUMMARIZE') {
       const m = msg as OffscreenExtractiveMsg;
-      extractiveSummarize(m.sectionText)
+      extractiveSummarize(m.sectionText, m.charStart ?? 0, m.tables)
         .then(sendResponse)
         .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }));
       return true;
@@ -904,8 +913,8 @@ chrome.runtime.onMessage.addListener(
   },
 );
 
-console.debug('[Relic offscreen] ready — device will be selected on first embed request');
+debugLog('[Relic offscreen] ready — device will be selected on first embed request');
 // Confirms threaded ORT actually engaged (used when benchmarking the WASM path).
-console.debug(
+debugLog(
   `[Relic offscreen] crossOriginIsolated=${self.crossOriginIsolated}, ORT threads=${ORT_NUM_THREADS}`,
 );

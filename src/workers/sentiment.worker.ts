@@ -22,6 +22,7 @@ import type {
   SentimentWorkerClassifyResultMsg,
 } from '@/messages/types';
 import { configureBundledModelEnv } from '@/workers/transformersEnv';
+import { debugLog } from '@/lib/debug';
 
 // The text-classification pipeline is callable: (texts, opts) => Promise<result>.
 // Transformers.js v4: array input with topk=1 returns Array<{label, score}>.
@@ -53,7 +54,7 @@ function tryWasmFallback(): Promise<boolean> {
   if (!wasmFallback) {
     const p = initParams;
     classifier = null;
-    console.debug('[sentiment.worker] inference failed on WebGPU — re-initializing on WASM');
+    debugLog('[sentiment.worker] inference failed on WebGPU — re-initializing on WASM');
     wasmFallback = init(p.wasmPaths, p.modelBasePath, p.modelId, p.numThreads, true).then(
       () => classifier !== null,
     );
@@ -102,11 +103,11 @@ async function init(
       activeDevice = device;
       attempts.push(`${device}: ok`);
       const elapsed = (performance.now() - t0).toFixed(0);
-      console.debug(`[sentiment.worker] FinBERT loaded on ${device} in ${elapsed} ms`);
+      debugLog(`[sentiment.worker] FinBERT loaded on ${device} in ${elapsed} ms`);
       break;
     } catch (err) {
       attempts.push(`${device}: ${String(err)}`);
-      console.debug(`[sentiment.worker] ${device} backend failed:`, err);
+      debugLog(`[sentiment.worker] ${device} backend failed:`, err);
     }
   }
 
@@ -170,7 +171,7 @@ async function classify(id: string, texts: string[]): Promise<void> {
     );
 
     const elapsed = (performance.now() - t0).toFixed(0);
-    console.debug(
+    debugLog(
       `[sentiment.worker] classified ${texts.length} sentences on ${activeDevice} in ${elapsed} ms`,
     );
 

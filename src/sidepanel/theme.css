@@ -1,0 +1,17 @@
+/*
+ * Two-face type system (see PR: typography consolidation). Single source of truth
+ * imported by both the shipped entry (index.css) and the mock dev preview
+ * (src/dev/preview.css), so the preview renders the exact same faces as production.
+ *   --font-display → Times New Roman, for the brand title and top-level headings.
+ *   --font-sans    → Roboto (with a full fallback stack, since Roboto is not
+ *                    preinstalled on macOS/Windows). Roboto is NOT loaded from
+ *                    Google Fonts — that would violate the zero-egress invariant;
+ *                    the fallback stack renders natively until a woff2 is bundled.
+ * Overriding --font-sans makes `font-sans` the default face app-wide; `font-display`
+ * is generated as a utility from --font-display. All prior inline per-element font
+ * overrides were removed in favor of these two tokens.
+ */
+@theme {
+  --font-display: 'Times New Roman', Times, serif;
+  --font-sans: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}

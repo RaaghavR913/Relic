@@ -41,6 +41,7 @@ import {
   BrandLogo,
   SettingsButton,
   LockIcon,
+  TryRealFilingLink,
   VERSION_ACCENT,
   stateColor,
   stateLabel,
@@ -48,6 +49,10 @@ import {
 import { useAnalysisActive } from './analysisActivity';
 
 const ONBOARDED_KEY = 'relic:onboarded';
+
+// Set true the first time a filing loads successfully. Used to collapse the
+// "Where Relic works" guide once the user has seen analysis actually happen.
+const HAS_ANALYZED_KEY = 'relic:hasAnalyzed';
 
 // ── tabs ──────────────────────────────────────────────────────────────────────
 
@@ -139,10 +144,18 @@ function WhereItWorks() {
 
   useEffect(() => {
     chrome.storage.local
-      .get(INFO_OPEN_KEY)
+      .get([INFO_OPEN_KEY, HAS_ANALYZED_KEY])
       .then((data: Record<string, unknown>) => {
         const stored = data[INFO_OPEN_KEY];
-        if (typeof stored === 'boolean') setInfoOpen(stored);
+        if (typeof stored === 'boolean') {
+          setInfoOpen(stored);
+        } else {
+          // No explicit choice yet: keep the guide open until the first filing has
+          // analyzed successfully, then default it collapsed to its single header
+          // line so the analysis stays above the fold. The user can still expand it,
+          // and that choice then persists via INFO_OPEN_KEY.
+          setInfoOpen(!data[HAS_ANALYZED_KEY]);
+        }
       })
       .catch(() => {});
   }, []);
@@ -155,7 +168,7 @@ function WhereItWorks() {
   return (
     <section
       aria-label="Where Relic works best"
-      className="rounded-lg bg-zinc-900/60 px-3 py-2.5 ring-1 ring-inset ring-zinc-800 text-[12px] font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]"
+      className="rounded-lg bg-zinc-900/60 px-3 py-2.5 ring-1 ring-inset ring-zinc-800 text-[12px]"
     >
       <div className="flex items-center justify-between gap-3">
         <span className="font-semibold text-zinc-200">Info</span>
@@ -196,7 +209,7 @@ function Header({ doc, hideDocMeta = false, analysisActive = false }: { doc: Doc
     <header className="border-b border-zinc-800 px-4 py-3">
       <div className="flex items-center gap-2.5">
         <BrandLogo className="h-6 w-6" />
-        <span className="text-[19px] font-semibold tracking-tight font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">Relic</span>
+        <span className="font-display text-[19px] font-semibold tracking-tight">Relic</span>
         {/* On-device promise — shown while any analysis runs (the moment a cloud
             tool would be uploading). Fade only; respects reduced-motion. */}
         <AnimatePresence>
@@ -219,7 +232,7 @@ function Header({ doc, hideDocMeta = false, analysisActive = false }: { doc: Doc
         <div className="ml-auto flex items-center gap-1.5">
           <SettingsButton />
           <span
-            className="text-xs font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]"
+            className="text-xs"
             style={{ color: VERSION_ACCENT }}
           >
             v{chrome.runtime.getManifest().version}
@@ -229,14 +242,14 @@ function Header({ doc, hideDocMeta = false, analysisActive = false }: { doc: Doc
       {doc && !hideDocMeta && (
         <div className="mt-2 flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[15px] font-medium text-zinc-200 font-[Georgia,serif]">
+            <p className="truncate text-[15px] font-medium text-zinc-200">
               {doc.companyName ?? 'Unknown company'}
-              {doc.ticker ? <span className="ml-1.5 text-zinc-500 font-['Times_New_Roman',serif]">{doc.ticker}</span> : null}
+              {doc.ticker ? <span className="ml-1.5 text-zinc-500">{doc.ticker}</span> : null}
             </p>
             <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[11px] text-zinc-500">
-              <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-medium text-zinc-300 font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">{typeLabel}</span>
-              {period && <span className="font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">· Period {period}</span>}
-              <span className="font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif]">· {doc.sections.length} sections</span>
+              <span className="rounded bg-zinc-800 px-1.5 py-0.5 font-medium text-zinc-300">{typeLabel}</span>
+              {period && <span>· Period {period}</span>}
+              <span>· {doc.sections.length} sections</span>
             </p>
           </div>
           <ExportButton doc={doc} />
@@ -286,7 +299,7 @@ function TabBar({
             id={`tab-${t.id}`}
             tabIndex={selected ? 0 : -1}
             onClick={() => onSelect(t.id)}
-            className={`relative flex-1 rounded-md px-1 py-1.5 text-[11px] font-medium font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 ${
+            className={`relative flex-1 rounded-md px-1 py-1.5 text-[11px] font-medium transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 ${
               selected ? 'bg-zinc-700 text-zinc-100 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
@@ -321,11 +334,15 @@ function NoFiling({
 }) {
   return (
     <div className="flex flex-col gap-4">
-      <EmptyState title="No filing open" />
+      <EmptyState
+        title="No filing open"
+        body="Open an SEC filing to get started, or analyze the page you’re on."
+      />
+      <TryRealFilingLink className="w-full rounded-lg border border-sky-500/40 px-3 py-2 hover:bg-zinc-900/50" />
       <button
         onClick={onAnalyze}
         disabled={analyzing}
-        className="flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-[15px] font-semibold font-[Times,serif] text-white transition hover:bg-sky-500 disabled:cursor-default disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400"
+        className="flex items-center justify-center gap-2 rounded-lg bg-sky-600 px-3 py-2 text-[15px] font-semibold text-white transition hover:bg-sky-500 disabled:cursor-default disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400"
       >
         {analyzing ? (
           <>
@@ -376,19 +393,19 @@ function NoFiling({
       )}
       {caps && (
         <section className="rounded-xl bg-zinc-900 p-4 ring-1 ring-zinc-800 text-[15px]">
-          <p className="mb-3 text-center text-base font-medium uppercase tracking-widest text-zinc-500 font-[Times,serif]">On-device capabilities</p>
+          <p className="mb-3 text-center text-base font-medium uppercase tracking-widest text-zinc-500 font-display">On-device capabilities</p>
           <ul className="flex flex-col gap-2" role="list">
             <li className="flex items-center justify-between">
-              <span className="text-zinc-300 font-[Georgia,serif]">Summarizer API</span>
-              <span className={`font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif] ${stateColor(caps.summarizer)}`}>{stateLabel(caps.summarizer)}</span>
+              <span className="text-zinc-300">Summarizer API</span>
+              <span className={stateColor(caps.summarizer)}>{stateLabel(caps.summarizer)}</span>
             </li>
             <li className="flex items-center justify-between">
-              <span className="text-zinc-300 font-[Georgia,serif]">Prompt API (Gemini Nano)</span>
-              <span className={`font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] ${stateColor(caps.promptApi)}`}>{stateLabel(caps.promptApi)}</span>
+              <span className="text-zinc-300">Prompt API (Gemini Nano)</span>
+              <span className={stateColor(caps.promptApi)}>{stateLabel(caps.promptApi)}</span>
             </li>
             <li className="flex items-center justify-between">
-              <span className="text-zinc-300 font-[Georgia,serif]">WebGPU acceleration</span>
-              <span className={`font-[system-ui,-apple-system,BlinkMacSystemFont,sans-serif] ${caps.webgpu.adapter ? 'text-emerald-400' : 'text-zinc-500'}`}>
+              <span className="text-zinc-300">WebGPU acceleration</span>
+              <span className={caps.webgpu.adapter ? 'text-emerald-400' : 'text-zinc-500'}>
                 {caps.webgpu.adapter ? 'Available' : 'WASM fallback'}
               </span>
             </li>
@@ -540,6 +557,8 @@ export default function App() {
         const m = msg as FilingReadyMsg;
         setCurrentDoc(m.model);
         setCurrentFlags([]);
+        // First successful filing load: collapse the "Where Relic works" guide next open.
+        chrome.storage.local.set({ [HAS_ANALYZED_KEY]: true }).catch(() => {});
         // Resolve a pending "Analyze this page" request.
         clearAnalyzeTimer();
         setAnalyzing(false);
@@ -571,6 +590,7 @@ export default function App() {
           ) {
             setCurrentDoc(model);
             if (flags) setCurrentFlags(flags);
+            chrome.storage.local.set({ [HAS_ANALYZED_KEY]: true }).catch(() => {});
             return;
           }
         }
@@ -588,7 +608,7 @@ export default function App() {
   }, [clearAnalyzeTimer]);
 
   return (
-    <div className="flex h-full min-h-screen flex-col bg-zinc-950 text-zinc-100 selection:bg-sky-500/30">
+    <div className="flex h-full min-h-screen flex-col bg-zinc-950 font-sans text-zinc-100 selection:bg-sky-500/30">
       <Header doc={currentDoc} hideDocMeta={onboarded === false} analysisActive={analysisActive || analyzing} />
 
       <main className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
@@ -642,7 +662,7 @@ export default function App() {
                 <button
                   onClick={() => void startAnalyze()}
                   disabled={analyzing}
-                  className="flex w-full items-center justify-center rounded-[4px] border border-sky-500/40 px-3 py-2 text-[13px] font-[Georgia,serif] font-medium text-sky-400 transition hover:border-sky-400/60 hover:bg-zinc-900/50 hover:text-sky-300 disabled:cursor-default disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+                  className="flex w-full items-center justify-center rounded-[4px] border border-sky-500/40 px-3 py-2 text-[13px] font-medium text-sky-400 transition hover:border-sky-400/60 hover:bg-zinc-900/50 hover:text-sky-300 disabled:cursor-default disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
                 >
                   {analyzing ? 'Analyzing…' : 'Analyze this page'}
                 </button>

@@ -15,6 +15,7 @@
 import { pipeline } from '@huggingface/transformers';
 import type { WorkerOutbound, WorkerProgressMsg } from '@/messages/types';
 import { configureBundledModelEnv } from '@/workers/transformersEnv';
+import { debugLog } from '@/lib/debug';
 
 // The feature-extraction pipeline is callable: (texts, opts) => Tensor. The broad union
 // type returned by pipeline() is not directly callable, so we model the call signature.
@@ -78,7 +79,7 @@ async function init(
       break;
     } catch (err) {
       attempts.push(`${device}: ${String(err)}`);
-      console.debug(`[encoder.worker] ${device} backend failed:`, err);
+      debugLog(`[encoder.worker] ${device} backend failed:`, err);
     }
   }
 
@@ -100,7 +101,7 @@ function tryWasmFallback(): Promise<boolean> {
   if (!wasmFallback) {
     const p = initParams;
     extractor = null;
-    console.debug('[encoder.worker] inference failed on WebGPU — re-initializing on WASM');
+    debugLog('[encoder.worker] inference failed on WebGPU — re-initializing on WASM');
     wasmFallback = init(p.wasmPaths, p.modelBasePath, p.modelId, p.numThreads, true).then(
       () => extractor !== null,
     );
