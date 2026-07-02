@@ -48,7 +48,8 @@ const KEYWORDS: Record<Exclude<Dimension, 'overview'>, RegExp> = {
 
 // Sentences worth keeping must carry signal: a figure, a percentage, or a $ amount
 // earns a bonus; bare boilerplate scores low and falls out of the budget.
-const NUMERIC = /(?:\$\s?[\d,.]+|\d+(?:\.\d+)?\s?%|\b\d{2,}\b)/;
+// Exported so the deterministic tier can title cards by their lead numeric phrase.
+export const NUMERIC = /(?:\$\s?[\d,.]+|\d+(?:\.\d+)?\s?%|\b\d{2,}\b)/;
 
 export interface ScoredSentence {
   text: string;
