@@ -64,6 +64,16 @@ if (!(manifest.host_permissions ?? []).some((h) => /sec\.gov/.test(h))) {
   fail('host_permissions no longer includes sec.gov');
 }
 
+// COOP + COEP enable cross-origin isolation, which unlocks multi-threaded ORT for
+// the WASM sentiment path. Dropping them still "builds", but sentiment silently
+// falls back to single-threaded (minutes on a large 10-K) — guard them like the CSP.
+if (manifest.cross_origin_embedder_policy?.value !== 'require-corp') {
+  fail('cross_origin_embedder_policy is not "require-corp" — threaded ORT disabled (crossOriginIsolated=false)');
+}
+if (manifest.cross_origin_opener_policy?.value !== 'same-origin') {
+  fail('cross_origin_opener_policy is not "same-origin" — threaded ORT disabled (crossOriginIsolated=false)');
+}
+
 // ── 3. model weights present and non-trivial ─────────────────────────────────
 const modelsDir = path.join(DIST, 'models');
 if (!fs.existsSync(modelsDir)) {

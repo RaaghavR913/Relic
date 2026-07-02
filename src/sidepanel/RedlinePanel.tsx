@@ -30,6 +30,7 @@ import { generateChangeSummary, createChangeSummarySession } from '@/redline/cha
 import { redlineSupportsForm } from '@/redline/align';
 import { getCachedRedline, putRedline } from '@/redline/redlineStore';
 import { useSecFetchPref } from '@/shared/secFetchPref';
+import { useReportAnalysisActivity } from './analysisActivity';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -413,6 +414,9 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
     () => diffs.reduce((n, d) => n + d.added.length + d.removed.length, 0),
     [diffs],
   );
+
+  // Surface the header "On-device" chip while a comparison is mid-flight.
+  useReportAnalysisActivity(state === 'running');
 
   return (
     <section aria-label="Redline" className="flex flex-col gap-3">

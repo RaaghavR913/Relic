@@ -18,6 +18,7 @@ import type {
   SentimentProgressMsg,
   SentimentResponse,
 } from '@/messages/types';
+import { useReportAnalysisActivity } from './analysisActivity';
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -169,29 +170,26 @@ export function SentimentPanel({ doc }: SentimentPanelProps) {
       if (msg.type === 'SENTIMENT_SECTION_DONE') {
         const m = msg as SentimentSectionDoneMsg;
 
-        // Accumulate results.
+        // Accumulate results + this section's aggregate. The progress bar is driven
+        // by the finer-grained SENTIMENT_PROGRESS 'classifying' messages
+        // (sentence-level value + ETA) — sections now finish in priority order, not
+        // document order, so a section-index bar would jump backwards.
         const existing = resultsRef.current.get(m.sectionId) ?? [];
         const merged = [...existing, ...m.results];
         resultsRef.current.set(m.sectionId, merged);
 
-        // Update aggregate for this section.
         setAggregates((prev) => ({
           ...prev,
           [m.sectionId]: computeAggregate(merged),
         }));
-
-        // Update progress bar.
-        setProgress({
-          stage: 'classifying',
-          value: (m.sectionIdx + 1) / m.totalSections,
-          detail: `Scored ${m.sectionIdx + 1}/${m.totalSections} sections`,
-        });
       }
 
       if (msg.type === 'SENTIMENT_PROGRESS') {
         const m = msg as SentimentProgressMsg;
         if (m.stage === 'model_load') {
           setProgress({ stage: 'Loading FinBERT…', value: m.progress, ...(m.detail !== undefined ? { detail: m.detail } : {}) });
+        } else if (m.stage === 'classifying') {
+          setProgress({ stage: 'classifying', value: m.progress, ...(m.detail !== undefined ? { detail: m.detail } : {}) });
         } else if (m.stage === 'complete' || m.stage === 'error') {
           setProgress(null);
         }
@@ -272,6 +270,8 @@ export function SentimentPanel({ doc }: SentimentPanelProps) {
   const isLoading = status === 'loading';
   const isDone = status === 'done';
   const isError = status === 'error';
+
+  useReportAnalysisActivity(isLoading);
 
   return (
     <section aria-label="Sentiment" className="flex flex-col gap-3">

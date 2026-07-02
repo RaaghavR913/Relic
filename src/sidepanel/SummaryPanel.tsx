@@ -10,6 +10,7 @@ import { summarizeSection, DISCLAIMER } from '@/summarizer/summarize';
 import { getCachedSummary } from '@/summarizer/summaryStore';
 import type { EmbedProgressMsg } from '@/messages/types';
 import { isLowConfidenceGeneric, isEdgarExhibit } from '@/content/ingest/detect';
+import { useReportAnalysisActivity } from './analysisActivity';
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
@@ -433,6 +434,13 @@ export function SummaryPanel({ doc, detectedTier }: SummaryPanelProps) {
 
   const doneCount = sections.filter((s) => states[s.id]?.status === 'done').length;
   const allDone = doneCount === sections.length;
+
+  // Surface the header "On-device" chip while any section is summarizing (or the
+  // encoder/model is still loading for the extractive path).
+  const anyLoading =
+    downloadProgress !== null ||
+    Object.values(states).some((s) => s.status === 'loading');
+  useReportAnalysisActivity(anyLoading);
 
   // ── render ─────────────────────────────────────────────────────────────────
 

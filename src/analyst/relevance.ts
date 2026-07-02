@@ -103,7 +103,13 @@ export function splitSentences(text: string): string[] {
   return splitSentenceSpans(text).map((s) => s.text);
 }
 
-function sectionPriority(section: Section): number {
+/**
+ * Rank of a section by investor-relevance (0 = highest: MD&A, then Risk Factors,
+ * then financials/business). Sections with no priority-prefix match sort last.
+ * Shared with the offscreen sentiment pass so the sections users actually read are
+ * scored first.
+ */
+export function sectionPriority(section: Section): number {
   const idx = PRIORITY_SECTION_PREFIXES.findIndex((p) => section.id.startsWith(p));
   return idx === -1 ? PRIORITY_SECTION_PREFIXES.length : idx;
 }

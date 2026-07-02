@@ -11,7 +11,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { m, AnimatePresence } from 'framer-motion';
+import { m, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useCapabilities } from '../runtime/useCapabilities';
 import type { DocumentModel, LanguageFlag } from '@/types';
 import type {
@@ -40,10 +40,12 @@ import {
   EmptyState,
   BrandLogo,
   SettingsButton,
+  LockIcon,
   VERSION_ACCENT,
   stateColor,
   stateLabel,
 } from './ui';
+import { useAnalysisActive } from './analysisActivity';
 
 const ONBOARDED_KEY = 'relic:onboarded';
 
@@ -177,7 +179,7 @@ function WhereItWorks() {
 
 // ── header ────────────────────────────────────────────────────────────────────
 
-function Header({ doc, hideDocMeta = false }: { doc: DocumentModel | null; hideDocMeta?: boolean }) {
+function Header({ doc, hideDocMeta = false, analysisActive = false }: { doc: DocumentModel | null; hideDocMeta?: boolean; analysisActive?: boolean }) {
   const period = fmtDate(doc?.periodOfReport);
   // Don't assert a specific form when detection is low-confidence (e.g. a press
   // release that merely names a form) — the type heuristic can misfire off-EDGAR.
@@ -189,11 +191,31 @@ function Header({ doc, hideDocMeta = false }: { doc: DocumentModel | null; hideD
       : doc && isLowConfidenceGeneric(doc)
         ? 'Document'
         : doc?.filingType;
+  const reducedMotion = useReducedMotion() ?? false;
   return (
     <header className="border-b border-zinc-800 px-4 py-3">
       <div className="flex items-center gap-2.5">
         <BrandLogo className="h-6 w-6" />
         <span className="text-[19px] font-semibold tracking-tight font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]">Relic</span>
+        {/* On-device promise — shown while any analysis runs (the moment a cloud
+            tool would be uploading). Fade only; respects reduced-motion. */}
+        <AnimatePresence>
+          {analysisActive && (
+            <m.span
+              key="ondevice-chip"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={reducedMotion ? { duration: 0 } : { duration: 0.2 }}
+              role="status"
+              title="This analysis never leaves your machine."
+              className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300/90 ring-1 ring-inset ring-emerald-500/20 font-['Roboto',-apple-system,BlinkMacSystemFont,sans-serif]"
+            >
+              <LockIcon className="h-3 w-3" />
+              On-device
+            </m.span>
+          )}
+        </AnimatePresence>
         <div className="ml-auto flex items-center gap-1.5">
           <SettingsButton />
           <span
@@ -381,6 +403,7 @@ function NoFiling({
 
 export default function App() {
   const { caps, error } = useCapabilities();
+  const analysisActive = useAnalysisActive();
   const [currentDoc, setCurrentDoc] = useState<DocumentModel | null>(null);
   const [currentFlags, setCurrentFlags] = useState<LanguageFlag[]>([]);
   const [activeTab, setActiveTab] = useState<TabId>('analyst');
@@ -566,7 +589,7 @@ export default function App() {
 
   return (
     <div className="flex h-full min-h-screen flex-col bg-zinc-950 text-zinc-100 selection:bg-sky-500/30">
-      <Header doc={currentDoc} hideDocMeta={onboarded === false} />
+      <Header doc={currentDoc} hideDocMeta={onboarded === false} analysisActive={analysisActive || analyzing} />
 
       <main className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
         {/* Capability detection states */}

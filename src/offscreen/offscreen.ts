@@ -56,6 +56,7 @@ import {
 import { alignSections, focusAlignments } from '@/redline/align';
 import { parsePriorFiling } from '@/redline/parsePrior';
 import { getSentimentCache, putSentimentCache } from '@/db/sentimentStore';
+import { sectionPriority } from '@/analyst/relevance';
 
 // ── constants ─────────────────────────────────────────────────────────────────
 
@@ -75,6 +76,19 @@ const EMBED_CONCURRENCY = 2;
 const CLASSIFY_BATCH = 8;
 /** Concurrency for CLASSIFY calls — FinBERT classification is sequential per GPU. */
 const CLASSIFY_CONCURRENCY = 1;
+
+/**
+ * ORT WASM thread count. Multi-threaded ORT needs cross-origin isolation
+ * (COOP:same-origin + COEP:require-corp, declared in manifest.json), which flips
+ * self.crossOriginIsolated to true and unlocks SharedArrayBuffer for the bundled
+ * threaded ORT builds (ort-wasm-simd-threaded*). Without isolation (older Chrome,
+ * enterprise policy) we fall back to a single thread — the pre-existing behaviour.
+ * Capped at 4: int8 FinBERT/embeddings stop scaling past that and we don't want to
+ * monopolise every core on the machine.
+ */
+const ORT_NUM_THREADS = self.crossOriginIsolated
+  ? Math.min(4, navigator.hardwareConcurrency || 1)
+  : 1;
 
 // ── encoder worker state ──────────────────────────────────────────────────────
 
@@ -228,7 +242,7 @@ function ensureWorker(): Promise<'webgpu' | 'wasm'> {
       wasmPaths,
       modelBasePath,
       modelId: MODEL_ID,
-      numThreads: 1,
+      numThreads: ORT_NUM_THREADS,
     };
     worker.postMessage(initMsg);
   });
@@ -349,7 +363,7 @@ function ensureSentimentWorker(): Promise<'webgpu' | 'wasm'> {
       wasmPaths,
       modelBasePath,
       modelId: FINBERT_MODEL_ID,
-      numThreads: 1,
+      numThreads: ORT_NUM_THREADS,
     } satisfies WorkerInitMsg);
   });
 
@@ -367,16 +381,17 @@ function classifyBatch(texts: string[]): Promise<{ labels: string[]; scores: num
 }
 
 /**
- * Classify an array of texts in mini-batches with CLASSIFY_CONCURRENCY.
- * Reports classification progress via sendSentimentProgress.
+ * Classify an array of texts in mini-batches with CLASSIFY_CONCURRENCY. Calls
+ * `onBatch` after each batch with its sentence count and wall-clock latency so the
+ * caller can drive a document-level progress bar + rolling-average ETA that spans
+ * every section (classifyAll is invoked once per section).
  */
 async function classifyAll(
   texts: string[],
-  onBatchDone?: (progress: number) => void,
+  onBatch?: (info: { count: number; ms: number }) => void,
 ): Promise<{ labels: string[]; scores: number[] }> {
   const allLabels: string[] = new Array(texts.length) as string[];
   const allScores: number[] = new Array(texts.length) as number[];
-  let done = 0;
 
   const batches: Array<{ start: number; texts: string[] }> = [];
   for (let i = 0; i < texts.length; i += CLASSIFY_BATCH) {
@@ -388,13 +403,14 @@ async function classifyAll(
   async function processNext(): Promise<void> {
     while (batchIdx < batches.length) {
       const b = batches[batchIdx++]!;
+      const tBatch = performance.now();
       const { labels, scores } = await classifyBatch(b.texts);
+      const ms = performance.now() - tBatch;
       for (let j = 0; j < b.texts.length; j++) {
         allLabels[b.start + j] = labels[j] ?? 'neutral';
         allScores[b.start + j] = scores[j] ?? 0;
       }
-      done += b.texts.length;
-      onBatchDone?.(done / texts.length);
+      onBatch?.({ count: b.texts.length, ms });
     }
   }
 
@@ -418,6 +434,21 @@ function sendSentimentProgress(
     ...(detail ? { detail } : {}),
   };
   chrome.runtime.sendMessage(msg).catch(() => {});
+}
+
+/**
+ * Human-readable classifying-stage detail with a remaining-time estimate, e.g.
+ * "Scoring Risk Factors… about 40s left". `etaMs` is derived from a rolling
+ * average of per-sentence latency (see analyzeSentiment); non-finite or ≤0 values
+ * degrade gracefully to just the section name.
+ */
+function classifyingDetail(sectionLabel: string, etaMs: number): string {
+  const base = `Scoring ${sectionLabel}`;
+  if (!Number.isFinite(etaMs) || etaMs <= 0) return `${base}…`;
+  const secs = Math.ceil(etaMs / 1000);
+  if (secs <= 3) return `${base}… almost done`;
+  if (secs < 90) return `${base}… about ${secs}s left`;
+  return `${base}… about ${Math.round(secs / 60)} min left`;
 }
 
 // ── ANALYZE_SENTIMENT ─────────────────────────────────────────────────────────
@@ -490,38 +521,47 @@ async function analyzeSentiment(
   console.debug(`[offscreen] FinBERT ready on ${device} in ${(performance.now() - tModel).toFixed(0)} ms`);
   sendSentimentProgress('model_load', 1);
 
-  // ── 3. Classify sections ────────────────────────────────────────────────────
-  const allResults: SentenceSentiment[] = [];
+  // ── 3. Prepare sentences for every section, in PRIORITY order ─────────────────
+  // Score MD&A + Risk Factors first (the sections investors actually read, via the
+  // analyst relevance ranking) so their highlights land within seconds while
+  // boilerplate finishes in the background. Splitting up front also yields the
+  // document-wide sentence count the ETA needs.
   const totalSections = sections.length;
+  const prepared = [...sections]
+    .sort((a, b) => sectionPriority(a) - sectionPriority(b))
+    .map((section) => ({
+      section,
+      // Filter sentences overlapping table regions (DOCUMENT-space check), keeping
+      // each survivor's index into the ORIGINAL sentence array so highlight offsets
+      // don't drift on sections that contain tables.
+      nonTableSentences: filterNonTableSentences(
+        splitSentences(section.text),
+        section.charRange[0],
+        section.tables,
+      ),
+    }));
+  const totalSentences = prepared.reduce((n, p) => n + p.nonTableSentences.length, 0);
 
-  for (let si = 0; si < totalSections; si++) {
-    const section = sections[si]!;
+  // ── 4. Classify in priority order — stream per-section results + a rolling ETA ─
+  const allResults: SentenceSentiment[] = [];
+  let doneSentences = 0;
+  let msPerSentence = 0; // exponential moving average of per-sentence latency
+
+  // Surface the first section immediately so the bar leaves "Loading FinBERT" even
+  // while the (possibly cold) first threaded batch is still running.
+  const firstLabel = prepared.find((p) => p.nonTableSentences.length > 0)?.section.label;
+  sendSentimentProgress('classifying', 0, firstLabel ? `Scoring ${firstLabel}…` : 'Scoring…');
+
+  for (let processed = 0; processed < prepared.length; processed++) {
+    const { section, nonTableSentences } = prepared[processed]!;
     const tSection = performance.now();
-
-    sendSentimentProgress(
-      'classifying',
-      si / totalSections,
-      `Scoring ${section.label}…`,
-    );
-
-    // Split into sentences (section-space ranges).
-    const sentences = splitSentences(section.text);
-
-    // Filter sentences that overlap table regions (DOCUMENT-space check), keeping
-    // each survivor's index into the ORIGINAL `sentences` array so highlight
-    // offsets don't drift on sections that contain tables.
-    const nonTableSentences = filterNonTableSentences(
-      sentences,
-      section.charRange[0],
-      section.tables,
-    );
 
     if (nonTableSentences.length === 0) {
       const doneMsg: SentimentSectionDoneMsg = {
         target: 'sidepanel',
         type: 'SENTIMENT_SECTION_DONE',
         sectionId: section.id,
-        sectionIdx: si,
+        sectionIdx: processed,
         totalSections,
         results: [],
         elapsedMs: 0,
@@ -531,7 +571,17 @@ async function analyzeSentiment(
     }
 
     const texts = nonTableSentences.map(({ sent }) => sent.text);
-    const { labels, scores } = await classifyAll(texts);
+    const { labels, scores } = await classifyAll(texts, ({ count, ms }) => {
+      doneSentences += count;
+      const per = ms / Math.max(1, count);
+      msPerSentence = msPerSentence === 0 ? per : msPerSentence * 0.7 + per * 0.3;
+      const remaining = Math.max(0, totalSentences - doneSentences);
+      sendSentimentProgress(
+        'classifying',
+        totalSentences === 0 ? 1 : doneSentences / totalSentences,
+        classifyingDetail(section.label, remaining * msPerSentence),
+      );
+    });
 
     const sectionResults: SentenceSentiment[] = [];
     for (let i = 0; i < nonTableSentences.length; i++) {
@@ -568,7 +618,7 @@ async function analyzeSentiment(
       target: 'sidepanel',
       type: 'SENTIMENT_SECTION_DONE',
       sectionId: section.id,
-      sectionIdx: si,
+      sectionIdx: processed,
       totalSections,
       results: sectionResults,
       elapsedMs: sectionElapsed,
@@ -576,7 +626,7 @@ async function analyzeSentiment(
     chrome.runtime.sendMessage(doneMsg).catch(() => {});
   }
 
-  // ── 4. Persist to IDB ───────────────────────────────────────────────────────
+  // ── 5. Persist to IDB ──────────────────────────────────────────────────────
   await putSentimentCache(rawTextHash, FINBERT_MODEL_ID, allResults);
 
   const elapsed = Math.round(performance.now() - t0);
@@ -830,3 +880,7 @@ chrome.runtime.onMessage.addListener(
 );
 
 console.debug('[Relic offscreen] ready — device will be selected on first embed request');
+// Confirms threaded ORT actually engaged (used when benchmarking the WASM path).
+console.debug(
+  `[Relic offscreen] crossOriginIsolated=${self.crossOriginIsolated}, ORT threads=${ORT_NUM_THREADS}`,
+);

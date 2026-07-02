@@ -27,6 +27,7 @@ import { getCachedRedline } from '@/redline/redlineStore';
 import { getSentimentCache } from '@/db/sentimentStore';
 import { isLowConfidenceGeneric } from '@/content/ingest/detect';
 import { FundamentalsPanel } from './FundamentalsPanel';
+import { useReportAnalysisActivity } from './analysisActivity';
 
 // Must match FINBERT_MODEL_ID in offscreen.ts (not imported — that module
 // hosts workers and must not be pulled into the side panel bundle).
@@ -398,6 +399,9 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
     void runRef.current();
     return () => acRef.current?.abort();
   }, [doc.rawTextHash, analysisTier]);
+
+  // Surface the header "On-device" chip while the analyst pipeline runs.
+  useReportAnalysisActivity(status === 'running');
 
   const running = status === 'running';
   const a = analysis;
