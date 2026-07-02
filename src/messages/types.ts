@@ -220,6 +220,16 @@ export interface ComputeRedlineMsg {
   doc: DocumentModel;
 }
 
+/**
+ * Side panel → SW: abort the in-flight redline. Sent when the panel unmounts or
+ * the user navigates to another filing mid-progress, so the SW's resolve+fetch
+ * chain (and its EDGAR requests) doesn't keep running for a panel nobody's watching.
+ */
+export interface CancelRedlineMsg {
+  target: 'sw';
+  type: 'CANCEL_REDLINE';
+}
+
 /** Metadata for the resolved prior comparable filing (from EDGAR submissions JSON). */
 export interface RedlinePriorInfo {
   companyName?: string;

@@ -1,6 +1,9 @@
 /**
  * Relic positionMap — Session 1 linchpin.
  *
+ * LIVE IMPLEMENTATION. src/content/ingest/position-map.ts (DomPositionMap) is a
+ * thin class façade that delegates here; do not confuse the two or delete this.
+ *
  * buildPositionMap(root) performs a single recursive DFS over the filing DOM,
  * producing:
  *   • positionMap.text  — one canonical normalized string

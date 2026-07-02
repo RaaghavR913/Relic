@@ -1,6 +1,9 @@
 /**
  * Section segmentation for all supported FilingTypes.
  *
+ * LIVE IMPLEMENTATION. src/content/ingest/segment.ts is a thin wrapper that
+ * delegates here (attaching table ranges); do not confuse the two or delete this.
+ *
  * segmentSections(text, filingType, tableRanges) returns Section[] with:
  *   - id: canonical snake_case ('item_1a_risk_factors', 'item_7_mdna', etc.)
  *   - label: human-readable

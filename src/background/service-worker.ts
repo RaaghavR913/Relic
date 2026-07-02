@@ -19,6 +19,7 @@ import type {
   SummarizeSectionMsg,
   AnalyzeSentimentMsg,
   ComputeRedlineMsg,
+  CancelRedlineMsg,
   OffscreenExtractiveMsg,
   OffscreenSentimentMsg,
   OffscreenRedlineMsg,
@@ -141,6 +142,13 @@ async function forwardToOffscreen<T>(
 /** Shared rate-limit queue for all EDGAR requests (≤8 req/s, SW lifetime). */
 const edgarQueue = new RateLimitedQueue({ maxPerSecond: 8 });
 
+/**
+ * AbortController for the single in-flight redline. Starting a new redline aborts
+ * the previous one; a CANCEL_REDLINE from the side panel aborts the current one.
+ * Aborting after completion is harmless (the fetches have already settled).
+ */
+let redlineAbort: AbortController | null = null;
+
 function sendRedlineProgress(stage: RedlineStage, progress: number, detail?: string): void {
   const msg: RedlineProgressMsg = {
     target: 'sidepanel',
@@ -164,7 +172,14 @@ async function handleComputeRedline(m: ComputeRedlineMsg): Promise<RedlineRespon
     return { ok: false, error: 'No CIK on this filing — cannot resolve a prior filing.' };
   }
 
-  const fetchText = (url: string) => fetchEdgarText(url, { queue: edgarQueue });
+  // One redline at a time: abort any previous run's in-flight EDGAR fetches
+  // before starting this one. `signal` is captured locally so this run always
+  // checks its own controller even after a later run reassigns redlineAbort.
+  redlineAbort?.abort();
+  redlineAbort = new AbortController();
+  const { signal } = redlineAbort;
+
+  const fetchText = (url: string) => fetchEdgarText(url, { queue: edgarQueue, signal });
 
   // 1. Resolve the prior comparable filing.
   sendRedlineProgress('resolving', 0.05, 'Finding last year’s filing…');
@@ -172,6 +187,7 @@ async function handleComputeRedline(m: ComputeRedlineMsg): Promise<RedlineRespon
   try {
     prior = await resolvePriorFiling(cik, doc.filingType, doc.periodOfReport, { fetchText });
   } catch (err) {
+    if (signal.aborted) return { ok: false, error: 'cancelled' };
     return { ok: false, error: `EDGAR resolve failed: ${String(err)}` };
   }
 
@@ -184,8 +200,9 @@ async function handleComputeRedline(m: ComputeRedlineMsg): Promise<RedlineRespon
   sendRedlineProgress('fetching', 0.15, `Downloading ${prior.form} (${prior.reportDate})…`);
   let priorHtml: string;
   try {
-    priorHtml = await fetchEdgarText(prior.url, { queue: edgarQueue });
+    priorHtml = await fetchEdgarText(prior.url, { queue: edgarQueue, signal });
   } catch (err) {
+    if (signal.aborted) return { ok: false, error: 'cancelled' };
     return { ok: false, error: `EDGAR fetch failed: ${String(err)}` };
   }
 
@@ -350,6 +367,13 @@ chrome.runtime.onMessage.addListener(
         .then(sendResponse)
         .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }));
       return true;
+    }
+
+    // ── CANCEL_REDLINE — abort the in-flight redline's EDGAR fetches ──
+    if (msg.type === 'CANCEL_REDLINE') {
+      const _m = msg as CancelRedlineMsg;
+      redlineAbort?.abort();
+      return false; // fire-and-forget
     }
 
     // ── ANALYZE_PAGE — inject content script into the active tab on demand ──

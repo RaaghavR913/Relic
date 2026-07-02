@@ -326,4 +326,57 @@ describe('fetchEdgarText', () => {
     expect(b).toBe('CACHED');
     expect(calls).toBe(1);
   });
+
+  // ── Redline cancellation: the AbortSignal threads SW → fetchEdgarText → fetch ──
+
+  it('aborts an in-flight request when the injected signal fires (redline cancel)', async () => {
+    const queue = new RateLimitedQueue({ maxPerSecond: 1000 });
+    const ac = new AbortController();
+
+    // Never settles on its own — only when the signal aborts, mirroring how the
+    // real fetch() rejects a pending request. Proves the signal is forwarded into
+    // fetchImpl's init and that the rejection propagates out through the queue.
+    const fetchImpl = ((_url: string, init?: { signal?: AbortSignal }) =>
+      new Promise<Response>((_resolve, reject) => {
+        const signal = init?.signal;
+        if (signal?.aborted) return reject(new DOMException('Aborted', 'AbortError'));
+        signal?.addEventListener('abort', () =>
+          reject(new DOMException('Aborted', 'AbortError')),
+        );
+      })) as unknown as typeof fetch;
+
+    const p = fetchEdgarText('https://data.sec.gov/pending.json', {
+      queue,
+      fetchImpl,
+      signal: ac.signal,
+    });
+    ac.abort();
+    await expect(p).rejects.toThrow(/abort/i);
+  });
+
+  it('propagates an already-aborted signal without retrying', async () => {
+    const queue = new RateLimitedQueue({ maxPerSecond: 1000 });
+    const ac = new AbortController();
+    ac.abort();
+
+    let calls = 0;
+    const fetchImpl = ((_url: string, init?: { signal?: AbortSignal }) => {
+      calls++;
+      if (init?.signal?.aborted) {
+        return Promise.reject(new DOMException('Aborted', 'AbortError'));
+      }
+      return Promise.resolve(makeResponse(200, 'OK'));
+    }) as unknown as typeof fetch;
+
+    await expect(
+      fetchEdgarText('https://data.sec.gov/already.json', {
+        queue,
+        fetchImpl,
+        signal: ac.signal,
+        baseBackoffMs: 1,
+      }),
+    ).rejects.toThrow(/abort/i);
+    // An AbortError is not a 403/429, so the retry loop must not spin.
+    expect(calls).toBe(1);
+  });
 });

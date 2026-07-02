@@ -110,6 +110,13 @@ let sentimentPendingInit: {
 
 let _classifyIdCounter = 0;
 
+/**
+ * Count of ANALYZE_SENTIMENT requests currently being processed. The sentiment
+ * worker is only torn down when this returns to 0, so an overlapping/queued batch
+ * is never terminated out from under an in-flight classification.
+ */
+let sentimentInFlight = 0;
+
 // ── idle-unload ───────────────────────────────────────────────────────────────
 
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -133,7 +140,17 @@ function terminateWorkers(): void {
   pending.clear();
   pendingInit = null;
 
-  // Sentiment worker
+  terminateSentimentWorker();
+}
+
+/**
+ * Tear down just the FinBERT sentiment worker, leaving the encoder worker (which
+ * serves summaries + the redline semantic pass) untouched. Called eagerly after a
+ * sentiment pass finishes so the ~1 GB peak FinBERT holds on WASM devices is freed
+ * without waiting for the 5-minute idle unload. ensureSentimentWorker() rebuilds a
+ * fresh worker (and re-INITs from the retained constants) on the next request.
+ */
+function terminateSentimentWorker(): void {
   sentimentWorker?.terminate();
   sentimentWorker = null;
   sentimentWorkerReady = null;
@@ -786,9 +803,17 @@ chrome.runtime.onMessage.addListener(
 
     if (msg.type === 'ANALYZE_SENTIMENT') {
       const m = msg as OffscreenSentimentMsg;
+      sentimentInFlight++;
       analyzeSentiment(m.rawTextHash, m.sections)
         .then(sendResponse)
-        .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }));
+        .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }))
+        .finally(() => {
+          // Free FinBERT as soon as the last sentiment request drains — results are
+          // cached by content hash upstream, so a re-request re-initializes cheaply.
+          // The encoder worker stays alive for summaries/redline. Only tear down when
+          // no other batch is in flight.
+          if (--sentimentInFlight === 0) terminateSentimentWorker();
+        });
       return true;
     }
 

@@ -11,12 +11,13 @@
 //   removed passages → "− " prefix, line-through, red tint
 // ============================================================
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
 import type { DocumentModel, SectionDiff, Section } from '@/types';
 import type { GenerationTier } from '@/runtime/capabilities';
 import type {
   ComputeRedlineMsg,
+  CancelRedlineMsg,
   RedlineResponse,
   RedlineProgressMsg,
   RedlinePriorInfo,
@@ -56,6 +57,12 @@ async function clearOnPage(): Promise<void> {
   if (tabId === undefined) return;
   const msg: ContentClearRedlineMsg = { target: 'content', type: 'CLEAR_REDLINE' };
   await chrome.tabs.sendMessage(tabId, msg);
+}
+
+/** Tell the SW to abort the in-flight redline (panel closed / filing changed). */
+function cancelRedline(): void {
+  const msg: CancelRedlineMsg = { target: 'sw', type: 'CANCEL_REDLINE' };
+  chrome.runtime.sendMessage(msg).catch(() => {});
 }
 
 function magnitudeColor(m: number): string {
@@ -230,6 +237,11 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
   const [summaries, setSummaries] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
 
+  // Tracks whether a redline is currently mid-flight in the SW, so the cleanup
+  // below can read the live value at unmount time (a stale closure of `state`
+  // would not). Set in run(); cleared when run() settles.
+  const runningRef = useRef(false);
+
   // The redline only works on forms with mapped focus sections (Risk Factors /
   // MD&A and equivalents). For anything else — UNKNOWN, an ownership form like
   // Form 3/4, a 6-K, etc. — there's nothing to diff, so we never resolve a prior
@@ -294,6 +306,19 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
     return () => chrome.runtime.onMessage.removeListener(listener);
   }, []);
 
+  // Abort an in-flight redline when the panel unmounts (side panel closed, page
+  // navigated to a non-filing) or the user switches to a different filing while a
+  // comparison is still running. Keyed on rawTextHash so the cleanup fires on both
+  // transitions; the ref guards against cancelling when nothing is running.
+  useEffect(() => {
+    return () => {
+      if (runningRef.current) {
+        runningRef.current = false;
+        cancelRedline();
+      }
+    };
+  }, [doc.rawTextHash]);
+
   // Builtin-tier: upgrade each templated summary to natural language.
   // A single LM session is created for the whole loop so only the first section
   // pays warm-up cost; subsequent sections reuse the already-warm session.
@@ -328,6 +353,7 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
   const run = useCallback(async () => {
     if (!applicable) return; // no focus sections for this form — nothing to compare
     if (!secFetch) return;   // SEC.gov fetch disabled in Settings — never go to network
+    runningRef.current = true;
     setState('running');
     setError('');
     setSummaries({});
@@ -337,6 +363,9 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
       const resp = (await chrome.runtime.sendMessage(msg)) as RedlineResponse;
 
       if (!resp.ok) {
+        // A cancelled run (panel closed / filing switched) resolves quietly — don't
+        // flash an error banner on the panel we're navigating away from or into.
+        if (resp.error === 'cancelled') return;
         setError(resp.error);
         setState('error');
         return;
@@ -375,6 +404,7 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
       setError(String(err));
       setState('error');
     } finally {
+      runningRef.current = false;
       setProgress(null);
     }
   }, [doc, applicable, secFetch, upgradeSummaries]);
