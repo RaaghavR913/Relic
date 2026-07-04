@@ -27,16 +27,13 @@ The side panel currently mixes Roboto, Georgia, Times New Roman, Times, and syst
 **2. Fix the factually wrong Settings copy.**
 src/settings/SettingsApp.tsx:339 says generation mode is "Chosen automatically from the page you're viewing" — it's actually chosen from device capability (src/runtime/capabilities.ts:133). New copy: "Chosen automatically from your device's capabilities — Built-in AI (Gemini Nano) when Chrome supports it on this hardware, otherwise Relic's extractive mode." Also check the `GenerationStatus` control in the same file: the extractive state must read as healthy ("Extractive · Ready"), not gray-implies-broken.
 
-**3. "Try it on a real filing →" link.**
-Most installs happen from the Web Store, not on EDGAR, and users currently land on a dead-end "No filing open" empty state (App.tsx:302). Add a link/button "Try it on a real filing →" in BOTH: (a) the FirstRun CTA area (src/sidepanel/FirstRun.tsx, near the Get Started button) and (b) the NoFiling empty state. It should open a stable, well-known 10-K in a new tab — e.g. Apple's FY2023 10-K inline-XBRL viewer: `https://www.sec.gov/ix?doc=/Archives/edgar/data/320193/000032019323000106/aapl-20230930.htm` (verify the URL loads before shipping; any current large-cap 10-K works). The content script auto-runs on sec.gov, so the panel lights up on arrival. Use `chrome.tabs.create` or `<a target="_blank" rel="noreferrer">`.
-
-**4. Gate debug logging.**
+**3. Gate debug logging.**
 23 `console.debug` call sites ship to production (service worker, offscreen, workers, content — `grep -rn "console.debug" src`). Create `src/lib/debug.ts` exporting a `debugLog(...)` that no-ops unless `import.meta.env.DEV`, and replace every `console.debug` with it. Leave `console.warn`/`console.error` alone.
 
-**5. Collapse the "Where Relic works" card after first success.**
+**4. Collapse the "Where Relic works" card after first success.**
 `WhereItWorks` (App.tsx:135) renders above the tabs on every view (App.tsx:592), pushing analysis below the fold forever. Persist a `relic:hasAnalyzed` flag in `chrome.storage.local` the first time a filing loads successfully; once set, render the card collapsed to a single expandable line (keep the aria-label and keyboard access).
 
-**6. Small copy bonus:** in the SettingsApp FAQ, the answer about generation mode taking "a little longer the first time" should say concretely that Chrome downloads and manages Gemini Nano (~2 GB) — this preempts "is this really offline?" reviews.
+**5. Small copy bonus:** in the SettingsApp FAQ, the answer about generation mode taking "a little longer the first time" should say concretely that Chrome downloads and manages Gemini Nano (~2 GB) — this preempts "is this really offline?" reviews.
 
 **Finish:** bump version to 1.2.8 in manifest.json + package.json. Verify: typecheck, tests, build, and take dev:ui screenshots of the panel (filing + empty state), first-run, and settings to confirm the type system reads coherently.
 

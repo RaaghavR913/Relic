@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 import type { DocumentModel, Section } from '@/types';
-import { verifyEvidence, scrubAdvice, scrubUnverifiedFigures, finalizeInsight } from '@/analyst/evidence';
+import { verifyEvidence, scrubAdvice, scrubUnverifiedFigures, finalizeInsight, normalizeFiscalLabels } from '@/analyst/evidence';
 import { selectRelevantText, selectOverviewText, splitSentences } from '@/analyst/relevance';
 
 function docWith(sections: Array<Pick<Section, 'id' | 'label' | 'text'>>): DocumentModel {
@@ -80,6 +80,29 @@ describe('scrubAdvice', () => {
     expect(scrubAdvice(business)).toBe(business);
     const careful = 'This may be viewed positively by investors because margins expanded.';
     expect(scrubAdvice(careful)).toBe(careful);
+  });
+});
+
+// ── normalizeFiscalLabels ─────────────────────────────────────────────────────
+
+describe('normalizeFiscalLabels', () => {
+  it('drops the year from quarter shorthand (bare and FY forms)', () => {
+    expect(normalizeFiscalLabels('growth in Q1 2027 was strong')).toBe('growth in Q1 was strong');
+    expect(normalizeFiscalLabels('repurchased shares in Q4 2026')).toBe('repurchased shares in Q4');
+    expect(normalizeFiscalLabels('margin rose in Q1 FY2027')).toBe('margin rose in Q1');
+    expect(normalizeFiscalLabels('Q1 FY2026 to Q1 FY2027')).toBe('Q1 to Q1');
+  });
+
+  it('leaves spelled-out references intact (verbatim quotes / forward guidance)', () => {
+    const verbatim = 'the first quarter of fiscal year 2027';
+    expect(normalizeFiscalLabels(verbatim)).toBe(verbatim);
+    const guidance = 'shipping in the second half of fiscal year 2027';
+    expect(normalizeFiscalLabels(guidance)).toBe(guidance);
+  });
+
+  it('does not touch bare years or non-quarter numbers', () => {
+    expect(normalizeFiscalLabels('revenue grew 92% year over year')).toBe('revenue grew 92% year over year');
+    expect(normalizeFiscalLabels('as of April 26, 2026')).toBe('as of April 26, 2026');
   });
 });
 

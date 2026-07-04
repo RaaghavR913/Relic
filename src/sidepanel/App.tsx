@@ -41,11 +41,11 @@ import {
   BrandLogo,
   SettingsButton,
   LockIcon,
-  TryRealFilingLink,
   stateColor,
   stateLabel,
 } from './ui';
 import { useAnalysisActive } from './analysisActivity';
+import { fmtCalendarDate } from '@/lib/date';
 
 const ONBOARDED_KEY = 'relic:onboarded';
 
@@ -104,10 +104,7 @@ function tabsForDoc(doc: DocumentModel | null): Array<{ id: TabId; label: string
 }
 
 function fmtDate(iso?: string): string | null {
-  if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  return fmtCalendarDate(iso, 'short') || null;
 }
 
 function analyzeFailCopy(response: AnalyzePageResponse | undefined): string {
@@ -337,7 +334,6 @@ function NoFiling({
         title="No filing open"
         body="Open an SEC filing to get started, or analyze the page you’re on."
       />
-      <TryRealFilingLink className="w-full rounded-lg border border-sky-500/40 px-3 py-2 hover:bg-zinc-900/50" />
       <button
         onClick={onAnalyze}
         disabled={analyzing}

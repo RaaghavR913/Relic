@@ -11,7 +11,7 @@
 
 import { m, useReducedMotion } from 'framer-motion';
 import type { Capabilities } from '@/runtime/capabilities';
-import { TierBadge, Banner, BrandLogo, LockIcon, TryRealFilingLink, stateLabel, stateColor } from './ui';
+import { TierBadge, Banner, BrandLogo, LockIcon, stateLabel, stateColor } from './ui';
 
 const ENCODER_MODELS = [
   { name: 'Encoder', role: 'Extractive summary & redline matching' },
@@ -120,9 +120,6 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
       >
         Get Started
       </button>
-
-      {/* Nudge people who installed from the Web Store (not on EDGAR) toward a live filing. */}
-      <TryRealFilingLink className="self-center" />
     </m.div>
   );
 }

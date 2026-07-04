@@ -17,6 +17,7 @@ import type {
 } from '@/types';
 import type { SummaryEntry } from '@/summarizer/summaryStore';
 import type { RedlineEntry } from '@/redline/redlineStore';
+import { fmtCalendarDate } from '@/lib/date';
 
 /** Everything the report renders — gathered from caches by ./collect.ts. */
 export interface FilingExportData {
@@ -59,10 +60,7 @@ export function reportFilename(d: FilingExportData, ext = 'pdf'): string {
 // ── dates ────────────────────────────────────────────────────────────────────
 
 export function fmtDate(iso?: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+  return fmtCalendarDate(iso, 'long');
 }
 
 export function fmtDateTime(ms: number): string {

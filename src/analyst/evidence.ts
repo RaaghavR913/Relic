@@ -11,6 +11,14 @@
 //  2. scrubAdvice — removes sentences that read as direct investment advice
 //     ("you should buy…", "we recommend selling…", "the stock will go up").
 //     Careful analyst language ("may be viewed positively…") passes through.
+//
+//  3. normalizeFiscalLabels — strips the year from the model's fiscal-quarter
+//     shorthand ("Q1 2027" → "Q1"). A filer's fiscal year can lead the calendar
+//     (NVIDIA's FY2027 quarter ends Apr 2026), so a model-asserted year reads as a
+//     future/wrong quarter beside the period date; the period on the page carries
+//     the year instead. Applied ONLY to model-authored prose, never to verbatim
+//     quotes — and it targets only the shorthand, so spelled-out references
+//     ("second half of fiscal year 2027") keep their year.
 // ============================================================
 
 import type { DocumentModel, FilingInsight } from '@/types';
@@ -93,6 +101,26 @@ export function scrubAdvice(text: string): string {
   return kept.join(' ').trim();
 }
 
+// The model's fiscal-quarter shorthand: a quarter token plus an (optionally
+// "FY"-prefixed) 4-digit year — "Q1 2027", "Q1 FY2027", "Q1 FY 2027". Only this
+// shorthand matches; spelled-out references ("first quarter of fiscal year 2027",
+// "second half of fiscal year 2027") don't, so verbatim quotes and genuine
+// forward-looking guidance keep their years.
+const QUARTER_YEAR = /\bQ([1-4])[\s -]+(?:FY\s*)?(?:19|20)\d{2}\b/gi;
+
+/**
+ * Drop the fabricated year from the model's quarter shorthand: "Q1 2027" → "Q1".
+ * A filer's fiscal year can lead the calendar (NVIDIA's FY2027 quarter ends Apr
+ * 2026), so the model's "Q1 2027" reads like a future/wrong quarter next to the
+ * period date the reader sees. Rather than assert a year in prose, we strip it and
+ * let the ONE authoritative period on the page — doc.periodOfReport, shown in the
+ * header — carry the year. Applied only to model-authored prose, never to the
+ * verified verbatim `evidence` quote.
+ */
+export function normalizeFiscalLabels(text: string): string {
+  return text.replace(QUARTER_YEAR, (_m, q: string) => `Q${q}`);
+}
+
 // ── number / figure verification ──────────────────────────────────────────────
 
 /**
@@ -160,9 +188,10 @@ export function scrubUnverifiedFigures(
  * whose summary IS a verbatim source sentence) is preserved for jump-to-source.
  */
 export function finalizeInsight(doc: DocumentModel, insight: FilingInsight): FilingInsight | null {
-  const sum = scrubUnverifiedFigures(scrubAdvice(insight.summary), doc);
-  const why = scrubUnverifiedFigures(scrubAdvice(insight.whyItMatters), doc);
-  const inv = scrubUnverifiedFigures(scrubAdvice(insight.investorMeaning), doc);
+  const clean = (t: string) => normalizeFiscalLabels(scrubAdvice(t));
+  const sum = scrubUnverifiedFigures(clean(insight.summary), doc);
+  const why = scrubUnverifiedFigures(clean(insight.whyItMatters), doc);
+  const inv = scrubUnverifiedFigures(clean(insight.investorMeaning), doc);
   const summary = sum.text;
   const whyItMatters = why.text;
   const investorMeaning = inv.text;
@@ -172,7 +201,7 @@ export function finalizeInsight(doc: DocumentModel, insight: FilingInsight): Fil
   const base: FilingInsight = {
     label: insight.label,
     category: insight.category,
-    title: scrubAdvice(insight.title) || insight.category,
+    title: normalizeFiscalLabels(scrubAdvice(insight.title)) || insight.category,
     summary,
     whyItMatters,
     investorMeaning,

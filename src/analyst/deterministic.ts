@@ -25,7 +25,6 @@ import type {
   SectionDiff,
   SentenceSentiment,
   TimeHorizon,
-  XbrlFact,
   XbrlFundamentals,
 } from '@/types';
 import type { RedlineEntry } from '@/redline/redlineStore';
@@ -34,7 +33,6 @@ import { computeLexiconTone, type ToneSignal } from './lexiconTone';
 import {
   topRelevantSentences,
   sentenceDimensions,
-  NUMERIC,
   type Dimension,
   type ScoredSentence,
 } from './relevance';
@@ -126,16 +124,6 @@ function fmtUsdCompact(v: number): string {
   return `${sign}$${abs.toFixed(2)}`;
 }
 
-/** Compact value for one XBRL fact ("$383.3B", or "$6.13" for per-share). */
-function fmtFactValue(f: XbrlFact): string {
-  return f.unit === 'USD/shares' ? `$${f.currentValue.toFixed(2)}` : fmtUsdCompact(f.currentValue);
-}
-
-/** " (+2.8% YoY)" style suffix, or '' when no prior period was found. */
-function fmtFactYoYSuffix(f: XbrlFact): string {
-  return f.yoyPct !== undefined ? ` (${f.yoyPct >= 0 ? '+' : ''}${(f.yoyPct * 100).toFixed(1)}% YoY)` : '';
-}
-
 /**
  * One-line, exact-figure headline from the filing's own inline XBRL (revenue,
  * net income, and diluted EPS, each with YoY when a prior period was found).
@@ -150,57 +138,11 @@ function xbrlHeadline(xbrl: XbrlFundamentals | undefined): string {
   for (const label of ['Revenue', 'Net income', 'Diluted EPS'] as const) {
     const f = by(label);
     if (!f) continue;
-    parts.push(`${label} ${fmtFactValue(f)}${fmtFactYoYSuffix(f)}`);
+    const value = f.unit === 'USD/shares' ? `$${f.currentValue.toFixed(2)}` : fmtUsdCompact(f.currentValue);
+    const yoy = f.yoyPct !== undefined ? ` (${f.yoyPct >= 0 ? '+' : ''}${(f.yoyPct * 100).toFixed(1)}% YoY)` : '';
+    parts.push(`${label} ${value}${yoy}`);
   }
   return parts.join(', ');
-}
-
-// ── fact-based card titling (deterministic tier) ──────────────────────────────
-// A card's title leads with its exact XBRL fact when the filing reports one
-// ("Revenue +2.8% YoY to $383.3B"); else a key numeric phrase from the source
-// sentence; else the section label (the pre-existing behaviour).
-
-const DIM_XBRL_LABELS: Partial<Record<Exclude<Dimension, 'overview'>, readonly string[]>> = {
-  revenue: ['Revenue'],
-  margins: ['Operating income', 'Net income', 'Gross profit'],
-  cashflow: ['Operating cash flow'],
-  balancesheet: ['Total assets', 'Total liabilities', 'Cash & equivalents'],
-  shares: ['Diluted shares', 'Shares outstanding'],
-};
-
-/** The lead XBRL fact for a dimension (first reported label in the row wins), if any. */
-function factForDim(
-  dim: Exclude<Dimension, 'overview'>,
-  xbrl: XbrlFundamentals | undefined,
-): XbrlFact | undefined {
-  if (!xbrl) return undefined;
-  for (const label of DIM_XBRL_LABELS[dim] ?? []) {
-    const f = xbrl.facts.find((x) => x.label === label);
-    if (f) return f;
-  }
-  return undefined;
-}
-
-/** "Revenue +2.8% YoY to $383.3B" — the delta leads when a prior period exists. */
-function factTitle(f: XbrlFact): string {
-  const value = fmtFactValue(f);
-  if (f.yoyPct === undefined) return `${f.label} ${value}`;
-  const pct = `${f.yoyPct >= 0 ? '+' : ''}${(f.yoyPct * 100).toFixed(1)}% YoY`;
-  return `${f.label} ${pct} to ${value}`;
-}
-
-/** First clause of the sentence carrying a figure/%/$ amount, as a card title. */
-export function numericPhraseTitle(text: string): string | null {
-  // Split on commas/semicolons and sentence-final periods — but NOT the decimal
-  // point in "$94.9", so a figure is never cut mid-number.
-  for (const clause of text.split(/[;,]|\.(?=\s|$)/)) {
-    const c = clause.trim();
-    if (c.length >= 12 && NUMERIC.test(c)) {
-      const capped = c.length > 72 ? c.slice(0, 69).trimEnd() + '…' : c;
-      return capped.charAt(0).toUpperCase() + capped.slice(1);
-    }
-  }
-  return null;
 }
 
 export function buildHints(doc: DocumentModel, aux: AuxSignals): string {
@@ -311,58 +253,21 @@ function sectionSkew(
   return { label, net, n: s.length };
 }
 
-/**
- * Choose the "Investor view" line by the card's dominant signal, so different
- * cards read differently instead of repeating one canned sentence:
- *   • an exact XBRL delta (hardest signal) → cite the figure;
- *   • dense cautionary flags in a risk section → cite the flag count;
- *   • otherwise a meaningful FinBERT skew → cite the tone;
- *   • else no line (the dedup pass also blanks any that still repeat).
- */
-function investorMeaningFor(
-  dim: Exclude<Dimension, 'overview'>,
-  s: ScoredSentence,
-  skew: { label: InsightLabel; net: number; n: number },
-  leadFact: XbrlFact | undefined,
-  aux: AuxSignals,
-): string {
-  if (leadFact?.yoyPct !== undefined) {
-    // No percentage in this line: the exact YoY figure is already in the
-    // (un-scrubbed) card title. Restating "12.8%" here would trip the
-    // fabricated-figure guard in finalizeInsight, which can't tell trusted XBRL
-    // from invented numbers, and the whole line would be dropped.
-    const dir = leadFact.yoyPct >= 0 ? 'higher' : 'lower';
-    return `${leadFact.label} moved ${dir} year over year in the filing's own XBRL — the exact figure in the title, not the surrounding prose, is the signal.`;
-  }
-  if (dim === 'risk') {
-    const n = (aux.flags ?? []).filter((f) => f.sectionId === s.sectionId && !f.boilerplate).length;
-    if (n >= 3) {
-      return `This section carries ${n} cautionary-language flags — compare the count against the prior year to see whether disclosure risk is rising.`;
-    }
-  }
-  if (skew.n >= 3 && skew.label !== 'Neutral') {
-    return skew.net > 0
-      ? `On-device sentiment leans positive across the ${s.sectionLabel} language.`
-      : `On-device sentiment leans negative across the ${s.sectionLabel} language.`;
-  }
-  return '';
-}
-
 /** Turn one scored sentence into a verified, advice-scrubbed insight card. */
 function insightFromSentence(
   doc: DocumentModel,
   s: ScoredSentence,
   dim: Exclude<Dimension, 'overview'>,
   aux: AuxSignals,
-  /** When present, title this card by the exact fact (the dimension's lead card). */
-  leadFact?: XbrlFact,
 ): FilingInsight | null {
   const meta = DIM_META[dim];
   const skew = sectionSkew(s.sectionId, aux.sentiments, aux.tone);
   const label: InsightLabel =
     dim === 'risk' ? (skew.net < -0.2 ? 'Red Flag' : 'Watch Item') : skew.label;
-  const title = leadFact ? factTitle(leadFact) : (numericPhraseTitle(s.text) ?? s.sectionLabel);
-  const investorMeaning = investorMeaningFor(dim, s, skew, leadFact, aux);
+  const investorMeaning =
+    skew.n >= 3 && skew.label !== 'Neutral'
+      ? `On-device sentiment reads the ${s.sectionLabel} language as net-${skew.net > 0 ? 'positive' : 'negative'}.`
+      : '';
   // The summary IS a verbatim source sentence, so its document-space range gives
   // the fallback tier a working jump-to-source (the ↗ button) without a separate
   // quote. finalizeInsight preserves this range.
@@ -373,7 +278,7 @@ function insightFromSentence(
   return finalizeInsight(doc, {
     label,
     category: meta.category,
-    title,
+    title: s.sectionLabel,
     summary: s.text,
     whyItMatters: meta.why,
     investorMeaning,
@@ -390,11 +295,8 @@ function buildDimInsights(
   dim: Exclude<Dimension, 'overview'>,
   limit: number,
 ): FilingInsight[] {
-  // The highest-scored card for the dimension is titled by its exact XBRL fact;
-  // the rest fall back to a numeric phrase / section label so titles don't repeat.
-  const leadFact = factForDim(dim, doc.xbrl);
   return topRelevantSentences(doc, [dim], limit)
-    .map((s, i) => insightFromSentence(doc, s, dim, aux, i === 0 ? leadFact : undefined))
+    .map((s) => insightFromSentence(doc, s, dim, aux))
     .filter((x): x is FilingInsight => x !== null);
 }
 
@@ -405,21 +307,13 @@ function buildTakeaways(doc: DocumentModel, aux: AuxSignals, limit: number): Fil
   ];
   const pool = topRelevantSentences(doc, dims, limit * 3);
   const seen = new Set<string>();
-  // Give the first takeaway for each dimension its exact fact title; later ones for
-  // the same dimension fall back so two takeaways never share one fact title.
-  const factUsed = new Set<Exclude<Dimension, 'overview'>>();
   const out: FilingInsight[] = [];
   for (const s of pool) {
     const key = s.text.slice(0, 80).toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
     const dim = sentenceDimensions(s.text)[0] ?? 'revenue';
-    let leadFact: XbrlFact | undefined;
-    if (!factUsed.has(dim)) {
-      leadFact = factForDim(dim, doc.xbrl);
-      if (leadFact) factUsed.add(dim);
-    }
-    const ins = insightFromSentence(doc, s, dim, aux, leadFact);
+    const ins = insightFromSentence(doc, s, dim, aux);
     if (ins) out.push(ins);
     if (out.length >= limit) break;
   }
@@ -518,20 +412,6 @@ export function deterministicAnalysis(
   if (shareImpact.length) stagesDone.push('shares');
   if (riskSignals.length) stagesDone.push('risks');
 
-  // "Investor view" de-duplication: keep the first occurrence (top-down render
-  // order, which is also this object's property order) and blank later exact
-  // repeats. Object-literal property values evaluate top-to-bottom, so threading
-  // one shared set through the calls below dedupes cards in the order users see.
-  const seenMeaning = new Set<string>();
-  const dedupeMeaning = (items: FilingInsight[]): FilingInsight[] =>
-    items.map((it) => {
-      const meaning = it.investorMeaning.trim();
-      if (!meaning) return it;
-      if (seenMeaning.has(meaning)) return { ...it, investorMeaning: '' };
-      seenMeaning.add(meaning);
-      return it;
-    });
-
   return {
     documentType,
     ...(doc.companyName !== undefined ? { companyName: doc.companyName } : {}),
@@ -546,14 +426,14 @@ export function deterministicAnalysis(
       mostImportantInvestorQuestion:
         QUESTION_BY_TYPE[documentType] ?? QUESTION_BY_TYPE['Other']!,
     },
-    topTakeaways: dedupeMeaning(topTakeaways),
-    whatChanged: dedupeMeaning(whatChanged),
-    revenueImpact: dedupeMeaning(revenueImpact),
-    marginImpact: dedupeMeaning(marginImpact),
-    cashFlowImpact: dedupeMeaning(cashFlowImpact),
-    balanceSheetHealth: dedupeMeaning(balanceSheetHealth),
-    shareImpact: dedupeMeaning(shareImpact),
-    riskSignals: dedupeMeaning(riskSignals),
+    topTakeaways,
+    whatChanged,
+    revenueImpact,
+    marginImpact,
+    cashFlowImpact,
+    balanceSheetHealth,
+    shareImpact,
+    riskSignals,
     managementNarrativeCheck: [],
     bullCase: [],
     bearCase: [],

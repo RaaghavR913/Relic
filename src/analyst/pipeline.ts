@@ -44,7 +44,7 @@ import {
   narrativeSchema,
   synthesisSchema,
 } from './prompts';
-import { finalizeInsight, scrubAdvice, scrubUnverifiedFigures } from './evidence';
+import { finalizeInsight, scrubAdvice, scrubUnverifiedFigures, normalizeFiscalLabels } from './evidence';
 import {
   buildHints,
   deterministicAnalysis,
@@ -383,13 +383,14 @@ export async function generateFilingAnalysis(
     analysis.overallRead = coerce(o['overallRead'], READS, 'Neutral');
     analysis.confidence = coerce(o['confidence'], CONFIDENCES, 'Low');
     analysis.oneSentenceSummary =
-      scrubAdvice(str(o['oneSentenceSummary'])) || analysis.oneSentenceSummary;
+      normalizeFiscalLabels(scrubAdvice(str(o['oneSentenceSummary']))) || analysis.oneSentenceSummary;
     analysis.investorSnapshot = {
       mainFinancialTheme:
-        scrubAdvice(str(o['mainFinancialTheme'])) || analysis.investorSnapshot.mainFinancialTheme,
+        normalizeFiscalLabels(scrubAdvice(str(o['mainFinancialTheme']))) ||
+        analysis.investorSnapshot.mainFinancialTheme,
       timeHorizon: coerce(o['timeHorizon'], HORIZONS, analysis.investorSnapshot.timeHorizon),
       mostImportantInvestorQuestion:
-        scrubAdvice(str(o['mostImportantInvestorQuestion'])) ||
+        normalizeFiscalLabels(scrubAdvice(str(o['mostImportantInvestorQuestion']))) ||
         analysis.investorSnapshot.mostImportantInvestorQuestion,
     };
     anyLMSuccess = true;
@@ -473,10 +474,10 @@ export async function generateFilingAnalysis(
         // it is not verbatim-verified — but any FIGURE it cites must exist in the
         // source (guards against fabricated numbers in the management-claim check).
         checks.push({
-          claim,
-          evidence: scrubUnverifiedFigures(scrubAdvice(str(o['evidence'])), doc).text,
+          claim: normalizeFiscalLabels(claim),
+          evidence: scrubUnverifiedFigures(normalizeFiscalLabels(scrubAdvice(str(o['evidence']))), doc).text,
           assessment: coerce(o['assessment'], ASSESSMENTS, 'Unclear'),
-          investorMeaning: scrubUnverifiedFigures(scrubAdvice(str(o['investorMeaning'])), doc).text,
+          investorMeaning: scrubUnverifiedFigures(normalizeFiscalLabels(scrubAdvice(str(o['investorMeaning']))), doc).text,
         });
       }
       analysis.managementNarrativeCheck = checks;
@@ -498,10 +499,12 @@ export async function generateFilingAnalysis(
     if (synthRaw && typeof synthRaw === 'object') {
       const o = synthRaw as Record<string, unknown>;
       const strArr = (v: unknown, max: number): string[] =>
-        Array.isArray(v) ? v.map(str).map(scrubAdvice).filter(Boolean).slice(0, max) : [];
+        Array.isArray(v)
+          ? v.map(str).map((s) => normalizeFiscalLabels(scrubAdvice(s))).filter(Boolean).slice(0, max)
+          : [];
       analysis.bullCase = strArr(o['bullCase'], 5);
       analysis.bearCase = strArr(o['bearCase'], 5);
-      analysis.netRead = scrubAdvice(str(o['netRead']));
+      analysis.netRead = normalizeFiscalLabels(scrubAdvice(str(o['netRead'])));
       if (Array.isArray(o['whatToWatchNext'])) {
         const items: WatchItem[] = [];
         for (const w of (o['whatToWatchNext'] as unknown[]).slice(0, 6)) {
@@ -511,8 +514,8 @@ export async function generateFilingAnalysis(
           if (!item) continue;
           const relatedMetric = str(wo['relatedMetric']);
           items.push({
-            item,
-            whyItMatters: scrubAdvice(str(wo['whyItMatters'])),
+            item: normalizeFiscalLabels(item),
+            whyItMatters: normalizeFiscalLabels(scrubAdvice(str(wo['whyItMatters']))),
             ...(relatedMetric ? { relatedMetric } : {}),
           });
         }

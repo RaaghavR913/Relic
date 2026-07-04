@@ -228,35 +228,6 @@ export function LockIcon({ className = 'h-4 w-4' }: { className?: string }) {
   );
 }
 
-// ── "try it on a real filing" ─────────────────────────────────────────────────
-
-/**
- * Stable, well-known large-cap 10-K used as the onboarding demo — Apple's FY2023
- * filing on the SEC inline-XBRL viewer. Verified to return 200 from sec.gov.
- * The content script auto-runs on sec.gov, so opening this lights up the panel.
- */
-export const DEMO_FILING_URL =
-  'https://www.sec.gov/ix?doc=/Archives/edgar/data/320193/000032019323000106/aapl-20230930.htm';
-
-/**
- * "Try it on a real filing →" — opens the demo 10-K in a new tab. Rendered as an
- * anchor (not chrome.tabs.create) so it works identically in the extension side
- * panel and the mock dev preview, and honors zero-egress (a user-initiated GET to
- * sec.gov, which the CSP already allows).
- */
-export function TryRealFilingLink({ className = '' }: { className?: string }) {
-  return (
-    <a
-      href={DEMO_FILING_URL}
-      target="_blank"
-      rel="noreferrer"
-      className={`inline-flex items-center justify-center gap-1 text-[13px] font-medium text-sky-400 underline decoration-sky-400/40 underline-offset-2 transition hover:text-sky-300 hover:decoration-sky-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 ${className}`}
-    >
-      Try it on a real filing →
-    </a>
-  );
-}
-
 // ── empty state ───────────────────────────────────────────────────────────────
 
 export function EmptyState({ title, body }: { title: string; body?: ReactNode }) {

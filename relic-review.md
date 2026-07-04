@@ -79,23 +79,22 @@
 
 1. **Host the privacy policy and complete the CWS dashboard privacy section.** Content is done; this is the only true submission blocker left.
 2. **Fix the wrong "Generation mode" description in Settings.** It claims the mode is "Chosen automatically from the page you're viewing" ([SettingsApp.tsx:339](src/settings/SettingsApp.tsx)) — it's chosen from *device capability* ([capabilities.ts:133](src/runtime/capabilities.ts)). One string. Also make the extractive status read as a healthy state ("Extractive · Ready"), not gray-implies-broken.
-3. **"Try it on a real filing →" link in first-run and the empty state.** Most installs happen from the Web Store, not on EDGAR; after onboarding the user lands on "No filing open" ([App.tsx:302](src/sidepanel/App.tsx)) with no next step, and [FirstRun.tsx](src/sidepanel/FirstRun.tsx) has no link either. One anchor to a known 10-K is probably the single highest-leverage retention fix available.
-4. **Gate the 23 `console.debug` calls behind a dev flag.** Reviewers open the SW console.
+3. **Gate the 23 `console.debug` calls behind a dev flag.** Reviewers open the SW console.
 
 **Tier 2 — high impact, medium effort:**
 
-5. **Typography consolidation** (see §4.1) — the biggest remaining trust/polish gap.
-6. **Sentiment throughput on WASM-only devices.** FinBERT runs `CLASSIFY_BATCH = 8`, `CLASSIFY_CONCURRENCY = 1`, `numThreads: 1` ([offscreen.ts:75–77, 214](src/offscreen/offscreen.ts)). A large 10-K (3–5k sentences) on a no-WebGPU machine means hundreds of sequential single-threaded int8 BERT batches — plausibly minutes. In order of leverage: (a) cross-origin-isolate the offscreen document (`cross_origin_embedder_policy`/`cross_origin_opener_policy` manifest keys) to unlock `numThreads > 1`; (b) score visible/MD&A/Risk-Factors sections first and lazy-score the rest; (c) surface an ETA in the progress UI.
-7. **Session-storage payload hygiene.** `persistFilingToSession` writes the entire `DocumentModel` per filing hash and never deletes prior hashes ([src/shared/filingSession.ts:14–24](src/shared/filingSession.ts)). `chrome.storage.session` has a 10 MB quota — a few large 10-Ks in one browser session can hit it, and the retry path fails the same way. Evict old `filing:model:*`/`filing:flags:*` keys on write.
-8. **Verify the optional-site selectors before promoting those sites.** Every content/consent/paywall selector in [siteProfiles.ts](src/content/ingest/siteProfiles.ts) is still marked "UNVERIFIED — best guess" (lines 28–100, 201). Since the sites are opt-in this no longer blocks the listing, but a granted-then-broken site is worse than an absent one: an evening with live DOM captures, or trim the list to what you've verified.
+4. **Typography consolidation** (see §4.1) — the biggest remaining trust/polish gap.
+5. **Sentiment throughput on WASM-only devices.** FinBERT runs `CLASSIFY_BATCH = 8`, `CLASSIFY_CONCURRENCY = 1`, `numThreads: 1` ([offscreen.ts:75–77, 214](src/offscreen/offscreen.ts)). A large 10-K (3–5k sentences) on a no-WebGPU machine means hundreds of sequential single-threaded int8 BERT batches — plausibly minutes. In order of leverage: (a) cross-origin-isolate the offscreen document (`cross_origin_embedder_policy`/`cross_origin_opener_policy` manifest keys) to unlock `numThreads > 1`; (b) score visible/MD&A/Risk-Factors sections first and lazy-score the rest; (c) surface an ETA in the progress UI.
+6. **Session-storage payload hygiene.** `persistFilingToSession` writes the entire `DocumentModel` per filing hash and never deletes prior hashes ([src/shared/filingSession.ts:14–24](src/shared/filingSession.ts)). `chrome.storage.session` has a 10 MB quota — a few large 10-Ks in one browser session can hit it, and the retry path fails the same way. Evict old `filing:model:*`/`filing:flags:*` keys on write.
+7. **Verify the optional-site selectors before promoting those sites.** Every content/consent/paywall selector in [siteProfiles.ts](src/content/ingest/siteProfiles.ts) is still marked "UNVERIFIED — best guess" (lines 28–100, 201). Since the sites are opt-in this no longer blocks the listing, but a granted-then-broken site is worse than an absent one: an evening with live DOM captures, or trim the list to what you've verified.
 
 **Tier 3 — medium impact:**
 
-9. ~~Delete duplicate legacy modules~~ **Correction:** the `segment`/`positionMap` pairs are *not* duplicates — [ingest/segment.ts](src/content/ingest/segment.ts) and [ingest/position-map.ts](src/content/ingest/position-map.ts) are thin wrappers delegating to the real implementations in [src/content/segment.ts](src/content/segment.ts) and [src/content/positionMap.ts](src/content/positionMap.ts). No action needed beyond, optionally, a header comment noting the layering.
-10. **Memory ceiling with both models resident.** Encoder + FinBERT + ORT arenas can push the offscreen doc toward 1 GB peak on WASM. Consider unloading FinBERT as soon as sentiment for the current filing completes (results are cached by hash) rather than waiting for the 5-min idle timer.
-11. **EDGAR fetches ignore UI cancellation.** `fetchEdgarText` accepts an `AbortSignal` ([edgarQueue.ts:71, 110](src/background/edgarQueue.ts)) but `handleComputeRedline` never wires one ([service-worker.ts:160–211](src/background/service-worker.ts)), so closing the panel mid-redline leaves the fetch chain running. Low harm (rate-limited), easy to plumb.
-12. **Deterministic-tier copy variety** — see §5.1.
-13. **Version accent `#39FF14`.** Now confined to the version strings ([ui.tsx:185](src/sidepanel/ui.tsx), [SettingsApp.tsx:256](src/settings/SettingsApp.tsx)) — the insight-card labels were already toned down to `#00C68D`. Finish the job; terminal-green reads hacker, not fiduciary.
+8. ~~Delete duplicate legacy modules~~ **Correction:** the `segment`/`positionMap` pairs are *not* duplicates — [ingest/segment.ts](src/content/ingest/segment.ts) and [ingest/position-map.ts](src/content/ingest/position-map.ts) are thin wrappers delegating to the real implementations in [src/content/segment.ts](src/content/segment.ts) and [src/content/positionMap.ts](src/content/positionMap.ts). No action needed beyond, optionally, a header comment noting the layering.
+9. **Memory ceiling with both models resident.** Encoder + FinBERT + ORT arenas can push the offscreen doc toward 1 GB peak on WASM. Consider unloading FinBERT as soon as sentiment for the current filing completes (results are cached by hash) rather than waiting for the 5-min idle timer.
+10. **EDGAR fetches ignore UI cancellation.** `fetchEdgarText` accepts an `AbortSignal` ([edgarQueue.ts:71, 110](src/background/edgarQueue.ts)) but `handleComputeRedline` never wires one ([service-worker.ts:160–211](src/background/service-worker.ts)), so closing the panel mid-redline leaves the fetch chain running. Low harm (rate-limited), easy to plumb.
+11. **Deterministic-tier copy variety** — see §5.1.
+12. **Version accent `#39FF14`.** Now confined to the version strings ([ui.tsx:185](src/sidepanel/ui.tsx), [SettingsApp.tsx:256](src/settings/SettingsApp.tsx)) — the insight-card labels were already toned down to `#00C68D`. Finish the job; terminal-green reads hacker, not fiduciary.
 
 ---
 
@@ -106,11 +105,10 @@
 **Specific issues, in priority order:**
 
 1. **Typography is chaotic and undermines trust — the #1 remaining UI issue.** The side panel mixes Roboto, Georgia, Times New Roman, Times, and system-ui via dozens of inline `font-[...]` overrides, sometimes within one line: company name in Georgia with its ticker in Times New Roman ([App.tsx:210–212](src/sidepanel/App.tsx)); the primary CTA in `font-[Times,serif]` ([App.tsx:306](src/sidepanel/App.tsx)); "Analyze this page" in Georgia ([App.tsx:622](src/sidepanel/App.tsx)); FirstRun alternating per-block. The settings page separately uses its own serif stack. Pick two faces — one serif for display headings, system-ui for everything else — define them once in [index.css](src/sidepanel/index.css), and delete every inline override. This is a mechanical, low-risk change with outsized perceived-quality payoff.
-2. **First-run and the empty state don't let the user experience value** (§3.3). Add "Try it on a real filing →" to the onboarding CTA area and the `NoFiling` empty state, opening a well-known 10-K on EDGAR.
-3. **The "Where Relic works" card occupies prime panel real estate on every view** ([App.tsx:592](src/sidepanel/App.tsx) renders it above the tabs unconditionally). After the first session it's noise pushing analysis below the fold. Collapse it to a single line once a filing has loaded successfully at least once.
-4. **Settings "Generation mode" copy is wrong** (§3.2) — the only factual error on the page; fix before a reviewer or user notices the mismatch.
-5. **Privacy communication is good but passive.** The promise lives in onboarding and settings, but during an actual analysis nothing marks the processing as local. A small "On-device" lock chip in the panel header during active analysis (tooltip: "This analysis never leaves your machine") would surface the differentiator at the exact moment a cloud competitor would be uploading. Keep the settings privacy sentence in sync if permissions ever change.
-6. Minor: the FAQ answer about generation mode taking "a little longer the first time" avoids saying "Chrome downloads Gemini Nano (~2 GB)" — being concrete would preempt "is this really offline?" one-star reviews; the version accent `#39FF14` (§3.13).
+2. **The "Where Relic works" card occupies prime panel real estate on every view** ([App.tsx:592](src/sidepanel/App.tsx) renders it above the tabs unconditionally). After the first session it's noise pushing analysis below the fold. Collapse it to a single line once a filing has loaded successfully at least once.
+3. **Settings "Generation mode" copy is wrong** (§3.2) — the only factual error on the page; fix before a reviewer or user notices the mismatch.
+4. **Privacy communication is good but passive.** The promise lives in onboarding and settings, but during an actual analysis nothing marks the processing as local. A small "On-device" lock chip in the panel header during active analysis (tooltip: "This analysis never leaves your machine") would surface the differentiator at the exact moment a cloud competitor would be uploading. Keep the settings privacy sentence in sync if permissions ever change.
+5. Minor: the FAQ answer about generation mode taking "a little longer the first time" avoids saying "Chrome downloads Gemini Nano (~2 GB)" — being concrete would preempt "is this really offline?" one-star reviews; the version accent `#39FF14` (§3.13).
 
 ---
 
@@ -164,32 +162,31 @@ Highest priority to lowest. "Blocker" = required to submit; everything else impr
 | 1 | Host [PRIVACY.md](PRIVACY.md) at a public URL; complete CWS dashboard privacy disclosures + certifications | **Submission blocker** | ~1 hr, no code |
 | 2 | Store assets: 5 screenshots, 440×280 promo tile, final description (§1.3 draft), category, verified publisher email | **Submission blocker** | ~half day, no code |
 | 3 | Fix Settings "Generation mode" description + extractive status label ([SettingsApp.tsx:339](src/settings/SettingsApp.tsx)) | Factual error on the trust page | ~15 min |
-| 4 | "Try it on a real filing →" link in FirstRun + NoFiling empty state | Highest-leverage retention fix; most installs land off-EDGAR | ~1 hr |
-| 5 | Typography consolidation: two faces defined in CSS, delete all inline `font-[...]` overrides; retire `#39FF14` | Biggest perceived-quality gap; mechanical | ~half day |
-| 6 | Gate `console.debug` (23 call sites) behind a dev flag | Reviewers open the SW console | ~1 hr |
-| 7 | Collapse "Where Relic works" card after first successful filing | Reclaims prime panel space | ~1 hr |
-| 8 | Session-storage eviction in `persistFilingToSession` ([filingSession.ts:14–24](src/shared/filingSession.ts)) | Real quota failure after a few large filings | ~2 hrs + test |
-| 9 | WASM sentiment throughput: COOP/COEP cross-origin isolation → `numThreads > 1`; prioritize MD&A/Risk sections; show ETA | Minutes-long waits on no-WebGPU machines | 1–2 days |
-| 10 | "On-device" lock chip in panel header during analysis | Makes the differentiator visible at the moment of value | ~2 hrs |
-| 11 | Deterministic-tier copy variety (title by lead XBRL fact/key phrase; vary/suppress templates) | The extractive majority sees this as the product | ~1 day |
-| 12 | Semantic excerpt selection for LM stages using the existing embedder | Biggest LM-quality lever without changing models | 1–2 days |
-| 13 | ~~Delete duplicate legacy modules~~ — withdrawn: the `ingest/` files are wrappers over live implementations, not duplicates | n/a | n/a |
-| 14 | Wire `AbortSignal` from panel → `handleComputeRedline`; unload FinBERT after sentiment completes | Resource hygiene | ~half day |
-| 15 | Relabel 1–5 scores as "model impression" or derive from deterministic signals | Credibility protection | ~half day (relabel) / 2 days (derive) |
-| 16 | Per-section sentiment normalization / boilerplate damping for Risk Factors | Removes systematic red skew | 1–2 days |
-| 17 | Verify optional-site selectors with live DOM captures, or trim the optional-host list | Broken opt-in sites are worse than absent ones | ~1 evening |
-| 18 | Financial-sector XBRL concept rows (banks/insurers/REITs) | Coverage gap; wait for real-world reports | ~half day, post-launch |
+| 4 | Typography consolidation: two faces defined in CSS, delete all inline `font-[...]` overrides; retire `#39FF14` | Biggest perceived-quality gap; mechanical | ~half day |
+| 5 | Gate `console.debug` (23 call sites) behind a dev flag | Reviewers open the SW console | ~1 hr |
+| 6 | Collapse "Where Relic works" card after first successful filing | Reclaims prime panel space | ~1 hr |
+| 7 | Session-storage eviction in `persistFilingToSession` ([filingSession.ts:14–24](src/shared/filingSession.ts)) | Real quota failure after a few large filings | ~2 hrs + test |
+| 8 | WASM sentiment throughput: COOP/COEP cross-origin isolation → `numThreads > 1`; prioritize MD&A/Risk sections; show ETA | Minutes-long waits on no-WebGPU machines | 1–2 days |
+| 9 | "On-device" lock chip in panel header during analysis | Makes the differentiator visible at the moment of value | ~2 hrs |
+| 10 | Deterministic-tier copy variety (title by lead XBRL fact/key phrase; vary/suppress templates) | The extractive majority sees this as the product | ~1 day |
+| 11 | Semantic excerpt selection for LM stages using the existing embedder | Biggest LM-quality lever without changing models | 1–2 days |
+| 12 | ~~Delete duplicate legacy modules~~ — withdrawn: the `ingest/` files are wrappers over live implementations, not duplicates | n/a | n/a |
+| 13 | Wire `AbortSignal` from panel → `handleComputeRedline`; unload FinBERT after sentiment completes | Resource hygiene | ~half day |
+| 14 | Relabel 1–5 scores as "model impression" or derive from deterministic signals | Credibility protection | ~half day (relabel) / 2 days (derive) |
+| 15 | Per-section sentiment normalization / boilerplate damping for Risk Factors | Removes systematic red skew | 1–2 days |
+| 16 | Verify optional-site selectors with live DOM captures, or trim the optional-host list | Broken opt-in sites are worse than absent ones | ~1 evening |
+| 17 | Financial-sector XBRL concept rows (banks/insurers/REITs) | Coverage gap; wait for real-world reports | ~half day, post-launch |
 
 ## 8. Shipping Plan by Session
 
 **Session A — Submission package (no code).** Items 1–2: publish the privacy policy, capture screenshots against a real 10-K (build + load unpacked, use the §1.3 shot list), make the promo tile, finalize description and dashboard fields. *Exit: extension submitted for review.*
 
-**Session B — Pre-launch polish PR (parallel with review queue).** Items 3–7: settings copy fix, first-run/empty-state EDGAR link, typography consolidation, debug-log gating, WhereItWorks collapse. One focused UI PR, verified in the dev preview (`npm run dev:ui`). *Exit: v1.2.8 ready to push as the first update.*
+**Session B — Pre-launch polish PR (parallel with review queue).** Items 3–6: settings copy fix, typography consolidation, debug-log gating, WhereItWorks collapse. One focused UI PR, verified in the dev preview (`npm run dev:ui`). *Exit: v1.2.8 ready to push as the first update.*
 
-**Session C — Reliability & hygiene.** Items 8 and 14: session-storage eviction (with a test mirroring [idbEvict.test.ts](tests/idbEvict.test.ts)), abort wiring + eager FinBERT unload. Small, independently verifiable changes. *Exit: no known resource-exhaustion paths.*
+**Session C — Reliability & hygiene.** Items 7 and 13: session-storage eviction (with a test mirroring [idbEvict.test.ts](tests/idbEvict.test.ts)), abort wiring + eager FinBERT unload. Small, independently verifiable changes. *Exit: no known resource-exhaustion paths.*
 
-**Session D — WASM performance.** Items 9, 10: cross-origin-isolate the offscreen document, enable multi-threaded ORT, section prioritization, progress ETA, and the on-device chip (it earns its place once analysis is fast enough to watch). Needs manual testing on a no-WebGPU machine or with WebGPU force-disabled. *Exit: large 10-K sentiment under ~30 s on a WASM-only laptop, with visible progress.*
+**Session D — WASM performance.** Items 8, 9: cross-origin-isolate the offscreen document, enable multi-threaded ORT, section prioritization, progress ETA, and the on-device chip (it earns its place once analysis is fast enough to watch). Needs manual testing on a no-WebGPU machine or with WebGPU force-disabled. *Exit: large 10-K sentiment under ~30 s on a WASM-only laptop, with visible progress.*
 
-**Session E — Output quality v2.** Items 11, 12, 15, 16: deterministic copy variety, semantic excerpt selection, score treatment, sentiment normalization. The highest-skill session; do after launch feedback confirms where users actually notice shallowness. *Exit: extractive tier no longer reads templated; LM takeaways stop missing headline facts.*
+**Session E — Output quality v2.** Items 10, 11, 14, 15: deterministic copy variety, semantic excerpt selection, score treatment, sentiment normalization. The highest-skill session; do after launch feedback confirms where users actually notice shallowness. *Exit: extractive tier no longer reads templated; LM takeaways stop missing headline facts.*
 
-**Session F — Coverage & distribution.** Items 17, 18 plus launch work: verify or trim optional sites, sector XBRL rows as bug reports arrive, Show HN post on the zero-egress engineering, demo GIF of the redline, landing copy built on the research-trail argument. *Exit: launched, with the wedge story told correctly.*
+**Session F — Coverage & distribution.** Items 16, 17 plus launch work: verify or trim optional sites, sector XBRL rows as bug reports arrive, Show HN post on the zero-egress engineering, demo GIF of the redline, landing copy built on the research-trail argument. *Exit: launched, with the wedge story told correctly.*

@@ -8,6 +8,7 @@
 // ============================================================
 
 import type { DocumentModel, XbrlFact, XbrlMetric, XbrlUnit } from '@/types';
+import { fmtCalendarDate } from '@/lib/date';
 
 // Mirrors the jump-to-source pattern used for verified insight evidence
 // (see AnalystPanel.tsx) — a direct tabs.sendMessage to the content script.
@@ -59,10 +60,7 @@ function fmtPct(v: number): string {
 }
 
 function fmtDate(iso?: string): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  return fmtCalendarDate(iso, 'short');
 }
 
 function deltaColor(v: number | undefined): string {
