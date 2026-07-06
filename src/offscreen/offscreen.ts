@@ -35,7 +35,10 @@ import type {
   AlignmentSummary,
   OffscreenEmbedMsg,
   EmbedTextsResponse,
+  OffscreenParsePdfMsg,
+  ParsePdfResponse,
 } from '@/messages/types';
+import { parsePdf, base64ToBytes } from './pdfParse';
 import type { DocumentModel, Section, SentenceSentiment, SectionDiff } from '@/types';
 import { filterNonTableSentences } from './sentenceFilter';
 import { debugLog } from '@/lib/debug';
@@ -906,6 +909,16 @@ chrome.runtime.onMessage.addListener(
       embedTexts(m)
         .then(sendResponse)
         .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }));
+      return true;
+    }
+
+    if (msg.type === 'PARSE_PDF') {
+      const m = msg as OffscreenParsePdfMsg;
+      parsePdf(base64ToBytes(m.bytesB64))
+        .then(({ text, pages }) => sendResponse({ ok: true, text, pages } satisfies ParsePdfResponse))
+        .catch((err: unknown) =>
+          sendResponse({ ok: false, error: String(err) } satisfies ParsePdfResponse),
+        );
       return true;
     }
 

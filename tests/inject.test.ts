@@ -39,9 +39,11 @@ describe('classifyInjectability', () => {
     expect(classifyInjectability('devtools://devtools/bundled/inspector.html')).toBe('unsupported');
   });
 
-  it('classifies local files (including PDFs) as unsupported', () => {
-    expect(classifyInjectability('file:///Users/x/annual-report.pdf')).toBe('unsupported');
-    expect(classifyInjectability('file:///tmp/report.html')).toBe('unsupported');
+  it('classifies local file:// pages as injectable (PDF-from-disk support; file-access grant is checked separately)', () => {
+    // file:// injection additionally requires the user's "Allow access to file
+    // URLs" grant — enforced by the service worker before executeScript, not here.
+    expect(classifyInjectability('file:///Users/x/annual-report.pdf')).toBe('injectable');
+    expect(classifyInjectability('file:///tmp/report.html')).toBe('injectable');
   });
 
   it('classifies the Chrome Web Store as unsupported', () => {

@@ -18,6 +18,7 @@
  */
 
 import { ingestDocument } from './ingest';
+import { isPdfDocument, fetchPdfBase64, ingestPdfText } from './ingest/pdf';
 import { debugLog } from '@/lib/debug';
 import { isLowConfidenceGeneric } from './ingest/detect';
 import { waitForContent } from './ingest/ready';
@@ -42,6 +43,9 @@ import type {
   FilingGatedMsg,
   FlagResultsMsg,
   PersistFilingMsg,
+  ParsePdfMsg,
+  ParsePdfResponse,
+  PdfUnextractableMsg,
 } from '@/messages/types';
 import { persistFilingToSession } from '@/shared/filingSession';
 
@@ -154,6 +158,92 @@ function resyncFilingIfCached(): void {
   void commitFiling(_lastModel, _lastShownFlags);
 }
 
+/** DemoResult stub for the PDF path — on-page highlighting is not available. */
+const PDF_NO_HIGHLIGHT: DemoResult = {
+  ok: false,
+  range: null,
+  multiNode: false,
+  rectCount: 0,
+  message: 'PDF: on-page highlighting is unavailable',
+};
+
+function pdfDevApi(result: IngestResult | null): RelicDevApi {
+  return {
+    result,
+    reingest: () => {
+      void runPdfFlow();
+      return result ?? ingestDocument();
+    },
+    highlight: () => PDF_NO_HIGHLIGHT,
+    clearHighlight: () => {},
+    demo: () => PDF_NO_HIGHLIGHT,
+  };
+}
+
+function broadcastPdfUnextractable(url: string, detail?: string): void {
+  const msg: PdfUnextractableMsg = {
+    target: 'sidepanel',
+    type: 'PDF_UNEXTRACTABLE',
+    url,
+    ...(detail ? { detail } : {}),
+  };
+  chrome.runtime.sendMessage(msg).catch(() => {});
+}
+
+/**
+ * Text-only ingestion for a filing opened as a PDF. Fetches the PDF's own bytes
+ * (same-origin under activeTab / file access), relays them to the offscreen
+ * document for PDF.js text extraction, then builds a text-based DocumentModel and
+ * commits it exactly like the DOM path — so Summary, language flags, and
+ * sentiment all work. On-page highlighting and redline stay inert (no DOM /
+ * EDGAR source). Scanned or unreadable PDFs broadcast a graceful "couldn't
+ * extract text" state instead of an empty filing.
+ */
+async function runPdfFlow(): Promise<RelicDevApi> {
+  const url = window.location.href;
+  debugLog(`[Relic] PDF detected — extracting text via offscreen: ${url}`);
+
+  let result: IngestResult;
+  try {
+    const bytesB64 = await fetchPdfBase64(url);
+    const parseMsg: ParsePdfMsg = { target: 'sw', type: 'PARSE_PDF', bytesB64, url };
+    const resp = (await chrome.runtime.sendMessage(parseMsg)) as ParsePdfResponse | undefined;
+    if (!resp?.ok) throw new Error(resp?.error ?? 'no response from the PDF parser');
+
+    const text = resp.text.trim();
+    if (text.length < MIN_FILING_CHARS) {
+      broadcastPdfUnextractable(url, 'little or no selectable text (scanned PDF?)');
+      return pdfDevApi(null);
+    }
+    result = ingestPdfText(text, url);
+  } catch (err) {
+    console.error('[Relic] PDF analysis failed', err);
+    broadcastPdfUnextractable(url, err instanceof Error ? err.message : String(err));
+    return pdfDevApi(null);
+  }
+
+  const { model, positionMap } = result;
+  debugLog(
+    `[Relic] ingested PDF ${model.filingType} — ${model.companyName ?? 'unknown company'} ` +
+      `(${model.sections.length} sections, ${positionMap.text.length} chars)`,
+  );
+
+  // Await full LM dictionary (pre-warm started at module load), then flag.
+  await _lmPrewarm;
+  const allFlags = flagAllSections(model.sections, positionMap);
+  _allFlags = allFlags;
+  const shownFlags = allFlags.filter((f) => !f.boilerplate);
+
+  // Cache the synthetic map so SET_FLAG_OVERLAY messages are handled gracefully.
+  // No FlagOverlayManager is created: the map's toDomRange() returns null, so
+  // there is nothing to paint on a PDF. The panel still gets the full flag list.
+  _positionMap = positionMap;
+  _flagsVisible = false;
+
+  await commitFiling(model, shownFlags);
+  return pdfDevApi(result);
+}
+
 async function run(): Promise<RelicDevApi> {
   // Re-analyze (run() called a second time in this scope): tear down the prior
   // ingestion's overlay so we don't leak a duplicate hover tooltip / mouse
@@ -161,6 +251,13 @@ async function run(): Promise<RelicDevApi> {
   _flagOverlay?.deactivate();
   _flagOverlay = null;
   _highlightController?.clear();
+
+  // A filing opened as a PDF has no analyzable DOM (Chrome renders it in the
+  // built-in viewer). Take the text-only path: fetch bytes → offscreen PDF.js →
+  // text-based DocumentModel. This must run before the DOM walk / min-chars bail.
+  if (isPdfDocument()) {
+    return runPdfFlow();
+  }
 
   // Look up any per-site overrides (group, contentSelector, gate hints).
   const profile = getSiteProfile(window.location.href);

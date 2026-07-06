@@ -34,7 +34,7 @@ export interface AnalyzePageMsg {
 }
 
 export type AnalyzePageFailReason =
-  /** Browser UI, Web Store, local files — Chrome forbids injection. */
+  /** Browser UI, Web Store — Chrome forbids injection. */
   | 'unsupported_url'
   /** activeTab grant missing/expired — user must click the toolbar icon on the page. */
   | 'no_permission'
@@ -47,7 +47,13 @@ export type AnalyzePageFailReason =
    * granted yet. The side panel should offer a "Grant access" button that calls
    * chrome.permissions.request() and retries on success.
    */
-  | 'needs_optional_permission';
+  | 'needs_optional_permission'
+  /**
+   * A local file:// page (typically a PDF) but the extension lacks file-scheme
+   * access. Chrome forbids injecting until the user enables "Allow access to file
+   * URLs" for Relic in chrome://extensions. The panel shows how-to guidance.
+   */
+  | 'needs_file_access';
 
 export interface AnalyzePageOkResponse {
   ok: true;
@@ -66,6 +72,36 @@ export interface AnalyzePageErrResponse {
 export type AnalyzePageResponse = AnalyzePageOkResponse | AnalyzePageErrResponse;
 
 /**
+ * Content script → Service Worker → Offscreen: parse a PDF's bytes into text.
+ *
+ * The content script fetches its own PDF (same-origin under activeTab) and relays
+ * the bytes here as base64 — chrome.runtime messaging JSON-serializes payloads in
+ * Chrome, so an ArrayBuffer/Uint8Array cannot be transferred directly. The SW
+ * forwards to the offscreen document, which runs PDF.js (bundled) to extract text.
+ * Bytes stay on-device; nothing is uploaded.
+ */
+export interface ParsePdfMsg {
+  target: 'sw';
+  type: 'PARSE_PDF';
+  /** The PDF file contents, base64-encoded. */
+  bytesB64: string;
+  /** Source URL (diagnostics only). */
+  url: string;
+}
+
+/** SW → Offscreen: same payload, re-targeted for the offscreen router. */
+export interface OffscreenParsePdfMsg {
+  target: 'offscreen';
+  type: 'PARSE_PDF';
+  bytesB64: string;
+  url: string;
+}
+
+export type ParsePdfResponse =
+  | { ok: true; text: string; pages: string[] }
+  | { ok: false; error: string };
+
+/**
  * Content script → side panel: the page content is behind a consent or paywall
  * gate. Analysis was skipped. The side panel should show a banner explaining why
  * and ask the user to dismiss the banner in the browser then retry.
@@ -75,6 +111,19 @@ export interface FilingGatedMsg {
   type: 'FILING_GATED';
   reason: 'consent_wall' | 'paywall';
   url: string;
+}
+
+/**
+ * Content script → side panel: a PDF was detected but no analyzable text could be
+ * extracted (a scanned/image-only PDF, an encrypted/corrupt file, or a download
+ * failure). The panel shows an explanatory state instead of an empty filing.
+ */
+export interface PdfUnextractableMsg {
+  target: 'sidepanel';
+  type: 'PDF_UNEXTRACTABLE';
+  url: string;
+  /** Short reason for diagnostics / the panel message. */
+  detail?: string;
 }
 
 // ── Offscreen → Service Worker (events) ──────────────────────────────────────

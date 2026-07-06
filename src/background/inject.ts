@@ -34,9 +34,9 @@ const UNSUPPORTED_HOSTS: ReadonlyArray<RegExp> = [
 export type Injectability =
   /** Manifest content_scripts already ran here — no injection needed. */
   | 'auto_host'
-  /** Plain http(s) page — inject on demand. */
+  /** Plain http(s) page, or a local file:// page — inject on demand. */
   | 'injectable'
-  /** Browser UI, Web Store, local files, or unparseable URL — cannot inject. */
+  /** Browser UI, Web Store, or unparseable URL — cannot inject. */
   | 'unsupported';
 
 export function classifyInjectability(url: string | undefined): Injectability {
@@ -49,7 +49,15 @@ export function classifyInjectability(url: string | undefined): Injectability {
     return 'unsupported';
   }
 
-  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+  // http(s) for remote pages; file: for local documents (typically PDFs opened
+  // from disk). file:// injection additionally requires the user to enable
+  // "Allow access to file URLs" — the caller checks that grant separately and
+  // shows guidance when it is missing.
+  if (
+    parsed.protocol !== 'https:' &&
+    parsed.protocol !== 'http:' &&
+    parsed.protocol !== 'file:'
+  ) {
     return 'unsupported';
   }
   if (UNSUPPORTED_HOSTS.some((re) => re.test(parsed.hostname))) {

@@ -27,6 +27,7 @@ export type PageCategory =
   | 'sec_search' // EDGAR full-text / browse-edgar search & company profile pages
   | 'sec_data_report' // www.sec.gov data-research / rules / info pages (readable, not a filing)
   | 'ir_or_financial' // off-sec.gov page that looks financial (earnings, IR)
+  | 'pdf' // a filing opened as a PDF — text extracted via PDF.js, no live DOM
   | 'unsupported';
 
 export interface DocumentModel {

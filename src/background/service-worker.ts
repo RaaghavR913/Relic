@@ -37,6 +37,9 @@ import type {
   PersistFilingMsg,
   FilingReadyMsg,
   FlagResultsMsg,
+  ParsePdfMsg,
+  OffscreenParsePdfMsg,
+  ParsePdfResponse,
 } from '@/messages/types';
 import { RateLimitedQueue, fetchEdgarText } from './edgarQueue';
 import { resolvePriorFiling } from './resolvePrior';
@@ -131,12 +134,29 @@ async function getActiveTabId(): Promise<number | undefined> {
   return tabs[0]?.id;
 }
 
+/**
+ * Whether the user has granted "Allow access to file URLs" for Relic. Required
+ * before Chrome will let us inject the content script into a file:// tab. The
+ * API is callback-only, so wrap it; treat any error as "not allowed" (fail safe
+ * toward showing the how-to-enable guidance).
+ */
+function isAllowedFileSchemeAccess(): Promise<boolean> {
+  return new Promise((resolve) => {
+    try {
+      chrome.extension.isAllowedFileSchemeAccess((allowed) => resolve(allowed === true));
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
 async function forwardToOffscreen<T>(
   msg:
     | OffscreenExtractiveMsg
     | OffscreenSentimentMsg
     | OffscreenRedlineMsg
-    | OffscreenEmbedMsg,
+    | OffscreenEmbedMsg
+    | OffscreenParsePdfMsg,
 ): Promise<T> {
   await ensureOffscreen();
   return chrome.runtime.sendMessage(msg) as Promise<T>;
@@ -277,6 +297,14 @@ async function handleAnalyzePage(): Promise<AnalyzePageResponse> {
     return { ok: false, reason: 'unsupported_url' };
   }
 
+  // Local file:// pages (typically PDFs opened from disk) can only be scripted
+  // when the user has enabled "Allow access to file URLs" for the extension.
+  // Detect the missing grant up front and guide the user, rather than letting
+  // executeScript fail with an opaque "cannot access" error.
+  if (tab.url.startsWith('file:') && !(await isAllowedFileSchemeAccess())) {
+    return { ok: false, reason: 'needs_file_access' };
+  }
+
   // On auto hosts the manifest script already ran; injecting again is harmless
   // (the content script's guard re-broadcasts FILING_READY instead of
   // re-ingesting), and it resyncs a side panel that missed the original event.
@@ -372,6 +400,21 @@ chrome.runtime.onMessage.addListener(
       const m = msg as EmbedTextsMsg;
       const fwd: OffscreenEmbedMsg = { target: 'offscreen', type: 'EMBED_TEXTS', texts: m.texts };
       forwardToOffscreen<EmbedTextsResponse>(fwd)
+        .then(sendResponse)
+        .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }));
+      return true;
+    }
+
+    // ── PARSE_PDF — forward PDF bytes to offscreen for PDF.js text extraction ──
+    if (msg.type === 'PARSE_PDF') {
+      const m = msg as ParsePdfMsg;
+      const fwd: OffscreenParsePdfMsg = {
+        target: 'offscreen',
+        type: 'PARSE_PDF',
+        bytesB64: m.bytesB64,
+        url: m.url,
+      };
+      forwardToOffscreen<ParsePdfResponse>(fwd)
         .then(sendResponse)
         .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }));
       return true;

@@ -20,6 +20,7 @@ import type {
   FlagResultsMsg,
   AnalyzePageMsg,
   AnalyzePageResponse,
+  PdfUnextractableMsg,
 } from '@/messages/types';
 import { isLowConfidenceGeneric, isEdgarExhibit } from '@/content/ingest/detect';
 import { classifyInjectability } from '@/background/inject';
@@ -69,6 +70,11 @@ function isDataReport(doc: DocumentModel | null): boolean {
   return doc?.filingType === 'DATA_REPORT';
 }
 
+/** True for a filing ingested from a PDF (text-only; no live DOM / EDGAR source). */
+function isPdfDoc(doc: DocumentModel | null): boolean {
+  return doc?.source.category === 'pdf';
+}
+
 /** True for an EDGAR Filing Detail / accession index page (a directory, not the document). */
 function isFilingIndex(doc: DocumentModel | null): boolean {
   return doc?.source.category === 'edgar_index';
@@ -99,8 +105,12 @@ function hidesInvestorTabs(doc: DocumentModel | null): boolean {
 }
 
 function tabsForDoc(doc: DocumentModel | null): Array<{ id: TabId; label: string }> {
-  if (!hidesInvestorTabs(doc)) return TABS;
-  return TABS.filter((t) => !REPORT_DISABLED_TABS.has(t.id));
+  if (hidesInvestorTabs(doc)) return TABS.filter((t) => !REPORT_DISABLED_TABS.has(t.id));
+  // A confidently-detected PDF filing keeps Analyst / Summary / Sentiment (all
+  // text-based), but the year-over-year Redline needs a live DOM + an EDGAR prior
+  // filing (resolved by CIK) — neither is available from a PDF, so hide it.
+  if (isPdfDoc(doc)) return TABS.filter((t) => t.id !== 'changes');
+  return TABS;
 }
 
 function fmtDate(iso?: string): string | null {
@@ -111,7 +121,9 @@ function analyzeFailCopy(response: AnalyzePageResponse | undefined): string {
   if (response && !response.ok) {
     switch (response.reason) {
       case 'unsupported_url':
-        return "This page can't be analyzed — browser pages, the Chrome Web Store, and local files (including PDFs) aren't supported.";
+        return "This page can't be analyzed — browser pages and the Chrome Web Store aren't supported.";
+      case 'needs_file_access':
+        return 'This is a local file. To analyze PDFs opened from your computer, open chrome://extensions, find Relic → Details, and turn on "Allow access to file URLs" — then reload the PDF and try again.';
       case 'no_permission':
         return 'Chrome needs a fresh grant — click the Relic toolbar icon while on the page you want to analyze, then try again.';
       case 'no_tab':
@@ -571,6 +583,17 @@ export default function App() {
         clearAnalyzeTimer();
         setAnalyzing(false);
       }
+      // A PDF was detected but no analyzable text could be extracted.
+      if (msg.type === 'PDF_UNEXTRACTABLE') {
+        const m = msg as PdfUnextractableMsg;
+        clearAnalyzeTimer();
+        setAnalyzing(false);
+        setAnalyzeError(
+          m.detail && /too large|HTTP|download/i.test(m.detail)
+            ? `Couldn’t analyze this PDF — ${m.detail}.`
+            : 'Couldn’t read any text from this PDF. It looks like a scanned or image-only document, which Relic can’t analyze yet (no text layer to extract).',
+        );
+      }
     };
     chrome.runtime.onMessage.addListener(listener);
 
@@ -638,7 +661,15 @@ export default function App() {
               >
                 {/* The panel can outlive the analyzed page (session-storage recovery),
                     so the on-demand entry point must stay reachable here too. */}
-                {isLowConfidenceGeneric(currentDoc) && (
+                {isPdfDoc(currentDoc) && (
+                  <Banner tone="info" icon="ℹ" className="px-4 py-3 text-[11px]">
+                    <span className="font-semibold">Analyzing a PDF.</span>
+                    {' Summary, language flags, and sentiment are available. On-page highlights and the year-over-year redline aren’t available for PDFs — they need the filing’s live web page or its EDGAR source.'}
+                  </Banner>
+                )}
+                {/* Low-confidence banner is meaningless for a PDF (no on-page
+                    highlights to reveal), so the PDF banner above replaces it. */}
+                {isLowConfidenceGeneric(currentDoc) && !isPdfDoc(currentDoc) && (
                   <Banner tone="warn" className="px-4 py-3 text-[11px]">
                     <span className="font-semibold">This page doesn&rsquo;t look like an SEC filing</span>
                     {' — investor analysis, sentiment, and redline are unavailable. Summary and language flags still apply; on-page highlights are off, '}
