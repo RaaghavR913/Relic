@@ -2,7 +2,7 @@ export const WORKS_TIERS: ReadonlyArray<{ label: string; detail: string }> = [
   {
     label: 'Most Detailed Analysis: SEC EDGAR filings',
     detail:
-      '10-K, 10-Q, 8-K, 20-F, S-1, and proxy .htm filings on sec.gov. Full analysis, sentiment, and year-over-year redlines.',
+      '10-K, 10-Q and proxy .htm filings on sec.gov. Full analysis, sentiment, and year-over-year redlines.',
   },
   {
     label: 'Enhanced Analysis: Filing pages',
