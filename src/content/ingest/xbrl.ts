@@ -298,11 +298,19 @@ export function extractXbrlFacts(
 
   if (facts.length === 0) return null;
 
+  // The filer's own fiscal-year label. Usually an ix:nonNumeric in the hidden
+  // header; grab it by name — no context/period resolution applies to it.
+  const focusText =
+    scope.querySelector('[name="dei:DocumentFiscalYearFocus"]')?.textContent ?? '';
+  const focusMatch = /(?:19|20)\d{2}/.exec(focusText);
+  const fiscalYearFocus = focusMatch ? Number(focusMatch[0]) : undefined;
+
   return {
     facts,
     metrics: deriveMetrics(facts),
     ...(currentPeriodEnd ? { periodEnd: currentPeriodEnd } : {}),
     ...(priorPeriodEnd ? { priorPeriodEnd } : {}),
+    ...(fiscalYearFocus !== undefined ? { fiscalYearFocus } : {}),
   };
 }
 

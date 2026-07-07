@@ -9,7 +9,7 @@
 // snapshot + takeaways starts collapsed to stay compact in the side panel.
 // ============================================================
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
 import type {
   AnalysisStage,
@@ -26,6 +26,8 @@ import { getCachedAnalysis, putAnalysis, clearAnalysis } from '@/analyst/analysi
 import { getCachedRedline } from '@/redline/redlineStore';
 import { getSentimentCache } from '@/db/sentimentStore';
 import { isLowConfidenceGeneric } from '@/content/ingest/detect';
+import { detectFiscalCalendarOffset } from '@/lib/fiscalCalendar';
+import { fmtCalendarDate } from '@/lib/date';
 import { FundamentalsPanel } from './FundamentalsPanel';
 import { useReportAnalysisActivity } from './analysisActivity';
 
@@ -345,6 +347,11 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
   // the pointer text. (S2 carry-over: detection only.)
   const byRefSection = doc.sections.find((s) => s.incorporatedByReference);
 
+  // Fiscal year offset from the calendar year (NVIDIA's FY2027 quarter ends
+  // Apr 2026): verbatim "fiscal year 2027" takeaways beside a 2026 period date
+  // read as hallucinations without a note explaining the filer's calendar.
+  const fiscalOffset = useMemo(() => detectFiscalCalendarOffset(doc), [doc]);
+
   const run = useCallback(async (force = false) => {
     acRef.current?.abort();
     const ac = new AbortController();
@@ -498,6 +505,20 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
         <>
           {/* 1–2 ── Snapshot (includes one-sentence summary + scores) */}
           <SnapshotCard analysis={a} />
+
+          {/* Fiscal-calendar note — shown when the filing's fiscal-year labels
+              don't match the calendar year of the period, so "fiscal 2027" in
+              the takeaways below isn't mistaken for a wrong/future year. */}
+          {fiscalOffset && (
+            <div className="rounded-lg bg-sky-950/30 px-3 py-2 text-[11px] leading-relaxed text-sky-200/90 ring-1 ring-inset ring-sky-800/40">
+              <span className="font-medium">Fiscal-calendar note:</span>{' '}
+              {doc.companyName ?? doc.ticker ?? 'this company'}’s fiscal year{' '}
+              {fiscalOffset.fiscalYear > fiscalOffset.calendarYear ? 'runs ahead of' : 'trails'} the
+              calendar — the period ended {fmtCalendarDate(fiscalOffset.periodEnd)} falls in fiscal
+              year {fiscalOffset.fiscalYear}. Mentions of “fiscal {fiscalOffset.fiscalYear}” below
+              are quoted from the filing and don’t mean calendar {fiscalOffset.fiscalYear}.
+            </div>
+          )}
 
           {/* 3 ── Top takeaways (populated in both the LM and on-device tiers) */}
           <Collapse

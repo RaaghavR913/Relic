@@ -31,6 +31,9 @@ export const MOCK_DOC: DocumentModel = {
   xbrl: {
     periodEnd: '2025-12-31',
     priorPeriodEnd: '2024-12-31',
+    // Offset filer (January fiscal-year end): the period ended Dec 2025 belongs
+    // to fiscal 2026 — exercises the fiscal-calendar note in AnalystPanel.
+    fiscalYearFocus: 2026,
     facts: [
       { concept: 'us-gaap:Revenues', label: 'Revenue', unit: 'USD', currentValue: 383_285_000_000, priorValue: 394_328_000_000, yoyPct: (383285 - 394328) / 394328, range: [0, 60] },
       { concept: 'us-gaap:GrossProfit', label: 'Gross profit', unit: 'USD', currentValue: 169_148_000_000, priorValue: 170_782_000_000, yoyPct: (169148 - 170782) / 170782 },

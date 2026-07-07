@@ -192,6 +192,22 @@ const INSURER_FACTS = `
   </p>
 `;
 
+describe('extractXbrlFacts — fiscal-year focus', () => {
+  it('captures dei:DocumentFiscalYearFocus when tagged', () => {
+    // NVIDIA-style offset filer: period ends Sep 2023 but the filer labels it FY2024.
+    const focus = `<ix:nonNumeric name="dei:DocumentFiscalYearFocus" contextRef="dur_2023">2024</ix:nonNumeric>`;
+    const doc = docFrom(`<!doctype html><html><body>${RESOURCES}${focus}${FACTS}</body></html>`);
+    const f = extractXbrlFacts(doc, null, '2023-09-30')!;
+    expect(f.fiscalYearFocus).toBe(2024);
+  });
+
+  it('leaves fiscalYearFocus absent when the fact is not tagged', () => {
+    const doc = docFrom(FILING);
+    const f = extractXbrlFacts(doc, null, '2023-09-30')!;
+    expect(f.fiscalYearFocus).toBeUndefined();
+  });
+});
+
 describe('extractXbrlFacts — financial-sector concepts', () => {
   it('populates Revenue + net/noninterest income for a bank filing', () => {
     const doc = docFrom(`<!doctype html><html><body>${RESOURCES}${BANK_FACTS}</body></html>`);

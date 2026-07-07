@@ -103,6 +103,13 @@ export interface XbrlFundamentals {
   periodEnd?: string;
   /** ISO date of the prior comparable period end, when found. */
   priorPeriodEnd?: string;
+  /**
+   * The filer's own fiscal-year label (dei:DocumentFiscalYearFocus), when tagged.
+   * Can legitimately differ from the calendar year of periodEnd — NVIDIA's fiscal
+   * 2027 Q1 ends April 2026 — which is exactly what the fiscal-calendar note
+   * (lib/fiscalCalendar.ts) explains to readers.
+   */
+  fiscalYearFocus?: number;
 }
 
 export interface Section {
