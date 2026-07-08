@@ -60,6 +60,13 @@ for (const p of entryPaths) {
 const csp = manifest.content_security_policy?.extension_pages ?? '';
 if (!/wasm-unsafe-eval/.test(csp)) fail('CSP is missing wasm-unsafe-eval (ORT WASM will not run)');
 if (!/connect-src[^;]*sec\.gov/.test(csp)) fail('CSP connect-src no longer restricts to sec.gov');
+// default-src 'none' is the load-bearing part of the "zero egress by construction" claim:
+// without it, img-src/media-src/font-src/style-src/frame-src all fall back to allow-all, so a
+// script could exfiltrate via <img src=...>, a remote stylesheet, etc. connect-src alone is not enough.
+if (!/default-src\s+'none'/.test(csp)) fail("CSP no longer sets default-src 'none' — non-connect fetch directives fall open (img/media/font/style/frame egress)");
+// form-action does NOT fall back to default-src, so it must be pinned explicitly or a
+// <form> could POST the filing to any origin even with default-src 'none'.
+if (!/form-action\s+'none'/.test(csp)) fail("CSP no longer sets form-action 'none' — a form could POST data off-device (form-action does not inherit default-src)");
 if (!(manifest.host_permissions ?? []).some((h) => /sec\.gov/.test(h))) {
   fail('host_permissions no longer includes sec.gov');
 }

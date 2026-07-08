@@ -12,7 +12,7 @@
     "scripting"
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://*.sec.gov"
+    "extension_pages": "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; connect-src 'self' https://*.sec.gov; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; worker-src 'self'; frame-src 'self'; form-action 'none'; base-uri 'none'"
   },
   "cross_origin_embedder_policy": {
     "value": "require-corp"
