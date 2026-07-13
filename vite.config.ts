@@ -125,6 +125,80 @@ function copyModelsPlugin(isProd: boolean): Plugin {
   };
 }
 
+// ── Custom plugin: strip remote-code loaders from vendored dependencies ────────
+// CWS rejected v1.2.7 ("Blue Argon": remotely hosted code in a Manifest V3
+// item). The flagged snippet is jsPDF's `output("pdfobjectnewwindow")` branch,
+// which opens a window and injects a <script> pointing at
+// cdnjs.cloudflare.com/.../pdfobject.min.js. Relic only ever calls
+// `doc.save()`, so the branch is dead code — but the store's static scan
+// (reasonably) flags the URL + script-injection pattern regardless of
+// reachability. transformers.js has the same class of pattern: when
+// `wasm.wasmPaths` is unset it falls back to loading ORT's .mjs/.wasm glue
+// from cdn.jsdelivr.net (ours is always set to the bundled dist/wasm/ before
+// any session is created, so that fallback is likewise never fetched).
+//
+// This plugin excises both loaders from the module source before bundling, so
+// no remote-code URL ships at all. Each replacement is asserted: if a
+// dependency upgrade moves the code and a pattern stops matching — or a CDN
+// URL survives the rewrite — the build fails loudly rather than shipping a
+// rejectable zip. scripts/verify-dist.mjs re-checks the emitted output.
+//
+// Requires the `jspdf` resolve.alias below: jsPDF's package entry is the
+// minified build, whose text isn't stable enough to pattern-match; the alias
+// swaps in the unminified dist/jspdf.es.js (same code, same optional dynamic
+// imports), which production minification then re-compresses anyway.
+function stripRemoteCodeLoadersPlugin(): Plugin {
+  return {
+    name: 'strip-remote-code-loaders',
+    apply: 'build',
+    transform(code, id) {
+      if (id.includes('jspdf/dist/jspdf.es.js')) {
+        // Replace the whole case body (URL, SRI hash, script injection) with a
+        // throw, preserving the switch's shape for the cases that follow it.
+        const caseRe = /case "pdfobjectnewwindow":[\s\S]+?(?=case "pdfjsnewwindow":)/;
+        if (!caseRe.test(code)) {
+          this.error(
+            'strip-remote-code-loaders: jsPDF "pdfobjectnewwindow" branch not found — ' +
+              'the jspdf version changed shape; update the pattern before shipping.',
+          );
+        }
+        const out = code.replace(
+          caseRe,
+          'case "pdfobjectnewwindow":\n' +
+            '        throw new Error("pdfobjectnewwindow is removed from this build (MV3: no remotely hosted code).");\n' +
+            '      ',
+        );
+        if (out.includes('cdnjs.cloudflare.com')) {
+          this.error('strip-remote-code-loaders: cdnjs URL survived the jsPDF rewrite.');
+        }
+        return { code: out, map: null };
+      }
+
+      if (id.includes('@huggingface/transformers/dist/transformers.web.js')) {
+        // Neutralize the CDN fallback prefix. The branch only runs when
+        // wasmPaths is unset — our workers always set it first — so pointing it
+        // at a never-resolving local path changes nothing at runtime while
+        // removing the remote URL (and turning any future regression into a
+        // loud local 404 instead of silent network egress).
+        const urlRe = /`https:\/\/cdn\.jsdelivr\.net\/npm\/onnxruntime-web@\$\{[^}]+\}\/dist\/`/;
+        if (!urlRe.test(code)) {
+          this.error(
+            'strip-remote-code-loaders: transformers.js jsdelivr wasm fallback not found — ' +
+              'the @huggingface/transformers version changed shape; update the pattern before shipping.',
+          );
+        }
+        const out = code.replace(urlRe, '"/__relic-no-remote-wasm__/"');
+        if (out.includes('cdn.jsdelivr.net')) {
+          this.error('strip-remote-code-loaders: jsdelivr URL survived the transformers.js rewrite.');
+        }
+        return { code: out, map: null };
+      }
+
+      return null;
+    },
+  };
+}
+
 // ── Custom plugin: route shared chunks under assets/ ───────────────────────────
 // vite-plugin-web-extension forces chunkFileNames to `[name].js`, so a chunk
 // shared by the offscreen + sidepanel entries (the redline/diff + extractive
@@ -153,9 +227,17 @@ function sharedChunkRouterPlugin(): Plugin {
 
 export default defineConfig(({ mode }) => ({
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, 'src'),
-    },
+    alias: [
+      { find: '@', replacement: path.resolve(__dirname, 'src') },
+      // jsPDF's package entry is the minified ESM build; point the bare import
+      // at the unminified one so stripRemoteCodeLoadersPlugin can excise the
+      // "pdfobjectnewwindow" remote-code branch with a stable pattern (see the
+      // plugin comment). Production minification re-compresses it afterwards.
+      {
+        find: /^jspdf$/,
+        replacement: path.resolve(__dirname, 'node_modules/jspdf/dist/jspdf.es.js'),
+      },
+    ],
   },
   plugins: [
     react(),
@@ -188,6 +270,10 @@ export default defineConfig(({ mode }) => ({
           copyModelsPlugin(mode === 'production'),
           // Keep shared chunks out of the dist root (see plugin comment).
           sharedChunkRouterPlugin(),
+          // Excise dead CDN loaders (jsPDF pdfobjectnewwindow, transformers.js
+          // jsdelivr wasm fallback) — CWS rejects MV3 items whose shipped code
+          // contains remote-code URLs, reachable or not (see plugin comment).
+          stripRemoteCodeLoadersPlugin(),
         ]
       : []),
   ],
@@ -205,6 +291,10 @@ export default defineConfig(({ mode }) => ({
   // Web Workers in Vite: treat .worker.ts imports as module workers.
   worker: {
     format: 'es',
+    // Worker bundles have their own plugin pipeline — the top-level plugins
+    // array does NOT apply. Without this, transformers.js's jsdelivr wasm
+    // fallback ships inside the worker chunks (verify-dist catches it).
+    plugins: () => [stripRemoteCodeLoadersPlugin()],
   },
   // NOTE: the Vitest config lives in vitest.config.ts (real test runner). No `test`
   // block here — a stale one pointing at a non-existent src/__tests__ dir was removed.

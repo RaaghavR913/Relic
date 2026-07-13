@@ -141,10 +141,38 @@ if (maps.length > 0) {
   fail(`production dist ships ${maps.length} sourcemap(s) — e.g. ${maps.slice(0, 3).join(', ')} (try a clean rebuild)`);
 }
 
+// ── 7. no remote-code loader URLs in shipped JS ───────────────────────────────
+// CWS rejected v1.2.7 ("Blue Argon"): MV3 forbids remotely hosted code, and the
+// reviewer's static scan flags CDN script/wasm URLs even in unreachable
+// branches (jsPDF's pdfobjectnewwindow, transformers.js's jsdelivr wasm
+// fallback — both excised by stripRemoteCodeLoadersPlugin in vite.config.ts).
+// This makes the failure class unshippable: any code-hosting CDN host, or any
+// absolute URL ending in .js/.mjs/.wasm, in an emitted script fails the build.
+const REMOTE_CODE_HOSTS =
+  /cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com|raw\.githubusercontent\.com|cdn\.skypack\.dev|esm\.sh/;
+// Matching every URL ending in ".js" is too noisy — doc links to projects
+// *named* something.js (github.com/…/transformers.js, huggingface.co/docs/
+// transformers.js) live in library error messages. Restrict to unambiguous
+// code fetches (.min.js/.mjs/.wasm); plain-.js script CDNs are covered by the
+// host denylist above.
+const REMOTE_CODE_FILE = /https?:\/\/[^\s"'`)]+\.(?:min\.js|mjs|wasm)\b/;
+const modelsPrefix = path.join(DIST, 'models') + path.sep;
+walk(DIST, (f) => {
+  if (!/\.m?js$/.test(f) || f.startsWith(modelsPrefix)) return;
+  const text = fs.readFileSync(f, 'utf8');
+  const hit = text.match(REMOTE_CODE_HOSTS) ?? text.match(REMOTE_CODE_FILE);
+  if (hit) {
+    fail(
+      `remote-code URL in shipped JS: ${path.relative(DIST, f)} contains "${hit[0]}" ` +
+        '(MV3 forbids remotely hosted code — see stripRemoteCodeLoadersPlugin in vite.config.ts)',
+    );
+  }
+});
+
 // ── report ───────────────────────────────────────────────────────────────────
 if (errors.length > 0) {
   console.error(`\n✗ verify-dist: ${errors.length} problem(s) in dist/:`);
   for (const e of errors) console.error(`  - ${e}`);
   process.exit(1);
 }
-console.log('✓ verify-dist: dist/ looks shippable (manifest entries, icons, models, ORT glue+binary, CSP, no sourcemaps).');
+console.log('✓ verify-dist: dist/ looks shippable (manifest entries, icons, models, ORT glue+binary, CSP, no sourcemaps, no remote-code URLs).');
