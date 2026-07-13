@@ -348,6 +348,46 @@ export default function SettingsApp() {
             desc="FinBERT for financial sentiment, plus an on-device encoder for summaries and Redline matching."
             control={null}
           />
+          <Row
+            title="Official website"
+            desc="Learn more about Relic and see what’s new."
+            control={
+              <a
+                href="https://relic-lac.vercel.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="group inline-flex items-center gap-2 rounded-md bg-[#1c1c1f] px-3 py-1.5 text-[13px] font-medium text-[#34d399] ring-1 ring-[#2a2a2e] outline-none transition hover:bg-[#0f2b21] hover:ring-[#34d39955] focus-visible:ring-2 focus-visible:ring-[#34d399] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0c0c0d]"
+              >
+                {/* Globe */}
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 16 16"
+                  className="h-3.5 w-3.5 opacity-80"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                >
+                  <circle cx="8" cy="8" r="6.25" />
+                  <ellipse cx="8" cy="8" rx="2.75" ry="6.25" />
+                  <path d="M2 8h12" />
+                </svg>
+                Relic
+                {/* Arrow nudges on hover */}
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 16 16"
+                  className="h-3 w-3 opacity-70 transition-transform duration-150 ease-out group-hover:translate-x-0.5 group-hover:-translate-y-0.5 motion-reduce:transition-none"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M5 11l6-6M6 5h5v5" />
+                </svg>
+              </a>
+            }
+          />
         </Section>
 
         {/* Footer */}
