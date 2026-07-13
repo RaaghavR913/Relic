@@ -55,23 +55,31 @@ const STEPS: ReadonlyArray<{ title: string; detail: string }> = [
   },
 ];
 
-/** Frequently asked questions — question + answer rows. */
-const FAQS: ReadonlyArray<{ q: string; a: string }> = [
+/** Frequently asked questions — a short answer, optionally followed by bullets. */
+const FAQS: ReadonlyArray<{ q: string; a?: string; bullets?: readonly string[] }> = [
   {
     q: 'Does any of my data leave my device?',
-    a: 'No. Filing analysis text, summaries, and notes stay on your device. The only network request is the Redline lookup, which fetches last year’s filing from SEC.gov, and only when you request it. You can turn it off under Settings.',
+    a: 'No — all analysis happens on your device. The one exception is Redline, which fetches last year’s filing from SEC.gov only when you ask. You can turn it off under Settings.',
   },
   {
     q: 'Why are some tabs missing on a page?',
-    a: 'Analyst, Sentiment, and Redline need a real company filing. On SEC data pages, EDGAR index pages, exhibits, and pages that don’t look like a filing, Relic keeps Summary only.',
+    a: 'Analyst, Sentiment, and Redline only appear on real company filings. Index pages, exhibits, and other SEC data pages get Summary only.',
   },
   {
     q: 'What’s the difference between Built-in AI and Extractive?',
-    a: 'Built-in AI writes analyst notes and change narratives in natural language. Extractive instead surfaces the filing’s most important existing sentences. Sentiment scores, language flags, and Redline work fully in both.',
+    bullets: [
+      'Built-in AI writes analyst notes and change narratives in natural language.',
+      'Extractive surfaces the filing’s most important existing sentences.',
+      'Sentiment, language flags, and Redline work fully in both.',
+    ],
   },
   {
     q: 'Why is the first analysis slow?',
-    a: 'On Built-in AI devices, the first analyst note is slower because Chrome downloads and manages the Gemini Nano model (~2 GB) on its own — this is a one-time Chrome download, not a Relic upload, and the model then runs entirely on your device. Large filings can take up to a minute to read, but language flags appear immediately and sentiment analysis starts as soon as you request it.',
+    bullets: [
+      'On first use, Chrome downloads the Gemini Nano model (~2 GB) — a one-time Chrome download, not a Relic upload.',
+      'Large filings can take up to a minute to read.',
+      'Language flags appear immediately; sentiment runs as soon as you ask.',
+    ],
   },
 ];
 
@@ -115,7 +123,7 @@ function Row({
     <div className="flex items-start gap-4 border-t-[0.5px] border-[#1f1f22] py-4">
       <div className="min-w-0 flex-1">
         <div className="text-[14px] font-medium text-[#ededf0]">{title}</div>
-        <p className="mt-1 text-[13px] leading-relaxed text-[#c4c4c8]">{desc}</p>
+        <div className="mt-1 text-[13px] leading-relaxed text-[#c4c4c8]">{desc}</div>
       </div>
       {control && <div className="mt-0.5 shrink-0">{control}</div>}
     </div>
@@ -332,7 +340,26 @@ export default function SettingsApp() {
         {/* FAQ — read-only */}
         <Section title="FAQ">
           {FAQS.map((f) => (
-            <Row key={f.q} title={f.q} desc={f.a} control={null} />
+            <Row
+              key={f.q}
+              title={f.q}
+              desc={
+                <>
+                  {f.a}
+                  {f.bullets ? (
+                    <ul className={`space-y-1${f.a ? ' mt-1.5' : ''}`}>
+                      {f.bullets.map((b) => (
+                        <li key={b} className="flex gap-2">
+                          <span aria-hidden>•</span>
+                          <span>{b}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </>
+              }
+              control={null}
+            />
           ))}
         </Section>
 
