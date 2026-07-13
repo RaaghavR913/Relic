@@ -237,6 +237,14 @@ export default defineConfig(({ mode }) => ({
         find: /^jspdf$/,
         replacement: path.resolve(__dirname, 'node_modules/jspdf/dist/jspdf.es.js'),
       },
+      // jsPDF's optional lazy integrations — html2canvas + dompurify (only for
+      // doc.html()) and canvg (only for doc.addSvgAsImage()). Relic's export is
+      // pure text/vector drawing, so these would ship ~376 KB of dead chunks in
+      // the CWS zip. Stubbed out; see src/vendor/jspdf-optional-stub.ts.
+      {
+        find: /^(html2canvas|dompurify|canvg)$/,
+        replacement: path.resolve(__dirname, 'src/vendor/jspdf-optional-stub.ts'),
+      },
     ],
   },
   plugins: [
