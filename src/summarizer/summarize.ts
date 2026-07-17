@@ -20,7 +20,8 @@ import {
   type GenerationTier,
 } from '@/runtime/capabilities';
 import type { SummarizeSectionMsg, ExtractiveResponse } from '@/messages/types';
-import { getCachedSummary, putSummary } from './summaryStore';
+import { withStallGuard } from '@/lib/stallGuard';
+import { getCachedSummary, putSummary, type SummaryEntry } from './summaryStore';
 
 // ── public types ──────────────────────────────────────────────────────────────
 
@@ -77,6 +78,15 @@ function getLanguageModel(): LMCtor | undefined {
 
 const MAX_ANALYST_CHARS = 4_000;
 
+/**
+ * Abort the builtin path when Gemini Nano makes NO progress for this long.
+ * A healthy multi-minute first-run download keeps resetting the guard via
+ * downloadprogress deltas; a wedged create()/prompt() or a stalled Chrome
+ * download (metered network, low disk) trips it and we degrade to extractive
+ * instead of freezing the panel's bar at the last fraction forever.
+ */
+const NANO_STALL_MS = 45_000;
+
 const ANALYST_SYSTEM_PROMPT =
   'You are an equity research analyst reviewing a section of a financial document for investors. ' +
   'In 3–4 concise sentences, translate the section into investor signals: what happened, what changed, ' +
@@ -89,6 +99,23 @@ const ANALYST_SYSTEM_PROMPT =
   'No bullet points. Output only the analyst note.';
 
 // ── public entry point ────────────────────────────────────────────────────────
+
+/**
+ * Cache read honouring the degraded-run fallback: a builtin-tier request also
+ * accepts a previously degraded extractive entry (`register` records what was
+ * actually produced, not what was requested), so machines where Nano stalls
+ * don't repay the 45s stall penalty on every visit.
+ */
+export async function getCachedSummaryWithFallback(
+  rawTextHash: string,
+  sectionId: string,
+  tier: GenerationTier,
+): Promise<SummaryEntry | null> {
+  const direct = await getCachedSummary(rawTextHash, sectionId, tier);
+  if (direct) return direct;
+  if (tier === 'builtin') return getCachedSummary(rawTextHash, sectionId, 'extractive');
+  return null;
+}
 
 /**
  * Produce a { summary } for a section.
@@ -104,13 +131,14 @@ export async function summarizeSection(
   },
 ): Promise<SummaryResult> {
   // Cache hit
-  const cached = await getCachedSummary(doc.rawTextHash, section.id, opts.effectiveTier);
+  const cached = await getCachedSummaryWithFallback(doc.rawTextHash, section.id, opts.effectiveTier);
   if (cached) {
+    const register: GenerationTier = cached.register === 'builtin' ? 'builtin' : 'extractive';
     return {
       summary: cached.analyst,
       anchors: cached.plainAnchors,
-      register: opts.effectiveTier,
-      analystAvailable: opts.effectiveTier === 'builtin',
+      register,
+      analystAvailable: register === 'builtin',
       fromCache: true,
     };
   }
@@ -122,10 +150,13 @@ export async function summarizeSection(
 
   // Persist (best-effort — don't fail summarization if cache write fails).
   // The store schema keeps `plain` for back-compat; it now mirrors `analyst`.
+  // Keyed by result.register — NOT the requested tier — so a builtin run that
+  // degraded to extractive can never occupy the builtin cache slot and be
+  // served later as if it were an analyst note.
   await putSummary({
     rawTextHash: doc.rawTextHash,
     sectionId: section.id,
-    register: opts.effectiveTier,
+    register: result.register,
     plain: result.summary,
     analyst: result.summary,
     plainAnchors: result.anchors as Array<[number, number]>,
@@ -148,34 +179,49 @@ async function runBuiltin(
   }
 
   // Analyst note via Prompt API (Gemini Nano). When the Prompt API is
-  // unavailable or fails, fall back to the extractive key-sentence path so a
-  // summary is always produced.
+  // unavailable, stalls, or fails, fall back to the extractive key-sentence
+  // path so a summary is always produced.
   const LM = getLanguageModel();
   if (!LM) return runExtractive(section, rawTextHash);
 
-  // exactOptionalPropertyTypes: spread signal conditionally to avoid passing undefined.
   const sig = opts.signal;
-  const monitor = (m: DownloadMonitor) => {
-    m.addEventListener('downloadprogress', (e) => opts.onDownloadProgress?.(e.loaded));
-  };
 
   try {
-    const session = await LM.create({
-      ...LANGUAGE_MODEL_LANGUAGE,
-      initialPrompts: [{ role: 'system', content: ANALYST_SYSTEM_PROMPT }],
-      monitor,
-      ...(sig !== undefined ? { signal: sig } : {}),
-    });
+    // The stall guard — not a fixed deadline — wraps create()+prompt(): a
+    // healthy first-run Nano download may take minutes and keeps bumping the
+    // guard, while one that stops progressing is aborted after NANO_STALL_MS.
+    const analyst = await withStallGuard<string>(
+      async (signal, bump) => {
+        // Only a real delta counts as progress — Chrome can re-emit the same
+        // fraction (e.g. 0.69) while a stalled download sits still.
+        let lastLoaded = -1;
+        const monitor = (m: DownloadMonitor) => {
+          m.addEventListener('downloadprogress', (e) => {
+            if (e.loaded !== lastLoaded) {
+              lastLoaded = e.loaded;
+              bump();
+            }
+            opts.onDownloadProgress?.(e.loaded);
+          });
+        };
 
-    let analyst: string;
-    try {
-      analyst = await session.prompt(
-        `Section: ${section.label}\n\n${text.slice(0, MAX_ANALYST_CHARS)}`,
-        ...(sig !== undefined ? [{ signal: sig }] : []),
-      );
-    } finally {
-      session.destroy();
-    }
+        const session = await LM.create({
+          ...LANGUAGE_MODEL_LANGUAGE,
+          initialPrompts: [{ role: 'system', content: ANALYST_SYSTEM_PROMPT }],
+          monitor,
+          signal,
+        });
+        try {
+          return await session.prompt(
+            `Section: ${section.label}\n\n${text.slice(0, MAX_ANALYST_CHARS)}`,
+            { signal },
+          );
+        } finally {
+          session.destroy();
+        }
+      },
+      { stallMs: NANO_STALL_MS, ...(sig !== undefined ? { parent: sig } : {}) },
+    );
 
     return {
       summary: analyst,
@@ -186,7 +232,7 @@ async function runBuiltin(
       fromCache: false,
     };
   } catch (err) {
-    // Respect aborts; otherwise fall back to extractive key sentences.
+    // Respect aborts; otherwise (failure OR stall) fall back to extractive.
     if (sig?.aborted) throw err;
     return runExtractive(section, rawTextHash);
   }

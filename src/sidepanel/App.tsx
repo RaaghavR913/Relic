@@ -185,10 +185,64 @@ function WhereItWorks() {
       {infoOpen && (
         <ul className="mt-2 flex flex-col gap-2">
           {WORKS_TIERS.map((t) => (
-            <li key={t.label} className="leading-relaxed text-zinc-400">
+            <li
+              key={`${t.prefix}${t.link?.text ?? t.label ?? ''}`}
+              className="leading-relaxed text-zinc-400"
+            >
               <span className="flex flex-col gap-0.5">
-                <span className="font-semibold text-zinc-200">{t.label}</span>
-                <span>{t.detail}</span>
+                <span className="font-semibold text-zinc-200">
+                  {t.prefix}
+                  {t.parts
+                    ? t.parts.map((part, i) =>
+                        part.type === 'link' ? (
+                          <a
+                            key={`${part.text}-${i}`}
+                            href={part.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sky-400 underline hover:text-sky-300"
+                          >
+                            {part.text}
+                          </a>
+                        ) : (
+                          <span key={`text-${i}`}>{part.value}</span>
+                        ),
+                      )
+                    : t.link ? (
+                        <a
+                          href={t.link.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sky-400 underline hover:text-sky-300"
+                        >
+                          {t.link.text}
+                        </a>
+                      ) : (
+                        t.label
+                      )}
+                  {t.suffix}
+                </span>
+                {t.detail ? (
+                  <span>
+                    {typeof t.detail === 'string'
+                      ? t.detail
+                      : t.detail.map((part, i) =>
+                          part.type === 'link' ? (
+                            <a
+                              key={`${part.text}-${i}`}
+                              href={part.href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sky-400 underline hover:text-sky-300"
+                            >
+                              {part.text}
+                            </a>
+                          ) : (
+                            <span key={`text-${i}`}>{part.value}</span>
+                          ),
+                        )}
+                  </span>
+                ) : null}
               </span>
             </li>
           ))}

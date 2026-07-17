@@ -162,7 +162,13 @@ export function SentimentPanel({ doc, flags }: SentimentPanelProps) {
   const reducedMotion = useReducedMotion() ?? false;
 
   const [status, setStatus] = useState<AnalysisStatus>('idle');
-  const [progress, setProgress] = useState<{ stage: string; value: number; detail?: string } | null>(null);
+  const [progress, setProgress] = useState<{
+    stage: string;
+    value: number;
+    detail?: string;
+    /** No real percentage available (model missing a size manifest). */
+    indeterminate?: boolean;
+  } | null>(null);
   const [error, setError] = useState('');
   const [fromCache, setFromCache] = useState(false);
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
@@ -200,7 +206,12 @@ export function SentimentPanel({ doc, flags }: SentimentPanelProps) {
       if (msg.type === 'SENTIMENT_PROGRESS') {
         const m = msg as SentimentProgressMsg;
         if (m.stage === 'model_load') {
-          setProgress({ stage: 'Loading FinBERT…', value: m.progress, ...(m.detail !== undefined ? { detail: m.detail } : {}) });
+          setProgress({
+            stage: 'Loading FinBERT…',
+            value: m.progress,
+            ...(m.detail !== undefined ? { detail: m.detail } : {}),
+            ...(m.indeterminate ? { indeterminate: true } : {}),
+          });
         } else if (m.stage === 'classifying') {
           setProgress({ stage: 'classifying', value: m.progress, ...(m.detail !== undefined ? { detail: m.detail } : {}) });
         } else if (m.stage === 'complete' || m.stage === 'error') {
@@ -342,21 +353,33 @@ export function SentimentPanel({ doc, flags }: SentimentPanelProps) {
             transition={reducedMotion ? { duration: 0 } : { duration: 0.15 }}
             className="overflow-hidden"
             role="progressbar"
-            aria-valuenow={Math.round(progress.value * 100)}
+            {...(progress.indeterminate !== true
+              ? { 'aria-valuenow': Math.round(progress.value * 100) }
+              : {})}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-label={progress.detail ?? progress.stage}
           >
             <div className="flex justify-between text-[10px] text-zinc-500 mb-1">
               <span>{progress.detail ?? progress.stage}</span>
-              <span>{Math.round(progress.value * 100)}%</span>
+              {progress.indeterminate !== true && (
+                <span>{Math.round(progress.value * 100)}%</span>
+              )}
             </div>
             <div className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
-              <m.div
-                className="h-full rounded-full bg-green-500"
-                animate={{ width: `${progress.value * 100}%` }}
-                transition={reducedMotion ? { duration: 0 } : { duration: 0.3 }}
-              />
+              {progress.indeterminate === true ? (
+                <m.div
+                  className="h-full w-1/3 rounded-full bg-green-500"
+                  animate={{ x: ['-100%', '300%'] }}
+                  transition={reducedMotion ? { duration: 0 } : { duration: 1.2, repeat: Infinity, ease: 'linear' }}
+                />
+              ) : (
+                <m.div
+                  className="h-full rounded-full bg-green-500"
+                  animate={{ width: `${progress.value * 100}%` }}
+                  transition={reducedMotion ? { duration: 0 } : { duration: 0.3 }}
+                />
+              )}
             </div>
           </m.div>
         )}

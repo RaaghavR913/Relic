@@ -15,6 +15,7 @@
 import { pipeline } from '@huggingface/transformers';
 import type { WorkerOutbound, WorkerProgressMsg } from '@/messages/types';
 import { configureBundledModelEnv } from '@/workers/transformersEnv';
+import { createLoadProgressTracker } from '@/workers/modelSizes';
 import { debugLog } from '@/lib/debug';
 
 // The feature-extraction pipeline is callable: (texts, opts) => Tensor. The broad union
@@ -53,14 +54,15 @@ async function init(
   initParams = { wasmPaths, modelBasePath, modelId, numThreads };
   configureBundledModelEnv(wasmPaths, modelBasePath, numThreads);
 
-  const progressCallback = (progress: unknown) => {
-    const p = progress as { status?: string; progress?: number; file?: string };
-    if (p.status === 'progress' && typeof p.progress === 'number') {
-      const msg: WorkerProgressMsg = { type: 'PROGRESS', progress: p.progress / 100 };
-      if (typeof p.file === 'string') msg.file = p.file;
-      post(msg);
-    }
-  };
+  // Bundled chrome-extension:// responses carry no Content-Length, so the raw
+  // event's `progress` field pegs to ~100% immediately. Derive a REAL fraction
+  // from `loaded` bytes against the build-time size manifest instead.
+  const progressCallback = createLoadProgressTracker(modelId, (e) => {
+    const msg: WorkerProgressMsg = { type: 'PROGRESS', progress: e.progress };
+    if (e.file !== undefined) msg.file = e.file;
+    if (e.indeterminate) msg.indeterminate = true;
+    post(msg);
+  });
 
   // Deterministic backend order with per-attempt diagnostics (mirrors sentiment.worker).
   const order: ReadonlyArray<'webgpu' | 'wasm'> = forceWasm ? ['wasm'] : ['webgpu', 'wasm'];

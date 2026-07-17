@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Relic",
-  "version": "1.2.7",
+  "name": "Relic - Instant Investor Analysis",
+  "version": "2.2.7",
   "minimum_chrome_version": "116",
   "description": "Turn SEC filings and investor documents into clear summaries, key takeaways, sentiment insights, and important changes.",
   "permissions": [
@@ -58,7 +58,7 @@
     "open_in_tab": true
   },
   "action": {
-    "default_title": "Relic",
+    "default_title": "Relic - Instant Investor Analysis",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",

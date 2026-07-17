@@ -2,17 +2,17 @@
 // Relic — extension settings page
 // ------------------------------------------------------------
 // Opened in a tab via chrome.runtime.openOptionsPage() (options_ui).
-// A single centered column: a read-only privacy statement, the handful of
-// controls the user can change, and an auto-detected device status block.
+// A single centered column: a numbered how-to walkthrough, the handful of
+// controls the user can change, FAQ, and an auto-detected device status block.
 //
 // Every control is wired to real persisted state through the extension's
 // existing storage layer — nothing here is decorative, and the page itself
 // makes zero network requests (the privacy promise).
-//   • Fetch prior-year filings → relic:secFetch        (useSecFetchPref)
-//   • On-page highlights        → relic:flagsEnabled    (overlay prefs)
-//   • Clear cached analyses     → clearAllCaches() (IndexedDB)
-//   • Replay onboarding         → removes relic:onboarded
-//   • Generation mode           → live capability detection (read-only)
+//   • Fetch last year's filing → relic:secFetch        (useSecFetchPref)
+//   • On-page highlights       → relic:flagsEnabled    (overlay prefs)
+//   • Clear saved analyses     → clearAllCaches() (IndexedDB)
+//   • Welcome screen replay    → removes relic:onboarded
+//   • Generation mode          → live capability detection (read-only)
 // ============================================================
 
 import { useCallback, useState, type ReactNode } from 'react';
@@ -36,49 +36,43 @@ const ACCENT = '#34d399';
 
 // ── static content ──────────────────────────────────────────────────────────
 
-/** Three-step walkthrough — rendered as title + detail rows, in document order. */
-const STEPS: ReadonlyArray<{ title: string; detail: string }> = [
+/** How-to walkthrough — numbered rows; each step has a detail line and optional bullets. */
+const STEPS: ReadonlyArray<{ title: string; detail?: string; bullets?: readonly string[] }> = [
   {
-    title: 'Open a filing',
-    detail:
-      'Go to a 10-K, 10-Q, 8-K, 20-F, S-1, or proxy on SEC EDGAR and click the Relic extension. On other financial pages, click the Relic icon and choose “Analyze this page.”',
+    title: 'Open a filing and click “Analyze this Page”',
   },
   {
-    title: 'Read the analysis tabs',
-    detail:
-      'Analyst gives an investor read, Summary condenses each section, Sentiment scores tone with FinBERT, and Redline compares against last year’s filing. Each appears as it finishes — all on your device.',
-  },
-  {
-    title: 'Use the on-page highlights',
-    detail:
-      'Relic underlines cautious, litigious, and negative wording directly in the filing so the language that matters is easy to spot. Hover a flagged phrase for details. Turn highlights on or off under Settings → On-page highlights.',
+    title: 'Read the tabs',
+    detail: 'Each tab fills in as it finishes:',
+    bullets: [
+      'Analyst — the takeaways an investor would look for.',
+      'Summary — every section in a few lines.',
+      'Sentiment — how positive or cautious the wording is.',
+      'Redline — what changed since last year.',
+    ],
   },
 ];
 
 /** Frequently asked questions — a short answer, optionally followed by bullets. */
 const FAQS: ReadonlyArray<{ q: string; a?: string; bullets?: readonly string[] }> = [
   {
-    q: 'Does any of my data leave my device?',
-    a: 'No — all analysis happens on your device. The one exception is Redline, which fetches last year’s filing from SEC.gov only when you ask. You can turn it off under Settings.',
-  },
-  {
     q: 'Why are some tabs missing on a page?',
-    a: 'Analyst, Sentiment, and Redline only appear on real company filings. Index pages, exhibits, and other SEC data pages get Summary only.',
+    a: 'The full set of tabs appears only on actual company filings. Index pages, exhibits, and other SEC pages get just a Summary.',
   },
   {
-    q: 'What’s the difference between Built-in AI and Extractive?',
+    q: 'What do “Built-in AI” and “Extractive” mean?',
     bullets: [
-      'Built-in AI writes analyst notes and change narratives in natural language.',
-      'Extractive surfaces the filing’s most important existing sentences.',
-      'Sentiment, language flags, and Redline work fully in both.',
+      'Built-in AI — Chrome’s on-device AI writes the analysis in its own words.',
+      'Extractive — Relic quotes the filing’s most important sentences instead.',
+      'Either way, sentiment, highlights, and Redline all work the same.',
     ],
   },
   {
     q: 'Why is the first analysis slow?',
     bullets: [
-      'On first use, Chrome downloads the Gemini Nano model (~2 GB) — a one-time Chrome download, not a Relic upload.',
-      'Large filings can take up to a minute to read.',
-      'Language flags appear immediately; sentiment runs as soon as you ask.',
+      'The first analysis triggers Chrome to download its built-in AI (about 2 GB) — a one-time download; nothing is uploaded.',
+      'Very long filings can take up to a minute.',
+      'Highlights appear right away while the rest finishes.',
     ],
   },
 ];
@@ -109,24 +103,51 @@ function Section({
   );
 }
 
-/** A row: title + description on the left, control flush right, 0.5px top divider. */
+/** A row: title + description on the left, control flush right, 0.5px top divider.
+ *  `num` renders a small serif step numeral in the left gutter (How it Works). */
 function Row({
+  num,
   title,
   desc,
   control,
 }: {
+  num?: number;
   title: string;
   desc: ReactNode;
   control: ReactNode;
 }) {
   return (
     <div className="flex items-start gap-4 border-t-[0.5px] border-[#1f1f22] py-4">
+      {num != null && (
+        <span
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[12px] ring-1 ring-inset ring-[#34d39945]"
+          style={{ color: ACCENT, fontFamily: SERIF }}
+        >
+          {num}
+        </span>
+      )}
       <div className="min-w-0 flex-1">
         <div className="text-[14px] font-medium text-[#ededf0]">{title}</div>
-        <div className="mt-1 text-[13px] leading-relaxed text-[#c4c4c8]">{desc}</div>
+        {desc ? (
+          <div className="mt-1 text-[13px] leading-relaxed text-[#c4c4c8]">{desc}</div>
+        ) : null}
       </div>
       {control && <div className="mt-0.5 shrink-0">{control}</div>}
     </div>
+  );
+}
+
+/** Manual bullet rows (`•` spans, not list-disc) so markers match the text color. */
+function BulletList({ items, className }: { items: readonly string[]; className?: string }) {
+  return (
+    <ul className={className ? `space-y-1 ${className}` : 'space-y-1'}>
+      {items.map((b) => (
+        <li key={b} className="flex gap-2">
+          <span aria-hidden>•</span>
+          <span>{b}</span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -238,7 +259,7 @@ export default function SettingsApp() {
     void clearAllCaches()
       .then(() => {
         setCacheState('done');
-        setAnnounce('Cached analyses cleared.');
+        setAnnounce('Saved analyses cleared.');
         setTimeout(() => setCacheState('idle'), 2500);
       })
       .catch(() => setCacheState('idle'));
@@ -247,7 +268,7 @@ export default function SettingsApp() {
   const replayOnboarding = useCallback(() => {
     void chrome.storage.local.remove(ONBOARDED_KEY).catch(() => {});
     setReplayed(true);
-    setAnnounce('The welcome screen will show next time you open the side panel.');
+    setAnnounce('The welcome screen will show next time you open Relic.');
     setTimeout(() => setReplayed(false), 2500);
   }, []);
 
@@ -271,28 +292,32 @@ export default function SettingsApp() {
           </p>
         </header>
 
-        {/* Privacy — read-only */}
-        <Section title="Privacy">
-          <p className="text-[14px] leading-relaxed text-[#c4c4c8]">
-            No filing analysis, summaries, or notes leave your device because the models run locally.
-            The one network request is the Redline lookup below, and it only fires when you compare
-            against a previous year&rsquo;s filing.
-          </p>
-        </Section>
-
-        {/* How to use — read-only walkthrough */}
-        <Section title="How to use">
-          {STEPS.map((s) => (
-            <Row key={s.title} title={s.title} desc={s.detail} control={null} />
+        {/* How it Works — read-only walkthrough */}
+        <Section title="How it Works">
+          {STEPS.map((s, i) => (
+            <Row
+              key={s.title}
+              num={i + 1}
+              title={s.title}
+              desc={
+                s.detail || s.bullets ? (
+                  <>
+                    {s.detail}
+                    {s.bullets ? <BulletList items={s.bullets} className="mt-1.5" /> : null}
+                  </>
+                ) : null
+              }
+              control={null}
+            />
           ))}
           <div
             className="mt-4 rounded-md border-l-4 bg-[#141416] px-5 py-4"
             style={{ borderColor: ACCENT }}
           >
             <p className="text-[14px] leading-relaxed text-[#c4c4c8]">
-              <span className="font-medium text-[#ededf0]">Tip:</span> Pin Relic to your Chrome
-              toolbar for quick access on filings. Click the puzzle-piece icon, then select the pin
-              next to Relic.
+              <span className="font-medium text-[#ededf0]">Tip:</span> Pin Relic to your toolbar so
+              it&rsquo;s one click away — click Chrome&rsquo;s puzzle-piece icon, then the pin next
+              to Relic.
             </p>
           </div>
         </Section>
@@ -300,26 +325,26 @@ export default function SettingsApp() {
         {/* Settings — interactive */}
         <Section title="Settings">
           <Row
-            title="Fetch prior-year filings from SEC.gov"
-            desc="Powers the year-over-year Redline comparison. The only network request Relic makes."
+            title="Fetch last year’s filing"
+            desc="Lets the Redline tab get last year’s version from SEC.gov to compare — the only internet request Relic ever makes."
             control={
               <Toggle
                 checked={secFetch}
                 onChange={setSecFetch}
-                label="Fetch prior-year filings from SEC.gov"
+                label="Fetch last year’s filing"
               />
             }
           />
           <Row
             title="On-page highlights"
-            desc="Underline uncertainty, weak-modal, litigious, and negative wording on the filing page. Hover flagged phrases for a tooltip."
+            desc="Underline cautious and negative wording in the filing. Hover a phrase to see why it’s flagged."
             control={
               <Toggle checked={prefs.flags} onChange={setFlags} label="On-page highlights" />
             }
           />
           <Row
-            title="Cached analyses"
-            desc="Kept on this device so re-opening a filing is instant."
+            title="Saved analyses"
+            desc="Kept on this device so filings you’ve already opened load instantly."
             control={
               <ActionButton onClick={clearCaches} disabled={cacheState !== 'idle'}>
                 {cacheState === 'clearing' ? 'Clearing…' : cacheState === 'done' ? 'Cleared ✓' : 'Clear'}
@@ -327,8 +352,8 @@ export default function SettingsApp() {
             }
           />
           <Row
-            title="Replay onboarding"
-            desc="Show the welcome screen next time you open the side panel."
+            title="Welcome screen"
+            desc="See the intro again next time you open Relic."
             control={
               <ActionButton onClick={replayOnboarding}>
                 {replayed ? 'Replayed ✓' : 'Replay'}
@@ -347,14 +372,7 @@ export default function SettingsApp() {
                 <>
                   {f.a}
                   {f.bullets ? (
-                    <ul className={`space-y-1${f.a ? ' mt-1.5' : ''}`}>
-                      {f.bullets.map((b) => (
-                        <li key={b} className="flex gap-2">
-                          <span aria-hidden>•</span>
-                          <span>{b}</span>
-                        </li>
-                      ))}
-                    </ul>
+                    <BulletList items={f.bullets} className={f.a ? 'mt-1.5' : undefined} />
                   ) : null}
                 </>
               }
@@ -367,12 +385,12 @@ export default function SettingsApp() {
         <Section title="On this device">
           <Row
             title="Generation mode"
-            desc="Chosen automatically from your device’s capabilities — Built-in AI (Gemini Nano) when Chrome supports it on this hardware, otherwise Relic’s extractive mode."
+            desc="Picked automatically for your device — Built-in AI (Gemini Nano) when Chrome supports it, otherwise extractive mode."
             control={<GenerationStatus />}
           />
           <Row
-            title="Bundled models"
-            desc="FinBERT for financial sentiment, plus an on-device encoder for summaries and Redline matching."
+            title="Models: FinBERT, Encoder, & Redline (YoY Changes)"
+            desc={null}
             control={null}
           />
           <Row
@@ -425,7 +443,7 @@ export default function SettingsApp() {
           >
             <p className="text-[14px] leading-relaxed text-[#c4c4c8]">
               <span className="font-medium text-[#ededf0]">Disclaimer:</span> Relic summarizes
-              filings for informational purposes only. It does not provide investment advice.
+              filings for information only. It does not provide investment advice.
             </p>
           </div>
         </footer>

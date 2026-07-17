@@ -5,9 +5,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { m, AnimatePresence } from 'framer-motion';
 import type { DocumentModel, Section } from '@/types';
-import type { GenerationTier } from '@/runtime/capabilities';
-import { summarizeSection, DISCLAIMER } from '@/summarizer/summarize';
-import { getCachedSummary } from '@/summarizer/summaryStore';
+import { probePromptApiAvailability, type GenerationTier } from '@/runtime/capabilities';
+import { summarizeSection, getCachedSummaryWithFallback, DISCLAIMER } from '@/summarizer/summarize';
 import type { EmbedProgressMsg } from '@/messages/types';
 import { isLowConfidenceGeneric, isEdgarExhibit } from '@/content/ingest/detect';
 import { useReportAnalysisActivity } from './analysisActivity';
@@ -15,6 +14,15 @@ import { useReportAnalysisActivity } from './analysisActivity';
 // ── constants ─────────────────────────────────────────────────────────────────
 
 const DEV_FORCE_KEY = 'relic:devForceMode';
+
+/**
+ * Cap the text fed to extractive summarization on summary-only pages (news /
+ * low-confidence generic): the fallback segmenter puts the ENTIRE page in one
+ * document_body section, and embedding a heavy portal page means hundreds of
+ * WASM batches on a low-end laptop. Real SEC filings are never capped. A prefix
+ * slice keeps every section-space anchor valid.
+ */
+const EXTRACTIVE_CAP_CHARS = 24_000;
 
 // Sections worth auto-summarizing first (by canonical id prefix).
 const PRIORITY_IDS = [
@@ -32,7 +40,19 @@ interface SectionState {
   anchors?: ReadonlyArray<[number, number]>;
   analystAvailable?: boolean;
   fromCache?: boolean;
+  /** True when the source text was capped to EXTRACTIVE_CAP_CHARS (summary-only pages). */
+  truncated?: boolean;
   error?: string;
+}
+
+/** What the single progress bar is currently tracking. */
+interface LoadProgress {
+  /** 'nano' = Chrome's one-time Gemini Nano download; 'encoder' = bundled encoder model load. */
+  source: 'nano' | 'encoder';
+  /** 0..1 */
+  value: number;
+  /** No real percentage available — render an indeterminate bar. */
+  indeterminate?: boolean;
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -215,6 +235,13 @@ function SectionCard({
                   </div>
                 )}
 
+                {/* Truncation footnote (summary-only pages capped at EXTRACTIVE_CAP_CHARS) */}
+                {state.truncated && (
+                  <p className="mt-2 text-[10px] text-zinc-600">
+                    Summarized from the first part of the page.
+                  </p>
+                )}
+
                 {/* Disclaimer */}
                 <p className="mt-2.5 text-[10px] text-zinc-600 italic">{DISCLAIMER}</p>
               </div>
@@ -242,11 +269,26 @@ export function SummaryPanel({ doc, detectedTier }: SummaryPanelProps) {
   const [states, setStates] = useState<Record<string, SectionState>>(() =>
     Object.fromEntries(sections.map((s) => [s.id, { status: 'idle' as const }])),
   );
-  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+  const [loadProgress, setLoadProgress] = useState<LoadProgress | null>(null);
 
   // Dev: force mode override
   const [forceMode, setForceMode] = useState<GenerationTier | null>(null);
   const [forceModeReady, setForceModeReady] = useState(false);
+
+  // Is Gemini Nano actually ON DISK right now? getCapabilities() counts merely
+  // *downloadable* toward the 'builtin' tier, which is exactly how a first-run
+  // auto-summarize used to attach Chrome's one-time ~2 GB download to a page
+  // load (and freeze at whatever fraction the download stalled on). null =
+  // probe still in flight; effects that pick a tier wait for it.
+  const [nanoReady, setNanoReady] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    probePromptApiAvailability()
+      .then((state) => { if (!cancelled) setNanoReady(state === 'available'); })
+      .catch(() => { if (!cancelled) setNanoReady(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   // AbortControllers keyed by sectionId for in-flight summarizations.
   const acRefs = useRef<Record<string, AbortController>>({});
@@ -259,8 +301,28 @@ export function SummaryPanel({ doc, detectedTier }: SummaryPanelProps) {
   // can only be set through the DevSettings UI, which is gated out below, but we
   // also hard-gate the override path here so a stale persisted value can never
   // change the tier in production.
-  const effectiveTier = (import.meta.env.DEV ? forceMode : null) ?? detectedTier;
+  //
+  // Extractive-first: the builtin tier is used only when Nano is on disk NOW.
+  // When it is merely downloadable/downloading, summaries run instantly on the
+  // WASM extractive path instead of triggering (or attaching to) the 2 GB
+  // download — the same policy AnalystPanel applies to low-value pages. The
+  // next panel mount re-probes, so the tier upgrades once the download lands.
+  const effectiveTier: GenerationTier =
+    (import.meta.env.DEV ? forceMode : null) ??
+    (detectedTier === 'builtin' && nanoReady === true ? 'builtin' : 'extractive');
   const extractiveTier = effectiveTier === 'extractive';
+
+  // Summary-only pages — SEC data/report, EDGAR filing index, exhibit, or
+  // low-confidence generic — have no investor sections to prioritize. Mirrors
+  // hidesInvestorTabs() in App.tsx; keep the two in sync.
+  const summaryOnlyPage = useMemo(
+    () =>
+      doc.filingType === 'DATA_REPORT' ||
+      doc.source.category === 'edgar_index' ||
+      isEdgarExhibit(doc) ||
+      isLowConfidenceGeneric(doc),
+    [doc],
+  );
 
   // ── Load force mode + cached results ──────────────────────────────────────
 
@@ -273,10 +335,10 @@ export function SummaryPanel({ doc, detectedTier }: SummaryPanelProps) {
   }, []);
 
   useEffect(() => {
-    if (!forceModeReady) return;
+    if (!forceModeReady || nanoReady === null) return;
     // Populate cached summaries on mount (or when tier changes).
     for (const section of sections) {
-      getCachedSummary(doc.rawTextHash, section.id, effectiveTier)
+      getCachedSummaryWithFallback(doc.rawTextHash, section.id, effectiveTier)
         .then((entry) => {
           if (!entry) return;
           setStates((prev) => ({
@@ -292,23 +354,27 @@ export function SummaryPanel({ doc, detectedTier }: SummaryPanelProps) {
         })
         .catch(console.warn);
     }
-  }, [sections, doc.rawTextHash, effectiveTier, forceModeReady]);
+  }, [sections, doc.rawTextHash, effectiveTier, forceModeReady, nanoReady]);
 
   // Reset states when tier changes (different cache key).
   useEffect(() => {
     setStates(Object.fromEntries(sections.map((s) => [s.id, { status: 'idle' as const }])));
   }, [effectiveTier, sections]);
 
-  // Listen for EMBED_PROGRESS (encoder model download during extractive).
+  // Listen for EMBED_PROGRESS (bundled encoder model load during extractive).
   useEffect(() => {
     const listener = (rawMsg: unknown) => {
       const msg = rawMsg as { target?: string; type?: string };
       if (msg.target !== 'sidepanel' || msg.type !== 'EMBED_PROGRESS') return;
       const m = msg as EmbedProgressMsg;
       if (m.stage === 'model_load') {
-        setDownloadProgress(m.progress);
+        setLoadProgress({
+          source: 'encoder',
+          value: m.progress,
+          ...(m.indeterminate ? { indeterminate: true } : {}),
+        });
       } else if (m.stage === 'complete' || m.stage === 'error') {
-        setDownloadProgress(null);
+        setLoadProgress(null);
       }
     };
     chrome.runtime.onMessage.addListener(listener);
@@ -325,10 +391,17 @@ export function SummaryPanel({ doc, detectedTier }: SummaryPanelProps) {
 
     setStates((prev) => ({ ...prev, [section.id]: { status: 'loading' } }));
 
+    // Summary-only pages get a prefix cap so a heavy news portal doesn't turn
+    // into hundreds of WASM embed batches. Never applied to real SEC filings.
+    const truncated = summaryOnlyPage && section.text.length > EXTRACTIVE_CAP_CHARS;
+    const target = truncated
+      ? { ...section, text: section.text.slice(0, EXTRACTIVE_CAP_CHARS) }
+      : section;
+
     try {
-      const result = await summarizeSection(section, doc, {
+      const result = await summarizeSection(target, doc, {
         effectiveTier,
-        onDownloadProgress: (p) => setDownloadProgress(p),
+        onDownloadProgress: (p) => setLoadProgress({ source: 'nano', value: p }),
         signal: ac.signal,
       });
 
@@ -342,6 +415,7 @@ export function SummaryPanel({ doc, detectedTier }: SummaryPanelProps) {
           anchors: result.anchors,
           analystAvailable: result.analystAvailable,
           fromCache: result.fromCache,
+          ...(truncated ? { truncated: true } : {}),
         },
       }));
     } catch (err) {
@@ -351,10 +425,10 @@ export function SummaryPanel({ doc, detectedTier }: SummaryPanelProps) {
         [section.id]: { status: 'error', error: String(err) },
       }));
     } finally {
-      setDownloadProgress(null);
+      setLoadProgress(null);
       delete acRefs.current[section.id];
     }
-  }, [doc, effectiveTier]);
+  }, [doc, effectiveTier, summaryOnlyPage]);
 
   const summarizeAll = useCallback(async () => {
     for (const section of sections) {
@@ -368,24 +442,21 @@ export function SummaryPanel({ doc, detectedTier }: SummaryPanelProps) {
   // user sees results with zero manual clicks. Runs once per doc hash;
   // IDB-cached sections are skipped to avoid the idle→loading→done flash on re-open.
   useEffect(() => {
-    if (!forceModeReady) return;
+    // Wait for both async gates (dev force-mode load AND the Nano on-disk
+    // probe) so the first summarize call runs with the FINAL tier — the
+    // autoTriggeredForRef latch means this effect fires once per doc.
+    if (!forceModeReady || nanoReady === null) return;
     if (autoTriggeredForRef.current === doc.rawTextHash) return;
     autoTriggeredForRef.current = doc.rawTextHash;
 
-    // Summary-only pages — SEC data/report, EDGAR filing index, or low-confidence
-    // generic — have no investor sections to prioritize, so summarize every
-    // section and the user never has to click "Summarize All" after "Analyze this
-    // page". Mirrors hidesInvestorTabs() in App.tsx; keep the two in sync.
-    const summaryOnlyPage =
-      doc.filingType === 'DATA_REPORT' ||
-      doc.source.category === 'edgar_index' ||
-      isEdgarExhibit(doc) ||
-      isLowConfidenceGeneric(doc);
+    // Summary-only pages have no investor sections to prioritize, so summarize
+    // every section and the user never has to click "Summarize All" after
+    // "Analyze this page".
     if (summaryOnlyPage) {
       void (async () => {
         for (const section of sections) {
           if (acRefs.current[section.id] !== undefined) continue;
-          const cached = await getCachedSummary(doc.rawTextHash, section.id, effectiveTier);
+          const cached = await getCachedSummaryWithFallback(doc.rawTextHash, section.id, effectiveTier);
           if (cached) continue;
           await summarize(section);
         }
@@ -406,12 +477,12 @@ export function SummaryPanel({ doc, detectedTier }: SummaryPanelProps) {
         // Skip if a concurrent manual trigger or summarizeAll is already running.
         if (acRefs.current[section.id] !== undefined) continue;
         // Skip if already in IDB cache — cache-pop effect will surface it instantly.
-        const cached = await getCachedSummary(doc.rawTextHash, section.id, effectiveTier);
+        const cached = await getCachedSummaryWithFallback(doc.rawTextHash, section.id, effectiveTier);
         if (cached) continue;
         await summarize(section);
       }
     })();
-  }, [doc, effectiveTier, forceModeReady, sections, summarize]);
+  }, [doc, effectiveTier, forceModeReady, nanoReady, sections, summarize, summaryOnlyPage]);
 
   // ── jump to source ─────────────────────────────────────────────────────────
 
@@ -438,11 +509,18 @@ export function SummaryPanel({ doc, detectedTier }: SummaryPanelProps) {
   // Surface the header "On-device" chip while any section is summarizing (or the
   // encoder/model is still loading for the extractive path).
   const anyLoading =
-    downloadProgress !== null ||
+    loadProgress !== null ||
     Object.values(states).some((s) => s.status === 'loading');
   useReportAnalysisActivity(anyLoading);
 
   // ── render ─────────────────────────────────────────────────────────────────
+
+  const progressPct = loadProgress !== null ? Math.round(loadProgress.value * 100) : 0;
+  const progressLabel =
+    loadProgress?.source === 'nano'
+      ? 'Downloading Chrome built-in AI (one-time, ~2 GB)…'
+      : 'Loading encoder model…';
+  const showProgressPct = loadProgress !== null && loadProgress.indeterminate !== true;
 
   return (
     <section aria-label="Summaries" className="flex flex-col gap-3">
@@ -453,30 +531,40 @@ export function SummaryPanel({ doc, detectedTier }: SummaryPanelProps) {
           aria-live="polite"
           className="rounded-lg bg-amber-950/40 px-3 py-2 text-[11px] text-amber-300 ring-1 ring-inset ring-amber-700/30"
         >
-          Generative summaries need Chrome built-in AI — showing key sentences instead.
+          {detectedTier === 'builtin' && nanoReady === false
+            ? "Chrome's built-in AI isn't downloaded yet — showing key sentences instead."
+            : 'Generative summaries need Chrome built-in AI — showing key sentences instead.'}
         </div>
       )}
 
-      {/* Encoder download progress (extractive model_load) */}
-      {downloadProgress !== null && (
+      {/* Model load / download progress (Gemini Nano or the bundled encoder) */}
+      {loadProgress !== null && (
         <div
           role="progressbar"
-          aria-valuenow={Math.round(downloadProgress * 100)}
+          {...(showProgressPct ? { 'aria-valuenow': progressPct } : {})}
           aria-valuemin={0}
           aria-valuemax={100}
-          aria-label="Encoder model loading"
+          aria-label={progressLabel}
           className="flex flex-col gap-1"
         >
           <div className="flex justify-between text-[10px] text-zinc-500">
-            <span>Loading encoder…</span>
-            <span>{Math.round(downloadProgress * 100)}%</span>
+            <span>{progressLabel}</span>
+            {showProgressPct && <span>{progressPct}%</span>}
           </div>
           <div className="h-1 w-full overflow-hidden rounded-full bg-zinc-800">
-            <m.div
-              className="h-full rounded-full bg-sky-500"
-              animate={{ width: `${downloadProgress * 100}%` }}
-              transition={{ duration: 0.3 }}
-            />
+            {loadProgress.indeterminate === true ? (
+              <m.div
+                className="h-full w-1/3 rounded-full bg-sky-500"
+                animate={{ x: ['-100%', '300%'] }}
+                transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }}
+              />
+            ) : (
+              <m.div
+                className="h-full rounded-full bg-sky-500"
+                animate={{ width: `${progressPct}%` }}
+                transition={{ duration: 0.3 }}
+              />
+            )}
           </div>
         </div>
       )}

@@ -39,6 +39,7 @@ import type {
   ParsePdfResponse,
 } from '@/messages/types';
 import { parsePdf, base64ToBytes } from './pdfParse';
+import { settleWithDeadline } from './deadline';
 import type { DocumentModel, Section, SentenceSentiment, SectionDiff } from '@/types';
 import { filterNonTableSentences } from './sentenceFilter';
 import { debugLog } from '@/lib/debug';
@@ -74,14 +75,36 @@ const MODEL_ID = 'mixedbread-ai/mxbai-embed-xsmall-v1';
  */
 const FINBERT_MODEL_ID = 'Xenova/finbert';
 const IDLE_TIMEOUT_MS = 5 * 60 * 1_000; // 5 minutes
+
+/**
+ * Low-memory profile. navigator.deviceMemory is capped at 8 by Chrome and
+ * absent on some platforms (absent ⇒ assume 8 / don't degrade). At ≤ 4 GB the
+ * int8 models still fit, but peak WASM arena use must stay small: halve the
+ * batch sizes, run a single embed lane (two in-flight batches double the
+ * scratch buffers), and cap ORT at 2 threads so the machine stays responsive.
+ */
+const DEVICE_MEMORY_GB =
+  (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
+const LOW_MEMORY = DEVICE_MEMORY_GB <= 4;
+
 /** Max texts per single EMBED call (keeps per-call memory bounded). */
-const EMBED_BATCH = 32;
+const EMBED_BATCH = LOW_MEMORY ? 16 : 32;
 /** Max concurrent EMBED calls in-flight to the encoder worker. */
-const EMBED_CONCURRENCY = 2;
+const EMBED_CONCURRENCY = LOW_MEMORY ? 1 : 2;
 /** Max texts per single CLASSIFY call — FinBERT sentences are longer than embed chunks. */
-const CLASSIFY_BATCH = 8;
+const CLASSIFY_BATCH = LOW_MEMORY ? 4 : 8;
 /** Concurrency for CLASSIFY calls — FinBERT classification is sequential per GPU. */
 const CLASSIFY_CONCURRENCY = 1;
+
+/**
+ * Per-batch inference deadlines. A worker that silently wedges (WebGPU
+ * device-lost that never throws, an OOM-killed thread) posts nothing back;
+ * without a deadline the awaiting promise — and the panel's progress bar —
+ * froze forever. The first batch on a fresh worker pays one-time WASM JIT /
+ * backend compile, so it gets a longer budget.
+ */
+const COLD_BATCH_TIMEOUT_MS = 60_000;
+const WARM_BATCH_TIMEOUT_MS = 30_000;
 
 /**
  * ORT WASM thread count. Multi-threaded ORT needs cross-origin isolation
@@ -90,10 +113,10 @@ const CLASSIFY_CONCURRENCY = 1;
  * threaded ORT builds (ort-wasm-simd-threaded*). Without isolation (older Chrome,
  * enterprise policy) we fall back to a single thread — the pre-existing behaviour.
  * Capped at 4: int8 FinBERT/embeddings stop scaling past that and we don't want to
- * monopolise every core on the machine.
+ * monopolise every core on the machine (2 on the low-memory profile — see above).
  */
 const ORT_NUM_THREADS = self.crossOriginIsolated
-  ? Math.min(4, navigator.hardwareConcurrency || 1)
+  ? Math.min(LOW_MEMORY ? 2 : 4, navigator.hardwareConcurrency || 1)
   : 1;
 
 // ── encoder worker state ──────────────────────────────────────────────────────
@@ -101,6 +124,8 @@ const ORT_NUM_THREADS = self.crossOriginIsolated
 let worker: Worker | null = null;
 let workerReady: Promise<'webgpu' | 'wasm'> | null = null;
 let workerDevice: 'webgpu' | 'wasm' = 'wasm';
+/** True once the current worker instance has completed a batch (cold JIT paid). */
+let encoderBatchDone = false;
 
 /** Pending EMBED request callbacks, keyed by correlation id. */
 const pending = new Map<
@@ -116,6 +141,8 @@ let pendingInit: { resolve: (d: 'webgpu' | 'wasm') => void; reject: (e: Error) =
 let sentimentWorker: Worker | null = null;
 let sentimentWorkerReady: Promise<'webgpu' | 'wasm'> | null = null;
 let sentimentWorkerDevice: 'webgpu' | 'wasm' = 'wasm';
+/** True once the current worker instance has completed a batch (cold JIT paid). */
+let sentimentBatchDone = false;
 
 /** Pending CLASSIFY request callbacks, keyed by correlation id. */
 const sentimentPending = new Map<
@@ -152,31 +179,78 @@ function resetIdleTimer(): void {
 }
 
 function terminateWorkers(): void {
-  // Encoder worker
-  worker?.terminate();
-  worker = null;
-  workerReady = null;
-  for (const p of pending.values()) p.reject(new Error('Worker terminated'));
-  pending.clear();
-  pendingInit = null;
-
+  terminateEncoderWorker();
   terminateSentimentWorker();
 }
 
 /**
- * Tear down just the FinBERT sentiment worker, leaving the encoder worker (which
- * serves summaries + the redline semantic pass) untouched. Called eagerly after a
- * sentiment pass finishes so the ~1 GB peak FinBERT holds on WASM devices is freed
- * without waiting for the 5-minute idle unload. ensureSentimentWorker() rebuilds a
- * fresh worker (and re-INITs from the retained constants) on the next request.
+ * Tear down the encoder worker, settling EVERYTHING it owed: a caller blocked
+ * in ensureWorker() (model still loading) and every in-flight embed batch.
+ * Leaving any of these pending froze the panel's progress bar with no error
+ * (the pre-fix behaviour). Nulling workerReady makes the next request rebuild
+ * a fresh worker instead of reusing a corpse or a forever-rejected promise.
  */
-function terminateSentimentWorker(): void {
+function terminateEncoderWorker(reason = 'Worker terminated'): void {
+  worker?.terminate();
+  worker = null;
+  workerReady = null;
+  encoderBatchDone = false;
+  pendingInit?.reject(new Error(`${reason} (during model load)`));
+  pendingInit = null;
+  for (const p of pending.values()) p.reject(new Error(reason));
+  pending.clear();
+}
+
+/**
+ * Tear down just the FinBERT sentiment worker, leaving the encoder worker (which
+ * serves summaries + the redline semantic pass) untouched. Called after a
+ * sentiment pass finishes so the ~1 GB peak FinBERT holds on WASM devices is freed
+ * without waiting for the 5-minute idle unload (immediately on low-memory devices,
+ * after a short keep-warm window otherwise — see scheduleSentimentTeardown).
+ * ensureSentimentWorker() rebuilds a fresh worker (and re-INITs from the retained
+ * constants) on the next request.
+ */
+function terminateSentimentWorker(reason = 'Worker terminated'): void {
+  clearSentimentTeardownTimer();
   sentimentWorker?.terminate();
   sentimentWorker = null;
   sentimentWorkerReady = null;
-  for (const p of sentimentPending.values()) p.reject(new Error('Worker terminated'));
-  sentimentPending.clear();
+  sentimentBatchDone = false;
+  sentimentPendingInit?.reject(new Error(`${reason} (during model load)`));
   sentimentPendingInit = null;
+  for (const p of sentimentPending.values()) p.reject(new Error(reason));
+  sentimentPending.clear();
+}
+
+// ── FinBERT keep-warm ─────────────────────────────────────────────────────────
+
+/**
+ * Eager teardown frees FinBERT's ~1 GB WASM peak but repays full model load +
+ * WASM compile on every pass. With ≥ 8 GB reported (Chrome caps the report at 8)
+ * keep it warm briefly between passes; the 5-minute idle unload stays the
+ * backstop. Low-memory devices keep today's eager teardown.
+ */
+const SENTIMENT_KEEP_WARM_MS = 90_000;
+const KEEP_FINBERT_WARM = DEVICE_MEMORY_GB >= 8;
+let sentimentTeardownTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearSentimentTeardownTimer(): void {
+  if (sentimentTeardownTimer !== null) {
+    clearTimeout(sentimentTeardownTimer);
+    sentimentTeardownTimer = null;
+  }
+}
+
+function scheduleSentimentTeardown(): void {
+  if (!KEEP_FINBERT_WARM) {
+    terminateSentimentWorker();
+    return;
+  }
+  clearSentimentTeardownTimer();
+  sentimentTeardownTimer = setTimeout(() => {
+    sentimentTeardownTimer = null;
+    if (sentimentInFlight === 0) terminateSentimentWorker();
+  }, SENTIMENT_KEEP_WARM_MS);
 }
 
 // ── worker message handler ────────────────────────────────────────────────────
@@ -193,13 +267,14 @@ function handleWorkerMsg(e: MessageEvent): void {
   }
 
   if (msg.type === 'PROGRESS') {
-    sendProgress('model_load', msg.progress, msg.file);
+    sendProgress('model_load', msg.progress, msg.file, msg.indeterminate);
     return;
   }
 
   if (msg.type === 'EMBED_RESULT') {
     const cb = pending.get(msg.id);
     if (cb) {
+      encoderBatchDone = true;
       const vectors = msg.buffers.map((ab) => new Float32Array(ab));
       cb.resolve(vectors);
       pending.delete(msg.id);
@@ -215,8 +290,12 @@ function handleWorkerMsg(e: MessageEvent): void {
         pending.delete(msg.id);
       }
     } else {
+      // Init failed inside the worker. Reject the waiting ensureWorker() call
+      // with the real error, then drop the dead-on-arrival worker so the next
+      // request rebuilds instead of reusing a forever-rejected workerReady.
       pendingInit?.reject(new Error(msg.message));
       pendingInit = null;
+      terminateEncoderWorker(msg.message);
     }
   }
 }
@@ -235,8 +314,10 @@ function ensureWorker(): Promise<'webgpu' | 'wasm'> {
     );
     worker.onmessage = handleWorkerMsg;
     worker.onerror = (ev) => {
-      pendingInit?.reject(new Error(ev.message));
-      pendingInit = null;
+      // A crash (OOM kill, module failure) must settle EVERYTHING in flight —
+      // not just a pending init — and drop the corpse so the next request
+      // rebuilds. ev.message is often empty for opaque worker deaths.
+      terminateEncoderWorker(ev.message ? `Worker crashed: ${ev.message}` : 'Worker crashed');
     };
 
     // Pass wasmPaths + model base path computed here (offscreen has chrome.*) —
@@ -261,11 +342,25 @@ function ensureWorker(): Promise<'webgpu' | 'wasm'> {
 let _embedIdCounter = 0;
 
 function embedBatch(texts: string[]): Promise<Float32Array[]> {
-  return new Promise((resolve, reject) => {
-    const id = `e${++_embedIdCounter}`;
-    pending.set(id, { resolve, reject });
-    worker!.postMessage({ type: 'EMBED', id, texts });
+  // A teardown can race the sibling concurrency lane — fail fast instead of
+  // posting to a dead worker.
+  if (!worker) return Promise.reject(new Error('Encoder worker not available'));
+  const id = `e${++_embedIdCounter}`;
+  const ms = encoderBatchDone ? WARM_BATCH_TIMEOUT_MS : COLD_BATCH_TIMEOUT_MS;
+  const handle = settleWithDeadline<Float32Array[]>({
+    ms,
+    timeoutError: () => new Error(`Embedding batch timed out after ${Math.round(ms / 1000)}s`),
+    onTimeout: () => {
+      // Drop self first so the teardown sweep below doesn't consume this
+      // entry, then tear the wedged worker down — settling every sibling and
+      // nulling workerReady so the next request rebuilds fresh.
+      pending.delete(id);
+      terminateEncoderWorker('Encoder worker unresponsive');
+    },
   });
+  pending.set(id, { resolve: handle.resolve, reject: handle.reject });
+  worker.postMessage({ type: 'EMBED', id, texts });
+  return handle.promise;
 }
 
 /**
@@ -289,6 +384,10 @@ async function embedAll(texts: string[]): Promise<Float32Array[]> {
     while (batchIdx < batches.length) {
       const b = batches[batchIdx++]!;
       const vecs = await embedBatch(b.texts);
+      // Each completed batch proves the pipeline is alive: a legitimately long
+      // pass (large doc on low-end WASM) must not be torn down by the idle
+      // timer mid-flight.
+      resetIdleTimer();
       for (let j = 0; j < vecs.length; j++) {
         results[b.start + j] = vecs[j]!;
       }
@@ -316,7 +415,7 @@ function handleSentimentWorkerMsg(e: MessageEvent): void {
   }
 
   if (msg.type === 'PROGRESS') {
-    sendSentimentProgress('model_load', msg.progress, msg.file);
+    sendSentimentProgress('model_load', msg.progress, msg.file, msg.indeterminate);
     return;
   }
 
@@ -324,6 +423,7 @@ function handleSentimentWorkerMsg(e: MessageEvent): void {
     const m = msg as SentimentWorkerClassifyResultMsg;
     const cb = sentimentPending.get(m.id);
     if (cb) {
+      sentimentBatchDone = true;
       cb.resolve({ labels: m.labels, scores: m.scores });
       sentimentPending.delete(m.id);
     }
@@ -338,8 +438,11 @@ function handleSentimentWorkerMsg(e: MessageEvent): void {
         sentimentPending.delete(msg.id);
       }
     } else {
+      // Init failed inside the worker — reject the waiter, drop the DOA worker
+      // so the next request rebuilds (mirrors handleWorkerMsg).
       sentimentPendingInit?.reject(new Error(msg.message));
       sentimentPendingInit = null;
+      terminateSentimentWorker(msg.message);
     }
   }
 }
@@ -358,8 +461,8 @@ function ensureSentimentWorker(): Promise<'webgpu' | 'wasm'> {
     );
     sentimentWorker.onmessage = handleSentimentWorkerMsg;
     sentimentWorker.onerror = (ev) => {
-      sentimentPendingInit?.reject(new Error(ev.message));
-      sentimentPendingInit = null;
+      // Settle everything in flight and drop the corpse (mirrors the encoder).
+      terminateSentimentWorker(ev.message ? `Worker crashed: ${ev.message}` : 'Worker crashed');
     };
 
     const wasmPaths = chrome.runtime.getURL('wasm/');
@@ -379,11 +482,20 @@ function ensureSentimentWorker(): Promise<'webgpu' | 'wasm'> {
 // ── classify helper ───────────────────────────────────────────────────────────
 
 function classifyBatch(texts: string[]): Promise<{ labels: string[]; scores: number[] }> {
-  return new Promise((resolve, reject) => {
-    const id = `c${++_classifyIdCounter}`;
-    sentimentPending.set(id, { resolve, reject });
-    sentimentWorker!.postMessage({ type: 'CLASSIFY', id, texts });
+  if (!sentimentWorker) return Promise.reject(new Error('Sentiment worker not available'));
+  const id = `c${++_classifyIdCounter}`;
+  const ms = sentimentBatchDone ? WARM_BATCH_TIMEOUT_MS : COLD_BATCH_TIMEOUT_MS;
+  const handle = settleWithDeadline<{ labels: string[]; scores: number[] }>({
+    ms,
+    timeoutError: () => new Error(`Sentiment batch timed out after ${Math.round(ms / 1000)}s`),
+    onTimeout: () => {
+      sentimentPending.delete(id);
+      terminateSentimentWorker('FinBERT worker unresponsive');
+    },
   });
+  sentimentPending.set(id, { resolve: handle.resolve, reject: handle.reject });
+  sentimentWorker.postMessage({ type: 'CLASSIFY', id, texts });
+  return handle.promise;
 }
 
 /**
@@ -411,6 +523,8 @@ async function classifyAll(
       const b = batches[batchIdx++]!;
       const tBatch = performance.now();
       const { labels, scores } = await classifyBatch(b.texts);
+      // Keep a long low-end WASM pass alive past the 5-minute idle unload.
+      resetIdleTimer();
       const ms = performance.now() - tBatch;
       for (let j = 0; j < b.texts.length; j++) {
         allLabels[b.start + j] = labels[j] ?? 'neutral';
@@ -431,6 +545,7 @@ function sendSentimentProgress(
   stage: SentimentProgressMsg['stage'],
   progress: number,
   detail?: string,
+  indeterminate?: boolean,
 ): void {
   const msg: SentimentProgressMsg = {
     target: 'sidepanel',
@@ -438,6 +553,7 @@ function sendSentimentProgress(
     stage,
     progress: Math.max(0, Math.min(1, progress)),
     ...(detail ? { detail } : {}),
+    ...(indeterminate ? { indeterminate: true } : {}),
   };
   chrome.runtime.sendMessage(msg).catch(() => {});
 }
@@ -652,13 +768,19 @@ async function analyzeSentiment(
 
 // ── progress broadcast ────────────────────────────────────────────────────────
 
-function sendProgress(stage: EmbedProgressMsg['stage'], progress: number, detail?: string): void {
+function sendProgress(
+  stage: EmbedProgressMsg['stage'],
+  progress: number,
+  detail?: string,
+  indeterminate?: boolean,
+): void {
   const msg: EmbedProgressMsg = {
     target: 'sidepanel',
     type: 'EMBED_PROGRESS',
     stage,
     progress: Math.max(0, Math.min(1, progress)),
     ...(detail ? { detail } : {}),
+    ...(indeterminate ? { indeterminate: true } : {}),
   };
   chrome.runtime.sendMessage(msg).catch(() => {}); // ignore if side panel is closed
 }
@@ -883,15 +1005,17 @@ chrome.runtime.onMessage.addListener(
     if (msg.type === 'ANALYZE_SENTIMENT') {
       const m = msg as OffscreenSentimentMsg;
       sentimentInFlight++;
+      clearSentimentTeardownTimer();
       analyzeSentiment(m.rawTextHash, m.sections)
         .then(sendResponse)
         .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }))
         .finally(() => {
-          // Free FinBERT as soon as the last sentiment request drains — results are
+          // Free FinBERT after the last sentiment request drains — results are
           // cached by content hash upstream, so a re-request re-initializes cheaply.
-          // The encoder worker stays alive for summaries/redline. Only tear down when
-          // no other batch is in flight.
-          if (--sentimentInFlight === 0) terminateSentimentWorker();
+          // The encoder worker stays alive for summaries/redline. Devices with
+          // memory headroom get a short keep-warm window first (see
+          // scheduleSentimentTeardown); only tear down when nothing is in flight.
+          if (--sentimentInFlight === 0) scheduleSentimentTeardown();
         });
       return true;
     }
@@ -927,7 +1051,11 @@ chrome.runtime.onMessage.addListener(
 );
 
 debugLog('[Relic offscreen] ready — device will be selected on first embed request');
-// Confirms threaded ORT actually engaged (used when benchmarking the WASM path).
+// Confirms threaded ORT actually engaged and which memory profile was chosen
+// (used when benchmarking the WASM path / verifying low-end tuning).
 debugLog(
-  `[Relic offscreen] crossOriginIsolated=${self.crossOriginIsolated}, ORT threads=${ORT_NUM_THREADS}`,
+  `[Relic offscreen] crossOriginIsolated=${self.crossOriginIsolated}, ORT threads=${ORT_NUM_THREADS}, ` +
+    `deviceMemory=${DEVICE_MEMORY_GB}GB (lowMemory=${LOW_MEMORY}), ` +
+    `EMBED ${EMBED_BATCH}×${EMBED_CONCURRENCY}, CLASSIFY ${CLASSIFY_BATCH}×${CLASSIFY_CONCURRENCY}, ` +
+    `finbertKeepWarm=${KEEP_FINBERT_WARM}`,
 );

@@ -115,6 +115,17 @@ async function probeBuiltin(name: 'Summarizer' | 'LanguageModel'): Promise<Avail
   }
 }
 
+/**
+ * Live (un-memoized) Prompt API availability. getCapabilities() deliberately
+ * counts 'downloadable'/'downloading' toward the 'builtin' tier; callers that
+ * must not trigger the one-time ~2 GB Gemini Nano download (e.g. SummaryPanel's
+ * auto-run on page load) use this to distinguish "model on disk now" from
+ * "would start a download". availability() is cheap — no memoization needed.
+ */
+export function probePromptApiAvailability(): Promise<AvailabilityState> {
+  return probeBuiltin('LanguageModel');
+}
+
 let _cache: Capabilities | null = null;
 
 /**

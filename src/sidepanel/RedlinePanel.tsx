@@ -425,7 +425,7 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
           <button
             onClick={() => void run()}
             disabled={state === 'running' || !secFetch}
-            title={!secFetch ? 'Turn on “Fetch from SEC.gov” in Settings to compare' : undefined}
+            title={!secFetch ? 'Turn on “Fetch last year’s filing” in Settings to compare' : undefined}
             className="flex w-full items-center justify-center rounded-md bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500"
           >
             {state === 'running' ? 'Comparing…' : state === 'done' || state === 'no_prior' || state === 'unsupported_form' ? 'Re-compare' : 'Compare to prior year'}
@@ -453,8 +453,8 @@ export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
       {/* SEC.gov fetch disabled — the comparison needs the prior filing from EDGAR. */}
       {applicable && !secFetch && state !== 'done' && (
         <p className="rounded-lg bg-amber-950/30 px-3 py-2.5 text-xs leading-relaxed text-amber-200/90 ring-1 ring-inset ring-amber-800/40">
-          Fetching prior-year filings from <span className="font-medium">SEC.gov</span> is turned off,
-          so the year-over-year comparison can’t run.{' '}
+          Fetching last year’s filing from <span className="font-medium">SEC.gov</span> is turned
+          off, so the year-over-year comparison can’t run.{' '}
           <button
             onClick={() => chrome.runtime.openOptionsPage()}
             className="font-medium text-amber-100 underline decoration-amber-400/50 underline-offset-2 transition hover:text-amber-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"

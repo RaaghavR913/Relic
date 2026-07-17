@@ -101,7 +101,7 @@ export function installChromeMock(scenario: PreviewScenario): void {
 
   const chromeMock = {
     runtime: {
-      getManifest: () => ({ version: '1.2.7', name: 'Relic' }),
+      getManifest: () => ({ version: '2.2.7', name: 'Relic' }),
       getURL: (resource: string) =>
         resource === 'brand-logo.png' ? '/brand-logo.png' : `chrome-extension://mock/${resource}`,
       openOptionsPage: () => {

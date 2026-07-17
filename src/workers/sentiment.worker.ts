@@ -22,6 +22,7 @@ import type {
   SentimentWorkerClassifyResultMsg,
 } from '@/messages/types';
 import { configureBundledModelEnv } from '@/workers/transformersEnv';
+import { createLoadProgressTracker } from '@/workers/modelSizes';
 import { debugLog } from '@/lib/debug';
 
 // The text-classification pipeline is callable: (texts, opts) => Promise<result>.
@@ -76,14 +77,15 @@ async function init(
 
   const t0 = performance.now();
 
-  const progressCallback = (progress: unknown) => {
-    const p = progress as { status?: string; progress?: number; file?: string };
-    if (p.status === 'progress' && typeof p.progress === 'number') {
-      const msg: WorkerProgressMsg = { type: 'PROGRESS', progress: p.progress / 100 };
-      if (typeof p.file === 'string') msg.file = p.file;
-      post(msg);
-    }
-  };
+  // Bundled chrome-extension:// responses carry no Content-Length, so the raw
+  // event's `progress` field pegs to ~100% immediately. Derive a REAL fraction
+  // from `loaded` bytes against the build-time size manifest instead.
+  const progressCallback = createLoadProgressTracker(modelId, (e) => {
+    const msg: WorkerProgressMsg = { type: 'PROGRESS', progress: e.progress };
+    if (e.file !== undefined) msg.file = e.file;
+    if (e.indeterminate) msg.indeterminate = true;
+    post(msg);
+  });
 
   // Deterministic backend order: WebGPU first (fast), then WASM. `forceWasm` skips
   // straight to WASM for diagnostics. Each attempt's outcome is recorded so the

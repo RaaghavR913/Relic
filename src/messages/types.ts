@@ -149,6 +149,8 @@ export interface EmbedProgressMsg {
   /** 0..1 */
   progress: number;
   detail?: string;
+  /** True when no real percentage exists (model missing a size manifest) — render an indeterminate bar. */
+  indeterminate?: boolean;
 }
 
 export interface FilingReadyMsg {
@@ -404,9 +406,11 @@ export interface WorkerReadyMsg {
 
 export interface WorkerProgressMsg {
   type: 'PROGRESS';
-  /** 0..1 */
+  /** 0..1 — real bytes-based fraction derived from the bundled size manifest. */
   progress: number;
   file?: string;
+  /** True when no real percentage exists (model missing a size manifest). */
+  indeterminate?: boolean;
 }
 
 export interface WorkerEmbedResultMsg {
@@ -472,6 +476,8 @@ export interface SentimentProgressMsg {
   /** 0..1 */
   progress: number;
   detail?: string;
+  /** True when no real percentage exists (model missing a size manifest) — render an indeterminate bar. */
+  indeterminate?: boolean;
 }
 
 export interface SentimentOkResponse {

@@ -55,14 +55,14 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
         <ul className="flex flex-col gap-1.5 text-xs leading-relaxed text-zinc-400">
           <li className="flex gap-2"><Check /> Your research stays on your computer.</li>
           <li className="flex gap-2"><Check /> No filing text, summaries, or notes are uploaded.</li>
-          <li className="flex gap-2"><Check /> Relic only connects to SEC EDGAR for the filings you are already viewing.</li>
+          <li className="flex gap-2"><Check /> The one thing it fetches online: last year’s filing, when you use Redline.</li>
         </ul>
       </section>
 
       {/* Downloads */}
       <section className="rounded-xl bg-zinc-900 p-4 ring-1 ring-zinc-800 text-[13px]">
         <p className="mb-2 font-semibold uppercase text-zinc-200">
-          Models bundled with the extension
+          Included models
         </p>
         <ul className="flex flex-col gap-2">
           {ENCODER_MODELS.map((m) => (
@@ -84,8 +84,8 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
         {builtin ? (
           <>
             <p className="text-xs leading-relaxed text-zinc-400">
-              Relic analyzes SEC filings privately on your device, turning them into clear summaries,
-              analyst notes, and change narratives powered by Gemini Nano with zero cloud.
+              Relic turns filings into clear summaries and analyst notes using Chrome’s built-in AI
+              (Gemini Nano) — right on your device.
             </p>
             <div className="mt-2 flex items-center justify-between rounded-lg bg-zinc-800/50 px-3 py-2 text-xs">
               <span className="text-zinc-300">Gemini Nano</span>
@@ -93,24 +93,23 @@ export function FirstRun({ caps, onDone }: { caps: Capabilities; onDone: () => v
             </div>
             {(nanoState === 'downloadable' || nanoState === 'downloading') && (
               <p className="mt-2 text-[10px] leading-relaxed text-zinc-600">
-                Chrome will download and manage Gemini Nano the first time you generate an analyst note —
-                you’ll see its progress then. Language flags and sentiment analysis work right away in the meantime.
+                Chrome downloads this model the first time you ask for an analysis — you’ll see
+                progress here. Everything else works in the meantime.
               </p>
             )}
           </>
         ) : (
           <Banner tone="positive" icon="✓">
             Built-in AI isn’t available on this device, so Relic runs in <strong>extractive mode</strong>:
-            summaries become the filing’s most important sentences. Sentiment scores, language-flag underlines, and the year-over-year
-            Redline are fully available — all on-device.
+            it quotes the filing’s most important sentences instead of writing its own notes.
+            Sentiment, highlights, and Redline all work the same.
           </Banner>
         )}
       </section>
 
       {/* Progressive enablement note */}
       <p className="px-1 text-[13px] leading-relaxed text-emerald-400">
-        Info: Language flags underline the filing immediately; sentiment scores run on demand in the Sentiment tab. Generative features switch on
-        automatically once the model is ready.
+        Highlights and sentiment work right away; AI summaries switch on once the model is ready.
       </p>
 
       {/* CTA */}

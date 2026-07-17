@@ -100,6 +100,47 @@ HTML. (Any 10-K / 10-Q / 8-K / S-1 / DEF 14A primary doc works.)
 
 ---
 
+## 3. First run / stalled download & low-end WASM
+
+Simulate a first-run machine: `chrome://on-device-internals` → **Model status** →
+remove *Optimization Guide On Device Model* (or `chrome://components` → same entry),
+so `LanguageModel.availability()` returns `downloadable`.
+
+**News page (the "stuck at 69%" repro):**
+- [ ] Open a Yahoo Finance article → **Analyze this page** → Summary tab.
+- [ ] Summaries appear **immediately via the extractive path** — no 2 GB download
+      starts, no percentage bar freezes. The amber banner reads *"Chrome's built-in
+      AI isn't downloaded yet — showing key sentences instead."*
+- [ ] On a long portal page the summary card shows *"Summarized from the first part
+      of the page."* (24k-char cap; SEC filings are never capped).
+
+**Stalled download (dev build):**
+- [ ] DevSettings → force **builtin**, disconnect the network → trigger a summary.
+      The bar is labeled **"Downloading Chrome built-in AI (one-time, ~2 GB)…"**
+      and after ≤ 45 s without progress the panel falls back to key sentences —
+      it never freezes mid-percent.
+- [ ] Result is cached as **extractive** (re-open → key sentences, no analyst
+      badge); once Nano is actually installed, a fresh doc produces analyst notes.
+
+**Model-load progress (WASM):**
+- [ ] Sentiment on a filing → *Loading FinBERT…* shows a **real** percentage that
+      climbs smoothly (bytes vs. bundled size), not an instant 100%.
+
+**Hang regression:**
+- [ ] In the offscreen console, call `terminateWorkers()` mid-summarize → the
+      Summary section shows an **Error** chip (not a frozen bar); the next
+      summarize rebuilds the worker and succeeds.
+- [ ] A long sentiment pass (large 10-K, CPU-throttled) survives past 5 minutes —
+      the idle unload no longer fires mid-pass.
+
+**Low-memory profile:**
+- [ ] Temporarily hardcode `DEVICE_MEMORY_GB = 4` in `src/offscreen/offscreen.ts`
+      (dev build) → the offscreen console logs `EMBED 16×1, CLASSIFY 4×1` and
+      2 ORT threads; restore afterwards. With ≥ 8 GB, a second sentiment run
+      within 90 s reuses the warm FinBERT worker (no reload).
+
+---
+
 ## 5. Empty / degraded states
 
 - [ ] Focus a non-filing tab and reopen the panel → **No filing open** empty state +
