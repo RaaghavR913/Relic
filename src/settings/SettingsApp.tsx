@@ -372,7 +372,7 @@ export default function SettingsApp() {
                 <>
                   {f.a}
                   {f.bullets ? (
-                    <BulletList items={f.bullets} className={f.a ? 'mt-1.5' : undefined} />
+                    <BulletList items={f.bullets} {...(f.a ? { className: 'mt-1.5' } : {})} />
                   ) : null}
                 </>
               }
