@@ -31,6 +31,10 @@ import type { RedlineEntry } from '@/redline/redlineStore';
 import { finalizeInsight } from './evidence';
 import { computeLexiconTone, type ToneSignal } from './lexiconTone';
 import {
+  topicTitleFromText,
+  uniquifyInsightTitles,
+} from './insightTitle';
+import {
   topRelevantSentences,
   sentenceDimensions,
   type Dimension,
@@ -215,8 +219,11 @@ const QUESTION_BY_TYPE: Partial<Record<AnalysisDocumentType, string>> = {
 // Build real investor cards from on-device signals only: the relevance engine
 // surfaces the highest-signal (numeric, keyword-matched) sentences per dimension;
 // each becomes a verified, advice-scrubbed FilingInsight labeled by the section's
-// FinBERT sentiment skew. Honest by construction — every card's text is the
-// filing's own words, run through the same evidence/advice guards as the LM path.
+// FinBERT sentiment skew. Titles are topic labels (subject ± compact figure),
+// never the shared section heading and never a truncated copy of the summary
+// sentence — so MD&A-heavy takeaways stay distinct without quoting themselves.
+// Honest by construction: every card's summary is the filing's own words, run
+// through the same evidence/advice guards as the LM path.
 
 interface DimMeta {
   category: InsightCategory;
@@ -253,6 +260,122 @@ function sectionSkew(
   return { label, net, n: s.length };
 }
 
+/**
+ * Build a short topic headline for the card. Must be a label (subject ± figure),
+ * never a truncated copy of the verbatim summary sentence.
+ * finalizeInsight re-checks via ensureInsightTitle so LM + deterministic agree.
+ */
+function titleFromSentence(
+  text: string,
+  dim: Exclude<Dimension, 'overview'>,
+): string {
+  return topicTitleFromText(text, DIM_META[dim].category);
+}
+
+/** Sentence-aware "why it matters" — falls back to the dimension default. */
+function whyFromSentence(text: string, dim: Exclude<Dimension, 'overview'>): string {
+  if (dim === 'revenue') {
+    if (/concentrat|customer|distributor|odm|oem|\bcsp\b/i.test(text)) {
+      return 'Customer and channel concentration shapes revenue durability and bargaining power.';
+    }
+    if (/segment|graphics|compute|networking|data.?center/i.test(text)) {
+      return 'Segment mix shows where growth or pressure is actually coming from.';
+    }
+    if (/cost of revenue|cost of sales|inventory|tariff|wafer|fabricat/i.test(text)) {
+      return 'Cost-of-revenue drivers feed directly into gross margin and earnings power.';
+    }
+  }
+  if (dim === 'margins' && /operating income|gross margin|operating margin/i.test(text)) {
+    return 'Operating profit conversion is the bridge from revenue growth to earnings.';
+  }
+  if (dim === 'cashflow' && /operating cash|free cash|capex|capital expenditure/i.test(text)) {
+    return 'Cash conversion shows whether reported earnings are backed by real liquidity.';
+  }
+  if (dim === 'shares' || /dividend|repurchase|buyback/i.test(text)) {
+    if (/dividend/i.test(text)) {
+      return 'Dividend policy is a capital-return signal investors price into yield expectations.';
+    }
+    if (/repurchase|buyback|dilut/i.test(text)) {
+      return 'Capital-return and share-count changes alter per-share ownership economics.';
+    }
+  }
+  if (dim === 'risk' || dim === 'balancesheet') {
+    if (/supply|demand|monitor the environment/i.test(text)) {
+      return 'Supply and demand shifts can move both volume and pricing power quickly.';
+    }
+    if (/liquidity|cash equivalents|cash and cash/i.test(text)) {
+      return 'Liquidity sets the floor for funding flexibility if conditions tighten.';
+    }
+    if (/dividend/i.test(text)) {
+      return 'Future dividends are discretionary — policy language can reprice income expectations.';
+    }
+    if (/litigation|regulatory|macro/i.test(text)) {
+      return 'This risk factor can reprice the thesis if the disclosed scenario materializes.';
+    }
+  }
+  return DIM_META[dim].why;
+}
+
+/**
+ * Investor-view copy grounded in the sentence (and light section skew), not a
+ * single section-wide template shared by every MD&A card.
+ */
+function investorMeaningFromSentence(
+  s: ScoredSentence,
+  dim: Exclude<Dimension, 'overview'>,
+  skew: { label: InsightLabel; net: number; n: number },
+): string {
+  if (/supply|demand|monitor the environment/i.test(s.text)) {
+    return 'Watch whether management updates escalate from monitoring into guided impact.';
+  }
+  if (/liquidity|cash equivalents|principal source of liquidity/i.test(s.text)) {
+    return 'Compare the cash stack and facilities vs. near-term obligations and buyback capacity.';
+  }
+  if (/dividend/i.test(s.text)) {
+    return 'Treat dividend language as policy intent — confirm against cash generation and board action.';
+  }
+  if (dim === 'risk' || /\b(risk|litigation|regulatory|adversely|materially harm)/i.test(s.text)) {
+    return 'This disclosure flags a risk that can reprice expectations if it materializes.';
+  }
+  if (/\b(increas\w*|grew|growth|expand\w*|improv\w*|record|strong demand)/i.test(s.text)) {
+    return s.hasNumeric
+      ? 'The cited figures support a constructive read on this line item versus prior periods.'
+      : 'The cited trend supports a constructive read on this line item.';
+  }
+  if (/\b(decreas\w*|declin\w*|contract\w*|pressure|weak(?:er|ness)?|impair\w*|charge|loss)\b/i.test(s.text)) {
+    return s.hasNumeric
+      ? 'The cited figures are a pressure point to weigh against the broader thesis.'
+      : 'The cited movement is a pressure point to weigh against the broader thesis.';
+  }
+  if (/concentrat|depend on|majority of (?:our )?revenue/i.test(s.text)) {
+    return 'Concentration raises single-point-of-failure risk even when the top line looks strong.';
+  }
+  if (/cost of revenue|inventory|tariff|wafer|fabricat/i.test(s.text)) {
+    return 'Watch whether these cost inputs expand or compress gross margin from here.';
+  }
+  if (s.hasNumeric) {
+    return 'The filing anchors this point with specific figures worth tracking vs. prior periods.';
+  }
+  if (skew.n >= 3 && skew.label !== 'Neutral') {
+    return skew.net > 0
+      ? 'Nearby section language skews constructive around this point.'
+      : 'Nearby section language skews cautious around this point.';
+  }
+  return '';
+}
+
+/** Drop duplicate Investor-view strings so cards don't all share one template. */
+function dedupeInvestorMeanings(insights: FilingInsight[]): FilingInsight[] {
+  const seen = new Set<string>();
+  return insights.map((ins) => {
+    const key = ins.investorMeaning.trim().toLowerCase();
+    if (!key) return ins;
+    if (seen.has(key)) return { ...ins, investorMeaning: '' };
+    seen.add(key);
+    return ins;
+  });
+}
+
 /** Turn one scored sentence into a verified, advice-scrubbed insight card. */
 function insightFromSentence(
   doc: DocumentModel,
@@ -264,10 +387,6 @@ function insightFromSentence(
   const skew = sectionSkew(s.sectionId, aux.sentiments, aux.tone);
   const label: InsightLabel =
     dim === 'risk' ? (skew.net < -0.2 ? 'Red Flag' : 'Watch Item') : skew.label;
-  const investorMeaning =
-    skew.n >= 3 && skew.label !== 'Neutral'
-      ? `On-device sentiment reads the ${s.sectionLabel} language as net-${skew.net > 0 ? 'positive' : 'negative'}.`
-      : '';
   // The summary IS a verbatim source sentence, so its document-space range gives
   // the fallback tier a working jump-to-source (the ↗ button) without a separate
   // quote. finalizeInsight preserves this range.
@@ -278,10 +397,10 @@ function insightFromSentence(
   return finalizeInsight(doc, {
     label,
     category: meta.category,
-    title: s.sectionLabel,
+    title: titleFromSentence(s.text, dim),
     summary: s.text,
-    whyItMatters: meta.why,
-    investorMeaning,
+    whyItMatters: whyFromSentence(s.text, dim),
+    investorMeaning: investorMeaningFromSentence(s, dim, skew),
     severity: s.hasNumeric ? 'Medium' : 'Low',
     timeHorizon: meta.horizon,
     confidence: 'Medium',
@@ -295,9 +414,10 @@ function buildDimInsights(
   dim: Exclude<Dimension, 'overview'>,
   limit: number,
 ): FilingInsight[] {
-  return topRelevantSentences(doc, [dim], limit)
+  const cards = topRelevantSentences(doc, [dim], limit)
     .map((s) => insightFromSentence(doc, s, dim, aux))
     .filter((x): x is FilingInsight => x !== null);
+  return uniquifyInsightTitles(dedupeInvestorMeanings(cards));
 }
 
 /** Cross-dimension headline takeaways (deduped), labeled by their own dimension. */
@@ -317,7 +437,7 @@ function buildTakeaways(doc: DocumentModel, aux: AuxSignals, limit: number): Fil
     if (ins) out.push(ins);
     if (out.length >= limit) break;
   }
-  return out;
+  return uniquifyInsightTitles(dedupeInvestorMeanings(out));
 }
 
 /** A single "cautionary language density" card when LM flags are dense. */

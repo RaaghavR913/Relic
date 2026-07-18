@@ -22,6 +22,7 @@
 // ============================================================
 
 import type { DocumentModel, FilingInsight } from '@/types';
+import { ensureInsightTitle } from './insightTitle';
 
 // ── evidence verification ─────────────────────────────────────────────────────
 
@@ -201,7 +202,13 @@ export function finalizeInsight(doc: DocumentModel, insight: FilingInsight): Fil
   const base: FilingInsight = {
     label: insight.label,
     category: insight.category,
-    title: normalizeFiscalLabels(scrubAdvice(insight.title)) || insight.category,
+    // Titles must be topic labels unique to this card — never a truncated copy
+    // of the summary (LM and legacy deterministic paths both fail this).
+    title: ensureInsightTitle(
+      normalizeFiscalLabels(scrubAdvice(insight.title)),
+      summary,
+      insight.category,
+    ),
     summary,
     whyItMatters,
     investorMeaning,

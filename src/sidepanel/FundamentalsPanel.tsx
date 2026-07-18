@@ -131,15 +131,12 @@ export function FundamentalsPanel({ doc }: { doc: DocumentModel }) {
       aria-labelledby="fundamentals-heading"
       className="rounded-xl bg-zinc-900 p-3.5 ring-1 ring-zinc-800"
     >
-      <div className="flex items-center justify-between gap-2">
-        <p
-          id="fundamentals-heading"
-          className="text-[13px] font-medium uppercase tracking-widest text-zinc-500 font-display"
-        >
+      <div className="flex items-center justify-between gap-2 text-[12px] font-bold text-white">
+        <p id="fundamentals-heading">
           Fundamentals
         </p>
         {xbrl.periodEnd && (
-          <span className="text-[10px] text-zinc-600">
+          <span>
             {fmtDate(xbrl.periodEnd)}
             {xbrl.priorPeriodEnd ? ` vs ${fmtDate(xbrl.priorPeriodEnd)}` : ''}
           </span>
@@ -149,10 +146,10 @@ export function FundamentalsPanel({ doc }: { doc: DocumentModel }) {
         <table className="w-full border-collapse">
           <thead>
             <tr>
-              <th className="pb-1 text-left text-[9px] font-semibold uppercase tracking-wider text-zinc-600">Metric</th>
-              <th className="pb-1 px-2 text-right text-[9px] font-semibold uppercase tracking-wider text-zinc-600">Current</th>
-              <th className="pb-1 px-2 text-right text-[9px] font-semibold uppercase tracking-wider text-zinc-600">Prior</th>
-              <th className="pb-1 pl-2 text-right text-[9px] font-semibold uppercase tracking-wider text-zinc-600">YoY</th>
+              <th className="pb-1 text-left text-[9px] font-bold uppercase tracking-wider text-sky-600">Metric</th>
+              <th className="pb-1 px-2 text-right text-[9px] font-bold uppercase tracking-wider text-sky-600">Current</th>
+              <th className="pb-1 px-2 text-right text-[9px] font-bold uppercase tracking-wider text-sky-600">Prior</th>
+              <th className="pb-1 pl-2 text-right text-[9px] font-bold uppercase tracking-wider text-sky-600">YoY</th>
               <th className="pb-1 pl-1.5" aria-hidden="true" />
             </tr>
           </thead>

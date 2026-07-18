@@ -24,6 +24,7 @@ import type {
   SentimentResponse,
   SentimentSectionDoneMsg,
   SentimentProgressMsg,
+  InferenceBackendMsg,
   WorkerOutbound,
   WorkerInitMsg,
   SentimentWorkerOutbound,
@@ -40,6 +41,9 @@ import type {
 } from '@/messages/types';
 import { parsePdf, base64ToBytes } from './pdfParse';
 import { settleWithDeadline } from './deadline';
+import { getBackendTuning } from './backendTuning';
+import { probeWebGpuAdapter } from './webgpuPreflight';
+import type { InferenceDevice } from '@/workers/backendOrder';
 import type { DocumentModel, Section, SentenceSentiment, SectionDiff } from '@/types';
 import { filterNonTableSentences } from './sentenceFilter';
 import { debugLog } from '@/lib/debug';
@@ -87,15 +91,6 @@ const DEVICE_MEMORY_GB =
   (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
 const LOW_MEMORY = DEVICE_MEMORY_GB <= 4;
 
-/** Max texts per single EMBED call (keeps per-call memory bounded). */
-const EMBED_BATCH = LOW_MEMORY ? 16 : 32;
-/** Max concurrent EMBED calls in-flight to the encoder worker. */
-const EMBED_CONCURRENCY = LOW_MEMORY ? 1 : 2;
-/** Max texts per single CLASSIFY call — FinBERT sentences are longer than embed chunks. */
-const CLASSIFY_BATCH = LOW_MEMORY ? 4 : 8;
-/** Concurrency for CLASSIFY calls — FinBERT classification is sequential per GPU. */
-const CLASSIFY_CONCURRENCY = 1;
-
 /**
  * Per-batch inference deadlines. A worker that silently wedges (WebGPU
  * device-lost that never throws, an OOM-killed thread) posts nothing back;
@@ -118,6 +113,83 @@ const WARM_BATCH_TIMEOUT_MS = 30_000;
 const ORT_NUM_THREADS = self.crossOriginIsolated
   ? Math.min(LOW_MEMORY ? 2 : 4, navigator.hardwareConcurrency || 1)
   : 1;
+
+// Default tuning assumes WASM until READY (preserves historical WASM batch sizes).
+let encoderTuning = getBackendTuning(LOW_MEMORY, 'wasm');
+let sentimentTuning = getBackendTuning(LOW_MEMORY, 'wasm');
+
+/** Session preference after preflight / READY — skips doomed WebGPU attempts. */
+let sessionPreferredDevice: InferenceDevice | null = null;
+let preflightPromise: Promise<InferenceDevice> | null = null;
+
+async function resolvePreferredDevice(): Promise<InferenceDevice> {
+  if (sessionPreferredDevice) return sessionPreferredDevice;
+  if (!preflightPromise) {
+    preflightPromise = probeWebGpuAdapter().then((probe) => {
+      const preferred: InferenceDevice = probe.adapter ? 'webgpu' : 'wasm';
+      if (!sessionPreferredDevice) sessionPreferredDevice = preferred;
+      debugLog(
+        `[offscreen] WebGPU preflight: supported=${probe.supported} adapter=${probe.adapter} → preferred=${preferred}`,
+      );
+      return sessionPreferredDevice ?? preferred;
+    });
+  }
+  return preflightPromise;
+}
+
+function broadcastInferenceBackend(
+  role: 'encoder' | 'sentiment',
+  device: InferenceDevice,
+  attempts?: string[],
+): void {
+  const msg: InferenceBackendMsg = {
+    target: 'sidepanel',
+    type: 'INFERENCE_BACKEND',
+    role,
+    device,
+    ...(attempts ? { attempts } : {}),
+  };
+  chrome.runtime.sendMessage(msg).catch(() => {});
+}
+
+function onWorkerReady(
+  role: 'encoder' | 'sentiment',
+  device: InferenceDevice,
+  attempts?: string[],
+): void {
+  sessionPreferredDevice = device;
+  if (role === 'encoder') {
+    workerDevice = device;
+    encoderTuning = getBackendTuning(LOW_MEMORY, device);
+    // Encoder reclaimed WebGPU while FinBERT is still warm → drop FinBERT so
+    // both never sit on GPU together (transparent; next sentiment rebuilds).
+    if (
+      device === 'webgpu' &&
+      sentimentWorker !== null &&
+      sentimentWorkerDevice === 'webgpu' &&
+      sentimentInFlight === 0
+    ) {
+      debugLog('[offscreen] tearing warm FinBERT — encoder reclaimed WebGPU');
+      terminateSentimentWorker('Yielding GPU to encoder');
+    }
+  } else {
+    sentimentWorkerDevice = device;
+    sentimentTuning = getBackendTuning(LOW_MEMORY, device);
+  }
+  broadcastInferenceBackend(role, device, attempts);
+}
+
+/**
+ * Keep-warm FinBERT only when it would not leave both models WebGPU-resident.
+ * (Dual WebGPU residency spikes VRAM; WASM FinBERT keep-warm is fine.)
+ */
+function shouldKeepFinbertWarm(): boolean {
+  if (DEVICE_MEMORY_GB < 8) return false;
+  if (sentimentWorkerDevice === 'webgpu' && workerDevice === 'webgpu' && worker !== null) {
+    return false;
+  }
+  return true;
+}
 
 // ── encoder worker state ──────────────────────────────────────────────────────
 
@@ -228,10 +300,10 @@ function terminateSentimentWorker(reason = 'Worker terminated'): void {
  * Eager teardown frees FinBERT's ~1 GB WASM peak but repays full model load +
  * WASM compile on every pass. With ≥ 8 GB reported (Chrome caps the report at 8)
  * keep it warm briefly between passes; the 5-minute idle unload stays the
- * backstop. Low-memory devices keep today's eager teardown.
+ * backstop. Low-memory devices keep today's eager teardown. Dual-WebGPU
+ * residency is refused via shouldKeepFinbertWarm().
  */
 const SENTIMENT_KEEP_WARM_MS = 90_000;
-const KEEP_FINBERT_WARM = DEVICE_MEMORY_GB >= 8;
 let sentimentTeardownTimer: ReturnType<typeof setTimeout> | null = null;
 
 function clearSentimentTeardownTimer(): void {
@@ -242,7 +314,7 @@ function clearSentimentTeardownTimer(): void {
 }
 
 function scheduleSentimentTeardown(): void {
-  if (!KEEP_FINBERT_WARM) {
+  if (!shouldKeepFinbertWarm()) {
     terminateSentimentWorker();
     return;
   }
@@ -259,10 +331,15 @@ function handleWorkerMsg(e: MessageEvent): void {
   const msg = e.data as WorkerOutbound;
 
   if (msg.type === 'READY') {
-    workerDevice = msg.device;
+    // First READY resolves ensureWorker(); a later READY (mid-pass WASM fallback)
+    // only retunes + broadcasts — never reject/re-resolve the settled promise.
+    const isFirst = pendingInit !== null;
+    onWorkerReady('encoder', msg.device, msg.diag?.attempts);
     if (msg.diag) debugLog(`[offscreen] encoder ready on ${msg.device} —`, msg.diag.attempts);
-    pendingInit?.resolve(msg.device);
-    pendingInit = null;
+    if (isFirst) {
+      pendingInit?.resolve(msg.device);
+      pendingInit = null;
+    }
     return;
   }
 
@@ -305,33 +382,48 @@ function handleWorkerMsg(e: MessageEvent): void {
 function ensureWorker(): Promise<'webgpu' | 'wasm'> {
   if (workerReady) return workerReady;
 
-  workerReady = new Promise<'webgpu' | 'wasm'>((resolve, reject) => {
-    pendingInit = { resolve, reject };
+  workerReady = (async () => {
+    const preferredDevice = await resolvePreferredDevice();
 
-    worker = new Worker(
-      new URL('../workers/encoder.worker.ts', import.meta.url),
-      { type: 'module' },
-    );
-    worker.onmessage = handleWorkerMsg;
-    worker.onerror = (ev) => {
-      // A crash (OOM kill, module failure) must settle EVERYTHING in flight —
-      // not just a pending init — and drop the corpse so the next request
-      // rebuilds. ev.message is often empty for opaque worker deaths.
-      terminateEncoderWorker(ev.message ? `Worker crashed: ${ev.message}` : 'Worker crashed');
-    };
+    const device = await new Promise<'webgpu' | 'wasm'>((resolve, reject) => {
+      pendingInit = { resolve, reject };
 
-    // Pass wasmPaths + model base path computed here (offscreen has chrome.*) —
-    // worker must never use chrome.*. Models are bundled under dist/models/.
-    const wasmPaths = chrome.runtime.getURL('wasm/');
-    const modelBasePath = chrome.runtime.getURL('models/');
-    const initMsg: WorkerInitMsg = {
-      type: 'INIT',
-      wasmPaths,
-      modelBasePath,
-      modelId: MODEL_ID,
-      numThreads: ORT_NUM_THREADS,
-    };
-    worker.postMessage(initMsg);
+      worker = new Worker(new URL('../workers/encoder.worker.ts', import.meta.url), {
+        type: 'module',
+      });
+      worker.onmessage = handleWorkerMsg;
+      worker.onerror = (ev) => {
+        terminateEncoderWorker(ev.message ? `Worker crashed: ${ev.message}` : 'Worker crashed');
+      };
+
+      const wasmPaths = chrome.runtime.getURL('wasm/');
+      const modelBasePath = chrome.runtime.getURL('models/');
+      const initMsg: WorkerInitMsg = {
+        type: 'INIT',
+        wasmPaths,
+        modelBasePath,
+        modelId: MODEL_ID,
+        numThreads: ORT_NUM_THREADS,
+        preferredDevice,
+      };
+      worker.postMessage(initMsg);
+    });
+
+    // WebGPU-only warmup: pay shader/ORT compile before the first user batch.
+    // Soft-fail: if warmup errors after READY, still return the device (deadlines
+    // / next real call handle hard failures). WASM skips warmup.
+    if (device === 'webgpu') {
+      try {
+        await embedBatch(['Relic warmup.']);
+      } catch (err) {
+        debugLog('[offscreen] encoder warmup soft-failed:', err);
+      }
+    }
+
+    return device;
+  })().catch((err) => {
+    workerReady = null;
+    throw err;
   });
 
   return workerReady;
@@ -370,11 +462,12 @@ function embedBatch(texts: string[]): Promise<Float32Array[]> {
 async function embedAll(texts: string[]): Promise<Float32Array[]> {
   const results: Float32Array[] = new Array(texts.length);
   let done = 0;
+  const { embedBatch: batchSize, embedConcurrency } = encoderTuning;
 
   // Slice into batches.
   const batches: Array<{ start: number; texts: string[] }> = [];
-  for (let i = 0; i < texts.length; i += EMBED_BATCH) {
-    batches.push({ start: i, texts: texts.slice(i, i + EMBED_BATCH) });
+  for (let i = 0; i < texts.length; i += batchSize) {
+    batches.push({ start: i, texts: texts.slice(i, i + batchSize) });
   }
 
   // Process with controlled concurrency.
@@ -396,7 +489,7 @@ async function embedAll(texts: string[]): Promise<Float32Array[]> {
     }
   }
 
-  const workers = Array.from({ length: EMBED_CONCURRENCY }, processNext);
+  const workers = Array.from({ length: embedConcurrency }, processNext);
   await Promise.all(workers);
   return results;
 }
@@ -407,10 +500,13 @@ function handleSentimentWorkerMsg(e: MessageEvent): void {
   const msg = e.data as SentimentWorkerOutbound;
 
   if (msg.type === 'READY') {
-    sentimentWorkerDevice = msg.device;
+    const isFirst = sentimentPendingInit !== null;
+    onWorkerReady('sentiment', msg.device, msg.diag?.attempts);
     if (msg.diag) debugLog(`[offscreen] FinBERT ready on ${msg.device} —`, msg.diag.attempts);
-    sentimentPendingInit?.resolve(msg.device);
-    sentimentPendingInit = null;
+    if (isFirst) {
+      sentimentPendingInit?.resolve(msg.device);
+      sentimentPendingInit = null;
+    }
     return;
   }
 
@@ -452,28 +548,46 @@ function handleSentimentWorkerMsg(e: MessageEvent): void {
 function ensureSentimentWorker(): Promise<'webgpu' | 'wasm'> {
   if (sentimentWorkerReady) return sentimentWorkerReady;
 
-  sentimentWorkerReady = new Promise<'webgpu' | 'wasm'>((resolve, reject) => {
-    sentimentPendingInit = { resolve, reject };
+  sentimentWorkerReady = (async () => {
+    const preferredDevice = await resolvePreferredDevice();
 
-    sentimentWorker = new Worker(
-      new URL('../workers/sentiment.worker.ts', import.meta.url),
-      { type: 'module' },
-    );
-    sentimentWorker.onmessage = handleSentimentWorkerMsg;
-    sentimentWorker.onerror = (ev) => {
-      // Settle everything in flight and drop the corpse (mirrors the encoder).
-      terminateSentimentWorker(ev.message ? `Worker crashed: ${ev.message}` : 'Worker crashed');
-    };
+    const device = await new Promise<'webgpu' | 'wasm'>((resolve, reject) => {
+      sentimentPendingInit = { resolve, reject };
 
-    const wasmPaths = chrome.runtime.getURL('wasm/');
-    const modelBasePath = chrome.runtime.getURL('models/');
-    sentimentWorker.postMessage({
-      type: 'INIT',
-      wasmPaths,
-      modelBasePath,
-      modelId: FINBERT_MODEL_ID,
-      numThreads: ORT_NUM_THREADS,
-    } satisfies WorkerInitMsg);
+      sentimentWorker = new Worker(new URL('../workers/sentiment.worker.ts', import.meta.url), {
+        type: 'module',
+      });
+      sentimentWorker.onmessage = handleSentimentWorkerMsg;
+      sentimentWorker.onerror = (ev) => {
+        terminateSentimentWorker(
+          ev.message ? `Worker crashed: ${ev.message}` : 'Worker crashed',
+        );
+      };
+
+      const wasmPaths = chrome.runtime.getURL('wasm/');
+      const modelBasePath = chrome.runtime.getURL('models/');
+      sentimentWorker.postMessage({
+        type: 'INIT',
+        wasmPaths,
+        modelBasePath,
+        modelId: FINBERT_MODEL_ID,
+        numThreads: ORT_NUM_THREADS,
+        preferredDevice,
+      } satisfies WorkerInitMsg);
+    });
+
+    if (device === 'webgpu') {
+      try {
+        await classifyBatch(['Revenue increased modestly.']);
+      } catch (err) {
+        debugLog('[offscreen] FinBERT warmup soft-failed:', err);
+      }
+    }
+
+    return device;
+  })().catch((err) => {
+    sentimentWorkerReady = null;
+    throw err;
   });
 
   return sentimentWorkerReady;
@@ -510,10 +624,11 @@ async function classifyAll(
 ): Promise<{ labels: string[]; scores: number[] }> {
   const allLabels: string[] = new Array(texts.length) as string[];
   const allScores: number[] = new Array(texts.length) as number[];
+  const { classifyBatch: batchSize, classifyConcurrency } = sentimentTuning;
 
   const batches: Array<{ start: number; texts: string[] }> = [];
-  for (let i = 0; i < texts.length; i += CLASSIFY_BATCH) {
-    batches.push({ start: i, texts: texts.slice(i, i + CLASSIFY_BATCH) });
+  for (let i = 0; i < texts.length; i += batchSize) {
+    batches.push({ start: i, texts: texts.slice(i, i + batchSize) });
   }
 
   let batchIdx = 0;
@@ -534,7 +649,7 @@ async function classifyAll(
     }
   }
 
-  const workers = Array.from({ length: CLASSIFY_CONCURRENCY }, processNext);
+  const workers = Array.from({ length: classifyConcurrency }, processNext);
   await Promise.all(workers);
   return { labels: allLabels, scores: allScores };
 }
@@ -642,6 +757,17 @@ async function analyzeSentiment(
   const device = await ensureSentimentWorker();
   debugLog(`[offscreen] FinBERT ready on ${device} in ${(performance.now() - tModel).toFixed(0)} ms`);
   sendSentimentProgress('model_load', 1);
+
+  // Yield the encoder's WebGPU residency while FinBERT classifies so peak VRAM
+  // stays bounded. Encoder rebuilds lazily on the next summary/redline request.
+  if (
+    sentimentWorkerDevice === 'webgpu' &&
+    worker !== null &&
+    workerDevice === 'webgpu'
+  ) {
+    debugLog('[offscreen] yielding encoder WebGPU to FinBERT');
+    terminateEncoderWorker('Yielding GPU to FinBERT');
+  }
 
   // ── 3. Prepare sentences for every section, in PRIORITY order ─────────────────
   // Score MD&A + Risk Factors first (the sections investors actually read, via the
@@ -1056,6 +1182,6 @@ debugLog('[Relic offscreen] ready — device will be selected on first embed req
 debugLog(
   `[Relic offscreen] crossOriginIsolated=${self.crossOriginIsolated}, ORT threads=${ORT_NUM_THREADS}, ` +
     `deviceMemory=${DEVICE_MEMORY_GB}GB (lowMemory=${LOW_MEMORY}), ` +
-    `EMBED ${EMBED_BATCH}×${EMBED_CONCURRENCY}, CLASSIFY ${CLASSIFY_BATCH}×${CLASSIFY_CONCURRENCY}, ` +
-    `finbertKeepWarm=${KEEP_FINBERT_WARM}`,
+    `default tuning EMBED ${encoderTuning.embedBatch}×${encoderTuning.embedConcurrency}, ` +
+    `CLASSIFY ${sentimentTuning.classifyBatch}×${sentimentTuning.classifyConcurrency} (WASM until READY)`,
 );

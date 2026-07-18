@@ -194,9 +194,15 @@ export function buildStagePrompt(
     case 'takeaways':
       return (
         head + hintBlock +
-        '\nExtract 3–7 top investor takeaways. Each: what happened, why it matters, and a label ' +
-        '(Bullish/Bearish/Mixed/Neutral/…). No filler, no generic company description. ' +
-        'Only material financial, operational, or risk points.\n\n' +
+        '\nExtract 3–7 top investor takeaways. For each insight:\n' +
+        '- "title": a short unique topic headline grounded in the takeaway ' +
+        '(e.g. "Compute segment revenue +14%", "Gross margin expanded 180 bps") — ' +
+        'never a filing section name like "Management\'s Discussion and Analysis" or "Risk Factors".\n' +
+        '- "summary": what happened (concrete).\n' +
+        '- "whyItMatters" and "investorMeaning": specific to THIS takeaway — do not reuse the same ' +
+        'sentence across cards.\n' +
+        '- "label": Bullish/Bearish/Mixed/Neutral/Watch Item/Red Flag/…\n' +
+        'No filler, no generic company description. Only material financial, operational, or risk points.\n\n' +
         `Document excerpts:\n${excerpts}`
       );
     case 'revenue':
@@ -239,7 +245,9 @@ export function buildStagePrompt(
       return (
         head + hintBlock +
         '\nIdentify MATERIAL INVESTOR RISKS only — skip boilerplate unless it newly worsened or became specific. ' +
-        'In each title note the kind of risk (new / worsened / more specific / now active). ' +
+        'For each insight: "title" must be a short unique topic label (e.g. "Supply & demand conditions", ' +
+        '"Dividend policy") — never copy or truncate the summary, and never include page numbers or ' +
+        '"Table of Contents". "whyItMatters" and "investorMeaning" must be specific to THIS risk. ' +
         'Severity and time horizon are required. Focus on risks to revenue, margins, cash flow, debt, legal exposure, ' +
         'demand, competition, or regulation. Use categories "Risk" or "Legal/Regulatory". 2–5 insights.\n\n' +
         `Relevant excerpts:\n${excerpts}`

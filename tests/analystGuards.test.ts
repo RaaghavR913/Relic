@@ -214,4 +214,15 @@ describe('finalizeInsight figure verification', () => {
     expect(ins!.evidenceRange).toEqual([3, 20]);
     expect(ins!.confidence).toBe('High'); // nothing stripped
   });
+
+  it('rewrites a title that is just a truncated copy of the summary', () => {
+    const summary = 'Gross margin contracted to 41% during the year on higher input costs.';
+    const ins = finalizeInsight(doc, {
+      ...base,
+      title: 'Gross margin contracted to 41% during the year on higher',
+      summary,
+    });
+    expect(ins!.title).toMatch(/Gross margin/i);
+    expect(summary.toLowerCase().startsWith(ins!.title.replace(/…$/, '').toLowerCase())).toBe(false);
+  });
 });

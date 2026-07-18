@@ -383,6 +383,12 @@ export interface WorkerInitMsg {
   numThreads: number;
   /** Dev/diagnostic override: skip WebGPU and load the WASM backend directly. */
   forceWasm?: boolean;
+  /**
+   * Offscreen preflight / session preference. When `'wasm'`, skip WebGPU
+   * (same effect as forceWasm for backend order). When `'webgpu'` or omitted,
+   * try WebGPU then WASM. forceWasm always wins.
+   */
+  preferredDevice?: 'webgpu' | 'wasm';
 }
 
 export interface WorkerEmbedMsg {
@@ -478,6 +484,19 @@ export interface SentimentProgressMsg {
   detail?: string;
   /** True when no real percentage exists (model missing a size manifest) — render an indeterminate bar. */
   indeterminate?: boolean;
+}
+
+/**
+ * Offscreen → Side panel: the backend ORT actually selected (not just adapter
+ * probe). Emitted on every worker READY, including post-fallback re-init.
+ */
+export interface InferenceBackendMsg {
+  target: 'sidepanel';
+  type: 'INFERENCE_BACKEND';
+  role: 'encoder' | 'sentiment';
+  device: 'webgpu' | 'wasm';
+  /** Per-backend load attempt outcomes when available. */
+  attempts?: string[];
 }
 
 export interface SentimentOkResponse {

@@ -23,6 +23,8 @@ import type {
 } from '@/messages/types';
 import { configureBundledModelEnv } from '@/workers/transformersEnv';
 import { createLoadProgressTracker } from '@/workers/modelSizes';
+import { resolveBackendOrder, type InferenceDevice } from '@/workers/backendOrder';
+import { isWebGpuFatalError, watchWebGpuDeviceLost } from '@/workers/webgpuLost';
 import { debugLog } from '@/lib/debug';
 
 // The text-classification pipeline is callable: (texts, opts) => Promise<result>.
@@ -36,14 +38,25 @@ type ClassificationPipeline = (
 // ── state ─────────────────────────────────────────────────────────────────────
 
 let classifier: ClassificationPipeline | null = null;
-let activeDevice: 'webgpu' | 'wasm' = 'wasm';
+let activeDevice: InferenceDevice = 'wasm';
 // Remembered INIT params + one-shot shared guard for a mid-inference WebGPU
 // failure → re-init once on WASM and retry (see tryWasmFallback below).
-let initParams: { wasmPaths: string; modelBasePath: string; modelId: string; numThreads: number } | null = null;
+let initParams: {
+  wasmPaths: string;
+  modelBasePath: string;
+  modelId: string;
+  numThreads: number;
+} | null = null;
 let wasmFallback: Promise<boolean> | null = null;
+let unwatchDeviceLost: (() => void) | null = null;
 
 function post(msg: SentimentWorkerOutbound): void {
   self.postMessage(msg);
+}
+
+function clearDeviceLostWatch(): void {
+  unwatchDeviceLost?.();
+  unwatchDeviceLost = null;
 }
 
 /**
@@ -54,11 +67,20 @@ function tryWasmFallback(): Promise<boolean> {
   if (activeDevice !== 'webgpu' || !initParams) return Promise.resolve(false);
   if (!wasmFallback) {
     const p = initParams;
+    const prev = classifier;
     classifier = null;
+    clearDeviceLostWatch();
     debugLog('[sentiment.worker] inference failed on WebGPU — re-initializing on WASM');
-    wasmFallback = init(p.wasmPaths, p.modelBasePath, p.modelId, p.numThreads, true).then(
-      () => classifier !== null,
-    );
+    wasmFallback = (async () => {
+      try {
+        const disposable = prev as unknown as { dispose?: () => Promise<void> | void };
+        if (typeof disposable?.dispose === 'function') await disposable.dispose();
+      } catch (err) {
+        debugLog('[sentiment.worker] dispose before WASM fallback failed:', err);
+      }
+      await init(p.wasmPaths, p.modelBasePath, p.modelId, p.numThreads, true, 'wasm');
+      return classifier !== null;
+    })();
   }
   return wasmFallback;
 }
@@ -71,9 +93,11 @@ async function init(
   modelId: string,
   numThreads: number,
   forceWasm = false,
+  preferredDevice?: InferenceDevice,
 ): Promise<void> {
   initParams = { wasmPaths, modelBasePath, modelId, numThreads };
   configureBundledModelEnv(wasmPaths, modelBasePath, numThreads);
+  clearDeviceLostWatch();
 
   const t0 = performance.now();
 
@@ -87,11 +111,9 @@ async function init(
     post(msg);
   });
 
-  // Deterministic backend order: WebGPU first (fast), then WASM. `forceWasm` skips
-  // straight to WASM for diagnostics. Each attempt's outcome is recorded so the
-  // user-visible error reports the REAL first failure (e.g. a missing .mjs glue
-  // URL) instead of a generic "no available backend found".
-  const order: ReadonlyArray<'webgpu' | 'wasm'> = forceWasm ? ['wasm'] : ['webgpu', 'wasm'];
+  // Deterministic backend order: WebGPU first (fast), then WASM. `forceWasm` /
+  // preferredDevice:'wasm' skips straight to WASM.
+  const order = resolveBackendOrder(forceWasm, preferredDevice);
   const attempts: string[] = [];
 
   for (const device of order) {
@@ -110,6 +132,9 @@ async function init(
     } catch (err) {
       attempts.push(`${device}: ${String(err)}`);
       debugLog(`[sentiment.worker] ${device} backend failed:`, err);
+      if (isWebGpuFatalError(err)) {
+        debugLog('[sentiment.worker] WebGPU fatal during init — continuing to next backend');
+      }
     }
   }
 
@@ -118,6 +143,12 @@ async function init(
     // URL that the old code hid behind a console.debug. (Q9.)
     post({ type: 'ERROR', message: `Failed to load FinBERT: ${attempts.join(' | ')}` });
     return;
+  }
+
+  if (activeDevice === 'webgpu') {
+    unwatchDeviceLost = watchWebGpuDeviceLost(() => {
+      void tryWasmFallback();
+    });
   }
 
   post({ type: 'READY', device: activeDevice, diag: { wasmPaths, attempts } });
@@ -185,6 +216,9 @@ async function classify(id: string, texts: string[]): Promise<void> {
     post(msg);
   } catch (err) {
     // WebGPU can die mid-pass; transparently fall back to WASM and retry once.
+    if (isWebGpuFatalError(err)) {
+      debugLog('[sentiment.worker] WebGPU fatal during classify:', err);
+    }
     if (await tryWasmFallback()) {
       await classify(id, texts);
       return;
@@ -205,6 +239,7 @@ self.onmessage = (e: MessageEvent) => {
       msg.modelId as string,
       (msg.numThreads as number | undefined) ?? 1,
       (msg.forceWasm as boolean | undefined) ?? false,
+      msg.preferredDevice as InferenceDevice | undefined,
     );
   } else if (msg.type === 'CLASSIFY') {
     void classify(msg.id as string, msg.texts as string[]);

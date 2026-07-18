@@ -45,6 +45,7 @@ import {
   synthesisSchema,
 } from './prompts';
 import { finalizeInsight, scrubAdvice, scrubUnverifiedFigures, normalizeFiscalLabels } from './evidence';
+import { uniquifyInsightTitles } from './insightTitle';
 import {
   buildHints,
   deterministicAnalysis,
@@ -234,7 +235,7 @@ function coerceInsights(
     const finalized = finalizeInsight(doc, insight);
     if (finalized) out.push(finalized);
   }
-  return out;
+  return uniquifyInsightTitles(out);
 }
 
 function coerceScores(raw: unknown): AnalysisScores | undefined {

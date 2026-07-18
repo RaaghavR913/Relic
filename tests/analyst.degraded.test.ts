@@ -144,4 +144,39 @@ describe('deterministic Analyst tier (extractive)', () => {
     expect(a.revenueImpact).toEqual([]);
     expect(a.riskSignals).toEqual([]);
   });
+
+  it('uses sentence-specific titles — never the MD&A section label on every card', async () => {
+    const a = await generateFilingAnalysis(richDoc(), { tier: 'extractive', aux });
+    expect(a.topTakeaways.length).toBeGreaterThan(1);
+    for (const t of a.topTakeaways) {
+      expect(t.title).not.toBe("Management's Discussion and Analysis");
+      expect(t.title).not.toBe('Risk Factors');
+    }
+    const titles = a.topTakeaways.map((t) => t.title.toLowerCase());
+    expect(new Set(titles).size).toBe(titles.length);
+  });
+
+  it('titles are topic labels, not truncated copies of the summary sentence', async () => {
+    const a = await generateFilingAnalysis(richDoc(), { tier: 'extractive', aux });
+    const cards = [...a.topTakeaways, ...a.revenueImpact, ...a.riskSignals];
+    expect(cards.length).toBeGreaterThan(0);
+    for (const c of cards) {
+      const titleStem = c.title.replace(/…$/, '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const summary = c.summary.replace(/\s+/g, ' ').trim().toLowerCase();
+      // A real headline labels the topic; it must not be a prefix of the body quote.
+      expect(summary.startsWith(titleStem)).toBe(false);
+    }
+  });
+
+  it('varies Investor view across takeaways (no shared section-sentiment template)', async () => {
+    const a = await generateFilingAnalysis(richDoc(), { tier: 'extractive', aux });
+    const views = a.topTakeaways.map((t) => t.investorMeaning.trim()).filter(Boolean);
+    expect(views.length).toBeGreaterThan(0);
+    // No canned "On-device sentiment reads the … language as net-…" template.
+    for (const v of views) {
+      expect(v).not.toMatch(/^On-device sentiment reads the .+ language as net-/);
+    }
+    // Non-empty views must be unique across cards.
+    expect(new Set(views.map((v) => v.toLowerCase())).size).toBe(views.length);
+  });
 });

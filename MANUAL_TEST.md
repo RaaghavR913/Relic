@@ -148,7 +148,21 @@ so `LanguageModel.availability()` returns `downloadable`.
 - [ ] **Redline** with no prior comparable filing → neutral "No prior comparable…"
       message (not an error).
 - [ ] Disable WebGPU (`chrome://flags` → WebGPU Disabled) → encoders still run via
-      WASM fallback (slower but functional); capabilities card shows *WASM fallback*.
+      WASM fallback (slower but functional); capabilities card **Inference backend**
+      shows *WASM* after a Summary/Sentiment run (adapter line shows *Unavailable*).
+
+---
+
+## 5b. WebGPU path (acceleration)
+
+- [ ] With WebGPU enabled, open capabilities card → **WebGPU adapter: Available**.
+- [ ] Run Summary (extractive) and/or Sentiment → **Inference backend** updates to
+      *WebGPU* (or *Mixed* if encoder/sentiment differ). Not stuck on *Not started yet*.
+- [ ] Offscreen console: `encoder ready on webgpu` / `FinBERT ready on webgpu`;
+      optional `yielding encoder WebGPU to FinBERT` when both would share the GPU.
+- [ ] After sentiment completes, Summary/Redline still work (encoder rebuilds lazily).
+- [ ] `node scripts/smoke-webgpu.mjs` after `npm run build` exits 0 (or skips runtime
+      cleanly if Chrome is missing; static jsep assets must still pass).
 
 ---
 

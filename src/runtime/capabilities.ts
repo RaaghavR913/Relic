@@ -75,12 +75,22 @@ function getGlobal<T = unknown>(name: string): T | undefined {
 }
 
 async function probeWebGPU(): Promise<Capabilities['webgpu']> {
-  const gpu = (globalThis as { navigator?: { gpu?: { requestAdapter(): Promise<unknown> } } })
-    .navigator?.gpu;
+  const gpu = (
+    globalThis as {
+      navigator?: {
+        gpu?: {
+          requestAdapter(opts?: {
+            powerPreference?: 'high-performance' | 'low-power';
+          }): Promise<unknown>;
+        };
+      };
+    }
+  ).navigator?.gpu;
   if (!gpu) return { supported: false, adapter: false };
   try {
     // Existence of navigator.gpu is not enough — an adapter may be unavailable.
-    const adapter = await gpu.requestAdapter();
+    // Prefer the discrete GPU on dual-GPU laptops.
+    const adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
     return { supported: true, adapter: Boolean(adapter) };
   } catch {
     return { supported: true, adapter: false };

@@ -16,6 +16,8 @@ import { pipeline } from '@huggingface/transformers';
 import type { WorkerOutbound, WorkerProgressMsg } from '@/messages/types';
 import { configureBundledModelEnv } from '@/workers/transformersEnv';
 import { createLoadProgressTracker } from '@/workers/modelSizes';
+import { resolveBackendOrder, type InferenceDevice } from '@/workers/backendOrder';
+import { isWebGpuFatalError, watchWebGpuDeviceLost } from '@/workers/webgpuLost';
 import { debugLog } from '@/lib/debug';
 
 // The feature-extraction pipeline is callable: (texts, opts) => Tensor. The broad union
@@ -27,12 +29,18 @@ type FeatureExtractor = (
 
 // State -----------------------------------------------------------------------
 let extractor: FeatureExtractor | null = null;
-let activeDevice: 'webgpu' | 'wasm' = 'wasm';
+let activeDevice: InferenceDevice = 'wasm';
 // Remembered INIT params + a one-shot shared guard so a mid-inference WebGPU
 // failure (driver crash / OOM after a clean init) re-initializes once on WASM and
 // retries, instead of failing the whole embedding pass.
-let initParams: { wasmPaths: string; modelBasePath: string; modelId: string; numThreads: number } | null = null;
+let initParams: {
+  wasmPaths: string;
+  modelBasePath: string;
+  modelId: string;
+  numThreads: number;
+} | null = null;
 let wasmFallback: Promise<boolean> | null = null;
+let unwatchDeviceLost: (() => void) | null = null;
 
 function post(msg: WorkerOutbound, transfer?: Transferable[]): void {
   if (transfer && transfer.length > 0) {
@@ -40,6 +48,11 @@ function post(msg: WorkerOutbound, transfer?: Transferable[]): void {
   } else {
     self.postMessage(msg);
   }
+}
+
+function clearDeviceLostWatch(): void {
+  unwatchDeviceLost?.();
+  unwatchDeviceLost = null;
 }
 
 // Init ------------------------------------------------------------------------
@@ -50,9 +63,11 @@ async function init(
   modelId: string,
   numThreads: number,
   forceWasm = false,
+  preferredDevice?: InferenceDevice,
 ): Promise<void> {
   initParams = { wasmPaths, modelBasePath, modelId, numThreads };
   configureBundledModelEnv(wasmPaths, modelBasePath, numThreads);
+  clearDeviceLostWatch();
 
   // Bundled chrome-extension:// responses carry no Content-Length, so the raw
   // event's `progress` field pegs to ~100% immediately. Derive a REAL fraction
@@ -65,7 +80,7 @@ async function init(
   });
 
   // Deterministic backend order with per-attempt diagnostics (mirrors sentiment.worker).
-  const order: ReadonlyArray<'webgpu' | 'wasm'> = forceWasm ? ['wasm'] : ['webgpu', 'wasm'];
+  const order = resolveBackendOrder(forceWasm, preferredDevice);
   const attempts: string[] = [];
 
   for (const device of order) {
@@ -82,12 +97,21 @@ async function init(
     } catch (err) {
       attempts.push(`${device}: ${String(err)}`);
       debugLog(`[encoder.worker] ${device} backend failed:`, err);
+      if (isWebGpuFatalError(err)) {
+        debugLog('[encoder.worker] WebGPU fatal during init — continuing to next backend');
+      }
     }
   }
 
   if (!extractor) {
     post({ type: 'ERROR', message: `Failed to load pipeline: ${attempts.join(' | ')}` });
     return;
+  }
+
+  if (activeDevice === 'webgpu') {
+    unwatchDeviceLost = watchWebGpuDeviceLost(() => {
+      void tryWasmFallback();
+    });
   }
 
   post({ type: 'READY', device: activeDevice, diag: { wasmPaths, attempts } });
@@ -102,11 +126,20 @@ function tryWasmFallback(): Promise<boolean> {
   if (activeDevice !== 'webgpu' || !initParams) return Promise.resolve(false);
   if (!wasmFallback) {
     const p = initParams;
+    const prev = extractor;
     extractor = null;
+    clearDeviceLostWatch();
     debugLog('[encoder.worker] inference failed on WebGPU — re-initializing on WASM');
-    wasmFallback = init(p.wasmPaths, p.modelBasePath, p.modelId, p.numThreads, true).then(
-      () => extractor !== null,
-    );
+    wasmFallback = (async () => {
+      try {
+        const disposable = prev as unknown as { dispose?: () => Promise<void> | void };
+        if (typeof disposable?.dispose === 'function') await disposable.dispose();
+      } catch (err) {
+        debugLog('[encoder.worker] dispose before WASM fallback failed:', err);
+      }
+      await init(p.wasmPaths, p.modelBasePath, p.modelId, p.numThreads, true, 'wasm');
+      return extractor !== null;
+    })();
   }
   return wasmFallback;
 }
@@ -139,6 +172,9 @@ async function embed(id: string, texts: string[]): Promise<void> {
     post({ type: 'EMBED_RESULT', id, buffers, dim }, buffers);
   } catch (err) {
     // WebGPU can die mid-pass; transparently fall back to WASM and retry once.
+    if (isWebGpuFatalError(err)) {
+      debugLog('[encoder.worker] WebGPU fatal during embed:', err);
+    }
     if (await tryWasmFallback()) {
       await embed(id, texts);
       return;
@@ -159,6 +195,7 @@ self.onmessage = (e: MessageEvent) => {
       msg.modelId as string,
       (msg.numThreads as number | undefined) ?? 1,
       (msg.forceWasm as boolean | undefined) ?? false,
+      msg.preferredDevice as InferenceDevice | undefined,
     );
   } else if (msg.type === 'EMBED') {
     void embed(msg.id as string, msg.texts as string[]);
