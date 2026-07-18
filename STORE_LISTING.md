@@ -12,11 +12,12 @@ kept; there is no Markdown/HTML). The copy below is written to read well as-is.
 ## Product name
 
 ```
-Relic — On-device SEC filing analysis
+Relic - Instant Investor Analysis
 ```
 
-(The manifest name is "Relic". The store product name may be longer/descriptive;
-use the above, or just "Relic" if you prefer the clean brand.)
+(Matches the `name` in manifest.json exactly — the store product name should mirror
+what Chrome shows in chrome://extensions and the toolbar. 33 characters, well under
+the 75-char limit.)
 
 ## Summary (short description — 132 char max)
 

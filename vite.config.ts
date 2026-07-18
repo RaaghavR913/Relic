@@ -187,10 +187,25 @@ function stripRemoteCodeLoadersPlugin(): Plugin {
               'the @huggingface/transformers version changed shape; update the pattern before shipping.',
           );
         }
-        const out = code.replace(urlRe, '"/__relic-no-remote-wasm__/"');
+        let out = code.replace(urlRe, '"/__relic-no-remote-wasm__/"');
         if (out.includes('cdn.jsdelivr.net')) {
           this.error('strip-remote-code-loaders: jsdelivr URL survived the transformers.js rewrite.');
         }
+
+        // Neutralize the Hugging Face Hub host baked into transformers.js's model
+        // defaults: env.remoteHost / remotePathTemplate, an example-asset URL, and
+        // the auth-host allowlist. All are dead in this build — env.allowRemoteModels
+        // is false and weights load from the bundled localModelPath — so no fetch to
+        // the Hub can happen (and the CSP blocks it regardless). This strip only
+        // removes the unreachable data-host string from the shipped JS so it can't be
+        // mistaken for a live loader. Not egress-critical, so assert on the RESULT
+        // (no host survives) rather than requiring the input to look a certain way —
+        // a dependency bump that renames/drops one of these must not fail the build.
+        out = out.replaceAll('huggingface.co', 'huggingface.invalid');
+        if (out.includes('huggingface.co')) {
+          this.error('strip-remote-code-loaders: a huggingface.co host survived the transformers.js rewrite.');
+        }
+
         return { code: out, map: null };
       }
 
