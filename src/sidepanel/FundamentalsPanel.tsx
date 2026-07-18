@@ -75,7 +75,7 @@ function deltaColor(v: number | undefined): string {
 function FactRow({ fact }: { fact: XbrlFact }) {
   return (
     <tr className="border-t border-zinc-800/60">
-      <td className="py-1.5 pr-2 text-[11px] text-zinc-400">{fact.label}</td>
+      <td className="py-1.5 pr-2 text-[11px] text-white">{fact.label}</td>
       <td className="py-1.5 px-2 text-right text-[11px] font-medium tabular-nums text-zinc-200">
         {fmtValue(fact.currentValue, fact.unit)}
       </td>
@@ -105,7 +105,7 @@ function MetricRow({ metric }: { metric: XbrlMetric }) {
   const delta = metric.prior !== undefined ? metric.current - metric.prior : undefined;
   return (
     <tr className="border-t border-zinc-800/60">
-      <td className="py-1.5 pr-2 text-[11px] text-zinc-400">{metric.label}</td>
+      <td className="py-1.5 pr-2 text-[11px] text-white">{metric.label}</td>
       <td className="py-1.5 px-2 text-right text-[11px] font-medium tabular-nums text-zinc-200">
         {(metric.current * 100).toFixed(1)}%
       </td>

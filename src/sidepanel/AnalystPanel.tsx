@@ -249,7 +249,7 @@ function ScoreRow({ name, value, inverted = false }: { name: string; value: Scor
   const color = good >= 4 ? 'bg-emerald-500' : good === 3 ? 'bg-amber-500' : 'bg-red-500';
   return (
     <div className="flex items-center gap-2">
-      <span className="w-32 shrink-0 text-[10px] text-zinc-400">{name}</span>
+      <span className="w-36 shrink-0 text-[12px] text-white">{name}</span>
       <div className="flex flex-1 gap-0.5">
         {([1, 2, 3, 4, 5] as const).map((i) => (
           <span key={i} className={`h-1.5 flex-1 rounded-sm ${i <= value ? color : 'bg-zinc-800'}`} />
