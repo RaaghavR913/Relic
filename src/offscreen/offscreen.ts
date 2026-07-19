@@ -24,7 +24,6 @@ import type {
   SentimentResponse,
   SentimentSectionDoneMsg,
   SentimentProgressMsg,
-  InferenceBackendMsg,
   WorkerOutbound,
   WorkerInitMsg,
   SentimentWorkerOutbound,
@@ -137,25 +136,9 @@ async function resolvePreferredDevice(): Promise<InferenceDevice> {
   return preflightPromise;
 }
 
-function broadcastInferenceBackend(
-  role: 'encoder' | 'sentiment',
-  device: InferenceDevice,
-  attempts?: string[],
-): void {
-  const msg: InferenceBackendMsg = {
-    target: 'sidepanel',
-    type: 'INFERENCE_BACKEND',
-    role,
-    device,
-    ...(attempts ? { attempts } : {}),
-  };
-  chrome.runtime.sendMessage(msg).catch(() => {});
-}
-
 function onWorkerReady(
   role: 'encoder' | 'sentiment',
   device: InferenceDevice,
-  attempts?: string[],
 ): void {
   sessionPreferredDevice = device;
   if (role === 'encoder') {
@@ -176,7 +159,6 @@ function onWorkerReady(
     sentimentWorkerDevice = device;
     sentimentTuning = getBackendTuning(LOW_MEMORY, device);
   }
-  broadcastInferenceBackend(role, device, attempts);
 }
 
 /**
@@ -332,9 +314,9 @@ function handleWorkerMsg(e: MessageEvent): void {
 
   if (msg.type === 'READY') {
     // First READY resolves ensureWorker(); a later READY (mid-pass WASM fallback)
-    // only retunes + broadcasts — never reject/re-resolve the settled promise.
+    // only retunes — never reject/re-resolve the settled promise.
     const isFirst = pendingInit !== null;
-    onWorkerReady('encoder', msg.device, msg.diag?.attempts);
+    onWorkerReady('encoder', msg.device);
     if (msg.diag) debugLog(`[offscreen] encoder ready on ${msg.device} —`, msg.diag.attempts);
     if (isFirst) {
       pendingInit?.resolve(msg.device);
@@ -501,7 +483,7 @@ function handleSentimentWorkerMsg(e: MessageEvent): void {
 
   if (msg.type === 'READY') {
     const isFirst = sentimentPendingInit !== null;
-    onWorkerReady('sentiment', msg.device, msg.diag?.attempts);
+    onWorkerReady('sentiment', msg.device);
     if (msg.diag) debugLog(`[offscreen] FinBERT ready on ${msg.device} —`, msg.diag.attempts);
     if (isFirst) {
       sentimentPendingInit?.resolve(msg.device);

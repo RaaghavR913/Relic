@@ -210,7 +210,7 @@ function Collapse({
         aria-expanded={open}
         className="flex w-full items-center gap-2 px-3 py-2 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
       >
-        <span className="flex-1 text-xs font-semibold uppercase tracking-wider text-[#39FF14]">
+        <span className="flex-1 text-xs font-semibold uppercase tracking-wider text-[#44ff39]">
           {title}
         </span>
         {pending && <span className="animate-pulse text-[10px] text-sky-400">…</span>}
@@ -435,7 +435,7 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
   return (
     <section aria-labelledby="analyst-heading" className="flex flex-col gap-3">
       <div className="flex items-center gap-2">
-        <p id="analyst-heading" className="text-[13px] font-medium uppercase tracking-widest text-[#39FF14] font-display">
+        <p id="analyst-heading" className="text-[13px] font-medium uppercase tracking-widest text-[#44ff39] font-display">
           Investor Analysis
         </p>
         {running && currentStage && (
@@ -540,16 +540,16 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
             pending={running && !a.stagesDone.includes('shares')}
           >
             <div className="flex flex-col gap-2.5">
-              <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-[#39FF14]">For revenue</p>
+              <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-[#44ff39]">For revenue</p>
               <InsightList insights={a.revenueImpact} emptyNote="Not enough information." />
-              <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-[#39FF14]">For margins & profitability</p>
+              <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-[#44ff39]">For margins & profitability</p>
               <InsightList insights={a.marginImpact} emptyNote="Not enough information." />
-              <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-[#39FF14]">For cash flow & balance sheet</p>
+              <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-[#44ff39]">For cash flow & balance sheet</p>
               <InsightList
                 insights={[...a.cashFlowImpact, ...a.balanceSheetHealth]}
                 emptyNote="Not enough information."
               />
-              <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-[#39FF14]">For shares & investor sentiment</p>
+              <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-[#44ff39]">For shares & investor sentiment</p>
               <InsightList insights={a.shareImpact} emptyNote="Not enough information." />
             </div>
           </Collapse>

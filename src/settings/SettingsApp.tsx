@@ -286,7 +286,7 @@ export default function SettingsApp() {
           </h1>
           <p className="mt-1 text-[13px] text-[#8a8a90]">
             Settings ·{' '}
-            <span className="font-medium" style={{ color: '#39FF14' }}>
+            <span className="font-medium" style={{ color: '#bbff33' }}>
               v{version}
             </span>
           </p>

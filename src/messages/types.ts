@@ -9,7 +9,7 @@
 // text snippets already on the page; they never leave to a remote server.
 // ============================================================
 
-import type { DocumentModel, Section, SentenceSentiment, LanguageFlag, SectionDiff } from '@/types';
+import type { DocumentModel, Section, SentenceSentiment, LanguageFlag, SectionDiff, FilingType } from '@/types';
 import type { DiffStats } from '@/redline/diff';
 
 export type MessageTarget = 'sw' | 'offscreen' | 'sidepanel' | 'content';
@@ -270,12 +270,51 @@ export interface FlagResultsMsg {
 // Privacy: prior filing HTML is fetched from EDGAR (public) and parsed on-device;
 // no filing text or diff ever leaves the device.
 
-/** Side panel → SW: compute a YoY redline for the currently-open filing. */
+/** Side panel → SW: compute a redline for the currently-open filing. */
 export interface ComputeRedlineMsg {
   target: 'sw';
   type: 'COMPUTE_REDLINE';
   doc: DocumentModel;
+  /**
+   * Accession number of a specific prior filing the user picked from the
+   * "Compare against" dropdown. Omit / undefined = Auto (most recent earlier
+   * same-form filing).
+   */
+  priorAccessionNo?: string;
 }
+
+/** One prior comparable filing offered in the "Compare against" dropdown. */
+export interface PriorFilingOption {
+  accessionNo: string;
+  form: string;
+  /** periodOfReport / reportDate, ISO date. */
+  reportDate: string;
+  filingDate: string;
+  /** Calendar year of reportDate — the dropdown's primary label. */
+  fiscalYear: number;
+  /** Full Archives URL of the primary document. */
+  url: string;
+}
+
+/**
+ * Side panel → SW: list the company's earlier same-form filings to populate the
+ * "Compare against" dropdown. Hits EDGAR, so the panel only sends this when the
+ * user's "Fetch from SEC.gov" setting is on.
+ */
+export interface ListPriorFilingsMsg {
+  target: 'sw';
+  type: 'LIST_PRIOR_FILINGS';
+  cik: string;
+  filingType: FilingType;
+  /** Current filing's period — filings on/after it are excluded. */
+  periodOfReport?: string;
+  /** Current filing's accession — excluded from the list. */
+  currentAccessionNo?: string;
+}
+
+export type ListPriorFilingsResponse =
+  | { ok: true; filings: PriorFilingOption[] }
+  | { ok: false; error: string };
 
 /**
  * Side panel → SW: abort the in-flight redline. Sent when the panel unmounts or
@@ -484,19 +523,6 @@ export interface SentimentProgressMsg {
   detail?: string;
   /** True when no real percentage exists (model missing a size manifest) — render an indeterminate bar. */
   indeterminate?: boolean;
-}
-
-/**
- * Offscreen → Side panel: the backend ORT actually selected (not just adapter
- * probe). Emitted on every worker READY, including post-fallback re-init.
- */
-export interface InferenceBackendMsg {
-  target: 'sidepanel';
-  type: 'INFERENCE_BACKEND';
-  role: 'encoder' | 'sentiment';
-  device: 'webgpu' | 'wasm';
-  /** Per-backend load attempt outcomes when available. */
-  attempts?: string[];
 }
 
 export interface SentimentOkResponse {

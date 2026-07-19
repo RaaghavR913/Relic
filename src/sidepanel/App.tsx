@@ -46,11 +46,6 @@ import {
   stateLabel,
 } from './ui';
 import { useAnalysisActive } from './analysisActivity';
-import {
-  useInferenceBackends,
-  formatInferenceBackendLabel,
-  ensureInferenceBackendListener,
-} from './inferenceBackend';
 import { fmtCalendarDate } from '@/lib/date';
 
 const ONBOARDED_KEY = 'relic:onboarded';
@@ -300,7 +295,7 @@ function Header({ doc, hideDocMeta = false, analysisActive = false }: { doc: Doc
           <SettingsButton />
           <span
             className="text-xs"
-            style={{ color: '#39FF14' }}
+            style={{ color: '#bbff33' }}
           >
             v{chrome.runtime.getManifest().version}
           </span>
@@ -399,9 +394,6 @@ function NoFiling({
   onDismissPermission: () => void;
   gateState: 'consent_wall' | 'paywall' | null;
 }) {
-  const backends = useInferenceBackends();
-  const inferenceLabel = formatInferenceBackendLabel(backends);
-
   return (
     <div className="flex flex-col gap-4">
       <EmptyState
@@ -478,16 +470,6 @@ function NoFiling({
                 {caps.webgpu.adapter ? 'Available' : 'Unavailable'}
               </span>
             </li>
-            <li className="flex items-center justify-between">
-              <span className="text-zinc-300">Inference backend</span>
-              <span
-                className={
-                  inferenceLabel === 'Not started yet' ? 'text-zinc-500' : 'text-emerald-400'
-                }
-              >
-                {inferenceLabel}
-              </span>
-            </li>
           </ul>
         </section>
       )}
@@ -500,9 +482,6 @@ function NoFiling({
 export default function App() {
   const { caps, error } = useCapabilities();
   const analysisActive = useAnalysisActive();
-  useEffect(() => {
-    ensureInferenceBackendListener();
-  }, []);
   const [currentDoc, setCurrentDoc] = useState<DocumentModel | null>(null);
   const [currentFlags, setCurrentFlags] = useState<LanguageFlag[]>([]);
   const [activeTab, setActiveTab] = useState<TabId>('analyst');
@@ -869,7 +848,7 @@ export default function App() {
                 )}
                 {!hidesInvestorTabs(currentDoc) && (
                   <div id="panel-changes" role="tabpanel" aria-labelledby="tab-changes" hidden={activeTab !== 'changes'}>
-                    <RedlinePanel doc={currentDoc} detectedTier={caps.generationTier} />
+                    <RedlinePanel doc={currentDoc} detectedTier={caps.generationTier} active={activeTab === 'changes'} />
                   </div>
                 )}
 
