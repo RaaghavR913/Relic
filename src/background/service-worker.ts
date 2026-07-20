@@ -20,8 +20,6 @@ import type {
   AnalyzeSentimentMsg,
   ComputeRedlineMsg,
   CancelRedlineMsg,
-  ListPriorFilingsMsg,
-  ListPriorFilingsResponse,
   OffscreenExtractiveMsg,
   OffscreenSentimentMsg,
   OffscreenRedlineMsg,
@@ -44,7 +42,7 @@ import type {
   ParsePdfResponse,
 } from '@/messages/types';
 import { RateLimitedQueue, fetchEdgarText } from './edgarQueue';
-import { resolvePriorFiling, resolvePriorFilingByAccession, listPriorComparableFilings } from './resolvePrior';
+import { resolvePriorFiling } from './resolvePrior';
 import { classifyInjectability } from './inject';
 import { debugLog } from '@/lib/debug';
 import { getSiteProfile } from '@/content/ingest/siteProfiles';
@@ -169,9 +167,6 @@ async function forwardToOffscreen<T>(
 /** Shared rate-limit queue for all EDGAR requests (≤8 req/s, SW lifetime). */
 const edgarQueue = new RateLimitedQueue({ maxPerSecond: 8 });
 
-/** "Compare against" dropdown only offers priors from the last this-many years. */
-const DROPDOWN_LOOKBACK_YEARS = 5;
-
 /**
  * AbortController for the single in-flight redline. Starting a new redline aborts
  * the previous one; a CANCEL_REDLINE from the side panel aborts the current one.
@@ -196,7 +191,7 @@ function sendRedlineProgress(stage: RedlineStage, progress: number, detail?: str
  * Returns a 'no_prior' response (not an error) when no earlier filing exists.
  */
 async function handleComputeRedline(m: ComputeRedlineMsg): Promise<RedlineResponse> {
-  const { doc, priorAccessionNo } = m;
+  const { doc } = m;
   const cik = doc.source.cik;
   if (!cik) {
     return { ok: false, error: 'No CIK on this filing — cannot resolve a prior filing.' };
@@ -211,17 +206,11 @@ async function handleComputeRedline(m: ComputeRedlineMsg): Promise<RedlineRespon
 
   const fetchText = (url: string) => fetchEdgarText(url, { queue: edgarQueue, signal });
 
-  // 1. Resolve the prior comparable filing — a specific one the user picked, or
-  //    Auto (the most recent earlier same-form filing).
-  const resolveDetail = priorAccessionNo
-    ? 'Finding the selected filing…'
-    : 'Finding last year’s filing…';
-  sendRedlineProgress('resolving', 0.05, resolveDetail);
+  // 1. Resolve the prior comparable filing.
+  sendRedlineProgress('resolving', 0.05, 'Finding last year’s filing…');
   let prior;
   try {
-    prior = priorAccessionNo
-      ? await resolvePriorFilingByAccession(cik, doc.filingType, priorAccessionNo, { fetchText })
-      : await resolvePriorFiling(cik, doc.filingType, doc.periodOfReport, { fetchText });
+    prior = await resolvePriorFiling(cik, doc.filingType, doc.periodOfReport, { fetchText });
   } catch (err) {
     if (signal.aborted) return { ok: false, error: 'cancelled' };
     return { ok: false, error: `EDGAR resolve failed: ${String(err)}` };
@@ -261,39 +250,6 @@ async function handleComputeRedline(m: ComputeRedlineMsg): Promise<RedlineRespon
     priorInfo,
   };
   return forwardToOffscreen<RedlineResponse>(fwd);
-}
-
-/**
- * Enumerate the company's earlier same-form filings to populate the panel's
- * "Compare against" dropdown. Rides the same rate-limit queue as the redline
- * fetches; each option maps to a concrete EDGAR filing the user can then diff.
- */
-async function handleListPriorFilings(m: ListPriorFilingsMsg): Promise<ListPriorFilingsResponse> {
-  const { cik, filingType, periodOfReport, currentAccessionNo } = m;
-  if (!cik) {
-    return { ok: false, error: 'No CIK on this filing — cannot list prior filings.' };
-  }
-
-  const fetchText = (url: string) => fetchEdgarText(url, { queue: edgarQueue });
-  try {
-    const priors = await listPriorComparableFilings(cik, filingType, periodOfReport, { fetchText }, {
-      withinYears: DROPDOWN_LOOKBACK_YEARS,
-      ...(currentAccessionNo ? { excludeAccessionNo: currentAccessionNo } : {}),
-    });
-    return {
-      ok: true,
-      filings: priors.map((p) => ({
-        accessionNo: p.accessionNo,
-        form: p.form,
-        reportDate: p.reportDate,
-        filingDate: p.filingDate,
-        fiscalYear: Number(p.reportDate.slice(0, 4)),
-        url: p.url,
-      })),
-    };
-  } catch (err) {
-    return { ok: false, error: `EDGAR list failed: ${String(err)}` };
-  }
 }
 
 // ── on-demand content-script injection ("Analyze this page") ─────────────────
@@ -468,15 +424,6 @@ chrome.runtime.onMessage.addListener(
     if (msg.type === 'COMPUTE_REDLINE') {
       const m = msg as ComputeRedlineMsg;
       handleComputeRedline(m)
-        .then(sendResponse)
-        .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }));
-      return true;
-    }
-
-    // ── LIST_PRIOR_FILINGS — enumerate prior comparable filings for the dropdown ──
-    if (msg.type === 'LIST_PRIOR_FILINGS') {
-      const m = msg as ListPriorFilingsMsg;
-      handleListPriorFilings(m)
         .then(sendResponse)
         .catch((err: unknown) => sendResponse({ ok: false, error: String(err) }));
       return true;

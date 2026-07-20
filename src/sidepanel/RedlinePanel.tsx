@@ -24,24 +24,15 @@ import type {
   AlignmentSummary,
   ContentShowRedlineMsg,
   ContentClearRedlineMsg,
-  ListPriorFilingsMsg,
-  ListPriorFilingsResponse,
-  PriorFilingOption,
 } from '@/messages/types';
 import type { DiffStats } from '@/redline/diff';
 import { generateChangeSummary, createChangeSummarySession } from '@/redline/changeSummary';
 import { redlineSupportsForm } from '@/redline/align';
-import { getCachedRedline, putRedline, priorKeyFromAccession } from '@/redline/redlineStore';
+import { getCachedRedline, putRedline } from '@/redline/redlineStore';
 import { useSecFetchPref } from '@/shared/secFetchPref';
 import { useReportAnalysisActivity } from './analysisActivity';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-
-/** Human label for a prior-filing dropdown option, e.g. "FY2022 · 10-Q · period ended 2022-09-24". */
-function priorOptionLabel(o: PriorFilingOption): string {
-  const period = o.reportDate ? ` · period ended ${o.reportDate}` : '';
-  return `FY${o.fiscalYear} · ${o.form}${period}`;
-}
 
 async function getActiveTabId(): Promise<number | undefined> {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -235,16 +226,9 @@ function AlignmentNotes({ alignment }: { alignment: AlignmentSummary[] }) {
 interface RedlinePanelProps {
   doc: DocumentModel;
   detectedTier: GenerationTier;
-  /**
-   * True when the Redline tab is the visible one. All tabs stay mounted (so async
-   * analysis survives tab switches), so we gate the EDGAR prior-filings listing on
-   * this — otherwise every filing open would eagerly fetch a company's submissions
-   * JSON (multi-MB for hyper-active filers) just to build a dropdown nobody's looking at.
-   */
-  active?: boolean;
 }
 
-export function RedlinePanel({ doc, detectedTier, active = true }: RedlinePanelProps) {
+export function RedlinePanel({ doc, detectedTier }: RedlinePanelProps) {
   const [state, setState] = useState<RunState>('idle');
   const [progress, setProgress] = useState<ProgressState | null>(null);
   const [diffs, setDiffs] = useState<SectionDiff[]>([]);
@@ -253,22 +237,11 @@ export function RedlinePanel({ doc, detectedTier, active = true }: RedlinePanelP
   const [alignment, setAlignment] = useState<AlignmentSummary[]>([]);
   const [summaries, setSummaries] = useState<Record<string, string>>({});
   const [error, setError] = useState('');
-  /** Accession of the picked prior filing; undefined = Auto (previous filing). */
-  const [selectedAccession, setSelectedAccession] = useState<string | undefined>(undefined);
-  /** Selection that produced the currently displayed results (for stale-select note). */
-  const [appliedAccession, setAppliedAccession] = useState<string | undefined>(undefined);
-  /** Earlier same-form filings offered in the "Compare against" dropdown. */
-  const [priorOptions, setPriorOptions] = useState<PriorFilingOption[]>([]);
-  const [optionsLoading, setOptionsLoading] = useState(false);
 
   // Tracks whether a redline is currently mid-flight in the SW, so the cleanup
   // below can read the live value at unmount time (a stale closure of `state`
   // would not). Set in run(); cleared when run() settles.
   const runningRef = useRef(false);
-
-  // rawTextHash we've already listed prior filings for — so flipping back to the
-  // Redline tab doesn't re-issue the listing request for the same filing.
-  const listedHashRef = useRef<string | null>(null);
 
   // The redline only works on forms with mapped focus sections (Risk Factors /
   // MD&A and equivalents). For anything else — UNKNOWN, an ownership form like
@@ -289,10 +262,7 @@ export function RedlinePanel({ doc, detectedTier, active = true }: RedlinePanelP
     return map;
   }, [doc.sections]);
 
-  const selectionStale =
-    state === 'done' && selectedAccession !== appliedAccession;
-
-  // Reset when the filing changes; load any cached Auto redline.
+  // Reset when the filing changes; load any cached redline.
   useEffect(() => {
     setState('idle');
     setDiffs([]);
@@ -301,9 +271,6 @@ export function RedlinePanel({ doc, detectedTier, active = true }: RedlinePanelP
     setAlignment([]);
     setSummaries({});
     setError('');
-    setSelectedAccession(undefined);
-    setAppliedAccession(undefined);
-    setPriorOptions([]);
     void clearOnPage().catch(() => {});
 
     // Non-redline forms never produced a meaningful cache entry; skip the load so
@@ -311,57 +278,22 @@ export function RedlinePanel({ doc, detectedTier, active = true }: RedlinePanelP
     if (!applicable) return;
 
     let alive = true;
-    getCachedRedline(doc.rawTextHash, 'auto')
+    getCachedRedline(doc.rawTextHash)
       .then((cached) => {
         if (!alive || !cached) return;
         if (cached.status === 'no_prior' || cached.status === 'unsupported_form') {
           setState(cached.status);
           setAlignment(cached.alignment);
-          setAppliedAccession(undefined);
           return;
         }
         setDiffs(cached.diffs);
         setAlignment(cached.alignment);
         setPrior(cached.prior ?? null);
         setState('done');
-        setAppliedAccession(undefined);
       })
       .catch(() => {});
     return () => { alive = false; };
   }, [doc.rawTextHash, applicable]);
-
-  // Load the company's earlier same-form filings for the "Compare against"
-  // dropdown. Deferred until the Redline tab is actually visible (`active`): all
-  // tabs stay mounted, and eagerly listing on every filing open would fetch a
-  // company's submissions JSON — multi-MB for hyper-active filers — for a dropdown
-  // nobody may look at. Also gated on the SEC.gov-fetch pref and redline-capable
-  // forms; guarded so re-opening the tab doesn't re-fetch. Fails soft to Auto-only.
-  useEffect(() => {
-    if (!active || !applicable || !secFetch) return;
-    if (listedHashRef.current === doc.rawTextHash) return;
-    const cik = doc.source.cik;
-    if (!cik) return;
-
-    let alive = true;
-    setOptionsLoading(true);
-    const msg: ListPriorFilingsMsg = {
-      target: 'sw',
-      type: 'LIST_PRIOR_FILINGS',
-      cik,
-      filingType: doc.filingType,
-      ...(doc.periodOfReport ? { periodOfReport: doc.periodOfReport } : {}),
-      ...(doc.source.accessionNo ? { currentAccessionNo: doc.source.accessionNo } : {}),
-    };
-    (chrome.runtime.sendMessage(msg) as Promise<ListPriorFilingsResponse>)
-      .then((resp) => {
-        if (!alive) return;
-        setPriorOptions(resp.ok ? resp.filings : []);
-        listedHashRef.current = doc.rawTextHash; // don't re-list this filing on tab re-entry
-      })
-      .catch(() => { if (alive) setPriorOptions([]); })
-      .finally(() => { if (alive) setOptionsLoading(false); });
-    return () => { alive = false; };
-  }, [active, doc.rawTextHash, doc.source.cik, doc.filingType, doc.periodOfReport, doc.source.accessionNo, applicable, secFetch]);
 
   // Listen for redline progress.
   useEffect(() => {
@@ -422,19 +354,13 @@ export function RedlinePanel({ doc, detectedTier, active = true }: RedlinePanelP
   const run = useCallback(async () => {
     if (!applicable) return; // no focus sections for this form — nothing to compare
     if (!secFetch) return;   // SEC.gov fetch disabled in Settings — never go to network
-    const priorKey = priorKeyFromAccession(selectedAccession);
     runningRef.current = true;
     setState('running');
     setError('');
     setSummaries({});
     setProgress({ stage: 'resolving', progress: 0, detail: 'Starting…' });
     try {
-      const msg: ComputeRedlineMsg = {
-        target: 'sw',
-        type: 'COMPUTE_REDLINE',
-        doc,
-        ...(selectedAccession ? { priorAccessionNo: selectedAccession } : {}),
-      };
+      const msg: ComputeRedlineMsg = { target: 'sw', type: 'COMPUTE_REDLINE', doc };
       const resp = (await chrome.runtime.sendMessage(msg)) as RedlineResponse;
 
       if (!resp.ok) {
@@ -450,10 +376,8 @@ export function RedlinePanel({ doc, detectedTier, active = true }: RedlinePanelP
 
       if (resp.status === 'no_prior' || resp.status === 'unsupported_form') {
         setState(resp.status);
-        setAppliedAccession(selectedAccession);
         await putRedline({
           rawTextHash: doc.rawTextHash,
-          priorKey,
           status: resp.status,
           diffs: [],
           alignment: resp.alignment,
@@ -466,11 +390,9 @@ export function RedlinePanel({ doc, detectedTier, active = true }: RedlinePanelP
       setStats(resp.stats);
       setPrior(resp.prior ?? null);
       setState('done');
-      setAppliedAccession(selectedAccession);
 
       await putRedline({
         rawTextHash: doc.rawTextHash,
-        priorKey,
         status: 'computed',
         diffs: resp.diffs,
         alignment: resp.alignment,
@@ -486,7 +408,7 @@ export function RedlinePanel({ doc, detectedTier, active = true }: RedlinePanelP
       runningRef.current = false;
       setProgress(null);
     }
-  }, [doc, applicable, secFetch, upgradeSummaries, selectedAccession]);
+  }, [doc, applicable, secFetch, upgradeSummaries]);
 
   const totalChanges = useMemo(
     () => diffs.reduce((n, d) => n + d.added.length + d.removed.length, 0),
@@ -496,58 +418,22 @@ export function RedlinePanel({ doc, detectedTier, active = true }: RedlinePanelP
   // Surface the header "On-device" chip while a comparison is mid-flight.
   useReportAnalysisActivity(state === 'running');
 
-  const helpCopy =
-    selectedAccession !== undefined
-      ? 'Fetches the selected filing from EDGAR and shows what changed in the Risk Factors and MD&A.'
-      : 'Fetches last year’s comparable filing from EDGAR and shows what changed in the Risk Factors and MD&A.';
-
   return (
     <section aria-label="Redline" className="flex flex-col gap-3">
       {applicable && (
         <div className="flex flex-col gap-2">
-          <label className="flex items-center gap-2 text-[11px] text-zinc-400">
-            <span className="shrink-0">Compare against</span>
-            <select
-              value={selectedAccession ?? 'auto'}
-              disabled={state === 'running' || !secFetch}
-              onChange={(e) => {
-                const v = e.target.value;
-                setSelectedAccession(v === 'auto' ? undefined : v);
-              }}
-              className="min-w-0 flex-1 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 text-[11px] text-zinc-200 outline-none focus-visible:border-violet-500 focus-visible:ring-1 focus-visible:ring-violet-500 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <option value="auto">Auto (previous filing)</option>
-              {priorOptions.map((o) => (
-                <option key={o.accessionNo} value={o.accessionNo}>
-                  {priorOptionLabel(o)}
-                </option>
-              ))}
-            </select>
-          </label>
-          {secFetch && optionsLoading && priorOptions.length === 0 && (
-            <p className="text-[10px] leading-relaxed text-zinc-600">Loading prior filings…</p>
-          )}
-          {secFetch && !optionsLoading && priorOptions.length === 0 && (
-            <p className="text-[10px] leading-relaxed text-zinc-600">
-              No earlier {doc.filingType} filings found to pick from — Auto still works.
-            </p>
-          )}
           <button
             onClick={() => void run()}
             disabled={state === 'running' || !secFetch}
             title={!secFetch ? 'Turn on “Fetch last year’s filing” in Settings to compare' : undefined}
             className="flex w-full items-center justify-center rounded-md bg-violet-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-500"
           >
-            {state === 'running' ? 'Comparing…' : state === 'done' || state === 'no_prior' || state === 'unsupported_form' ? 'Re-compare' : 'Compare to prior filing'}
+            {state === 'running' ? 'Comparing…' : state === 'done' || state === 'no_prior' || state === 'unsupported_form' ? 'Re-compare' : 'Compare to prior year'}
           </button>
-          {selectionStale && (
-            <p className="text-[10px] leading-relaxed text-amber-200/80">
-              Selection changed — Re-compare to apply.
-            </p>
-          )}
           {secFetch && state === 'idle' && (
             <p className="text-[12px] leading-relaxed text-emerald-400">
-              {helpCopy}
+              Fetches last year’s comparable filing from EDGAR and shows what changed in the Risk Factors and
+              MD&amp;A.
             </p>
           )}
         </div>

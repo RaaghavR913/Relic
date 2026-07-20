@@ -9,7 +9,7 @@ vs `extractive`).
 ```bash
 npm install
 npm run build          # outputs dist/
-npm test               # 144 tests should pass
+npm test               # 499 tests should pass (7 skipped)
 ```
 
 1. Open `chrome://extensions`, enable **Developer mode**.
@@ -78,7 +78,7 @@ HTML. (Any 10-K / 10-Q / 8-K / S-1 / DEF 14A primary doc works.)
   - Evidence quotes show a ↗ that highlights the quoted passage **on the page**.
   - No output anywhere says "buy", "sell", or "short", or predicts the stock price.
   - Re-opening the panel on the same filing replays the analysis instantly (cached);
-    **Regenerate** re-runs it.
+    **Re-Analyze** re-runs it.
   - extractive tier → amber degraded banner; snapshot + what-changed only.
   - Sparse docs (e.g. a Form 4) → sections show "Not enough information", no errors.
 - [ ] **Summary** — click *Summarize* on a section.
@@ -182,8 +182,9 @@ so `LanguageModel.availability()` returns `downloadable`.
 Open DevTools **Network** for the page, the side panel, and the service worker while
 exercising all tabs:
 
-- [ ] The only requests are: (a) EDGAR document/submissions fetches, (b) one-time
-      Hugging Face encoder-model downloads, (c) no analysis/filing-text POSTs anywhere.
+- [ ] The only requests are: (a) EDGAR document/submissions fetches when Redline
+      (or “Fetch last year’s filing”) is used, (b) no Hugging Face / model-host
+      requests (weights are bundled), (c) no analysis/filing-text POSTs anywhere.
 - [ ] No request body contains filing text, questions, answers, or derived analysis.
 
 ---

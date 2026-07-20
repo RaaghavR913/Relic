@@ -848,7 +848,7 @@ export default function App() {
                 )}
                 {!hidesInvestorTabs(currentDoc) && (
                   <div id="panel-changes" role="tabpanel" aria-labelledby="tab-changes" hidden={activeTab !== 'changes'}>
-                    <RedlinePanel doc={currentDoc} detectedTier={caps.generationTier} active={activeTab === 'changes'} />
+                    <RedlinePanel doc={currentDoc} detectedTier={caps.generationTier} />
                   </div>
                 )}
 
