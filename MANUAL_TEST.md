@@ -9,7 +9,7 @@ vs `extractive`).
 ```bash
 npm install
 npm run build          # outputs dist/
-npm test               # 499 tests should pass (7 skipped)
+npm test               # 512 tests should pass (7 skipped)
 ```
 
 1. Open `chrome://extensions`, enable **Developer mode**.
@@ -149,7 +149,10 @@ so `LanguageModel.availability()` returns `downloadable`.
       message (not an error).
 - [ ] Disable WebGPU (`chrome://flags` → WebGPU Disabled) → encoders still run via
       WASM fallback (slower but functional); capabilities card **WebGPU adapter**
-      shows *Unavailable*.
+      shows *Unavailable*. Offscreen console shows a preflight `reason=` (e.g.
+      `no_gpu` / `no_adapter`) and `preferred=wasm` **without** a long WebGPU INIT
+      attempt. After a WASM fallback (or preferWasm lock), idle-unload + recreate
+      of the offscreen doc still prefers WASM for that browser session.
 
 ---
 
@@ -157,8 +160,9 @@ so `LanguageModel.availability()` returns `downloadable`.
 
 - [ ] With WebGPU enabled, open capabilities card → **WebGPU adapter: Available**.
 - [ ] Run Summary (extractive) and/or Sentiment; offscreen console shows
-      `encoder ready on webgpu` / `FinBERT ready on webgpu`;
-      optional `yielding encoder WebGPU to FinBERT` when both would share the GPU.
+      `encoder ready on webgpu` / `FinBERT ready on webgpu` and a preflight line with
+      `device=true`; optional `yielding encoder WebGPU to FinBERT` when both would
+      share the GPU.
 - [ ] After sentiment completes, Summary/Redline still work (encoder rebuilds lazily).
 - [ ] `node scripts/smoke-webgpu.mjs` after `npm run build` exits 0 (or skips runtime
       cleanly if Chrome is missing; static jsep assets must still pass).

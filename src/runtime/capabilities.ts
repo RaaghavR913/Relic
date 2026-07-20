@@ -74,27 +74,13 @@ function getGlobal<T = unknown>(name: string): T | undefined {
   return (globalThis as Record<string, unknown>)[name] as T | undefined;
 }
 
+import { probeWebGpuAdapter } from '@/offscreen/webgpuPreflight';
+
 async function probeWebGPU(): Promise<Capabilities['webgpu']> {
-  const gpu = (
-    globalThis as {
-      navigator?: {
-        gpu?: {
-          requestAdapter(opts?: {
-            powerPreference?: 'high-performance' | 'low-power';
-          }): Promise<unknown>;
-        };
-      };
-    }
-  ).navigator?.gpu;
-  if (!gpu) return { supported: false, adapter: false };
-  try {
-    // Existence of navigator.gpu is not enough — an adapter may be unavailable.
-    // Prefer the discrete GPU on dual-GPU laptops.
-    const adapter = await gpu.requestAdapter({ powerPreference: 'high-performance' });
-    return { supported: true, adapter: Boolean(adapter) };
-  } catch {
-    return { supported: true, adapter: false };
-  }
+  // Reuse the hardened offscreen probe (timeout + requestDevice). UI still
+  // exposes a single Available/Unavailable bit — true only when a device works.
+  const probe = await probeWebGpuAdapter();
+  return { supported: probe.supported, adapter: probe.device };
 }
 
 async function probeBuiltin(name: 'Summarizer' | 'LanguageModel'): Promise<AvailabilityState> {

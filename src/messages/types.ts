@@ -133,6 +133,22 @@ export interface OffscreenIdleMsg {
   type: 'OFFSCREEN_IDLE';
 }
 
+/**
+ * Offscreen → SW: the backend a worker actually settled on.
+ *
+ * The offscreen document has no `chrome.storage` (its API surface is
+ * essentially `chrome.runtime` only), so it cannot persist the
+ * "this session is WASM-only" hint itself. It reports the device here and the
+ * SW — which does have `chrome.storage.session` — owns the preference.
+ */
+export interface InferenceDeviceMsg {
+  target: 'sw';
+  type: 'INFERENCE_DEVICE';
+  device: 'webgpu' | 'wasm';
+  /** Why WASM was chosen, for debug logs. Absent on the webgpu path. */
+  reason?: string;
+}
+
 // ── Offscreen / SW → Side Panel (push events) ────────────────────────────────
 
 export type EmbedStage =

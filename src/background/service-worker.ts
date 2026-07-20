@@ -40,7 +40,13 @@ import type {
   ParsePdfMsg,
   OffscreenParsePdfMsg,
   ParsePdfResponse,
+  InferenceDeviceMsg,
 } from '@/messages/types';
+import {
+  getPreferWasm,
+  setPreferWasm,
+  offscreenUrlWithPref,
+} from '@/offscreen/inferencePref';
 import { RateLimitedQueue, fetchEdgarText } from './edgarQueue';
 import { resolvePriorFiling } from './resolvePrior';
 import { classifyInjectability } from './inject';
@@ -113,9 +119,17 @@ async function ensureOffscreen(): Promise<void> {
   // After the await, another concurrent call may have already set the promise.
   if (_offscreenCreating) return _offscreenCreating;
 
+  // Hand the session's inference preference to the document at creation: the
+  // offscreen context has no chrome.storage, so a URL param is how a recycled
+  // document learns to skip a WebGPU path already known to be bad this session.
+  const preferWasm = await getPreferWasm();
+
+  // Re-check after the await — a concurrent call may have won the race.
+  if (_offscreenCreating) return _offscreenCreating;
+
   _offscreenCreating = chrome.offscreen
     .createDocument({
-      url: chrome.runtime.getURL(OFFSCREEN_URL),
+      url: offscreenUrlWithPref(chrome.runtime.getURL(OFFSCREEN_URL), preferWasm),
       reasons: [chrome.offscreen.Reason.WORKERS],
       justification:
         'Runs encoder Web Workers (ONNX Runtime) for on-device embeddings — no network calls other than one-time model download.',
@@ -484,6 +498,19 @@ chrome.runtime.onMessage.addListener(
     // ── OFFSCREEN_IDLE — close the offscreen document ──
     if (msg.type === 'OFFSCREEN_IDLE') {
       chrome.offscreen.closeDocument().catch(() => {});
+      return false;
+    }
+
+    // ── INFERENCE_DEVICE — offscreen reports the backend it settled on ──
+    // The offscreen document cannot persist this itself (no chrome.storage), so
+    // it reports and we remember: a WASM outcome sticks for the browser session
+    // and is handed to the next offscreen document via its creation URL.
+    if (msg.type === 'INFERENCE_DEVICE') {
+      const m = msg as InferenceDeviceMsg;
+      if (m.device === 'wasm') {
+        debugLog(`[Relic] inference device → wasm${m.reason ? ` (${m.reason})` : ''}; persisting for session`);
+        void setPreferWasm(true);
+      }
       return false;
     }
 

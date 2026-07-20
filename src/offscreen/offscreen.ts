@@ -37,11 +37,13 @@ import type {
   EmbedTextsResponse,
   OffscreenParsePdfMsg,
   ParsePdfResponse,
+  InferenceDeviceMsg,
 } from '@/messages/types';
 import { parsePdf, base64ToBytes } from './pdfParse';
 import { settleWithDeadline } from './deadline';
 import { getBackendTuning } from './backendTuning';
 import { probeWebGpuAdapter } from './webgpuPreflight';
+import { preferWasmFromLocation } from './inferencePref';
 import type { InferenceDevice } from '@/workers/backendOrder';
 import type { DocumentModel, Section, SentenceSentiment, SectionDiff } from '@/types';
 import { filterNonTableSentences } from './sentenceFilter';
@@ -99,6 +101,8 @@ const LOW_MEMORY = DEVICE_MEMORY_GB <= 4;
  */
 const COLD_BATCH_TIMEOUT_MS = 60_000;
 const WARM_BATCH_TIMEOUT_MS = 30_000;
+/** Hard cap on worker INIT (pipeline create). Wedged WebGPU EP create must not hang forever. */
+const INIT_TIMEOUT_MS = 20_000;
 
 /**
  * ORT WASM thread count. Multi-threaded ORT needs cross-origin isolation
@@ -121,19 +125,54 @@ let sentimentTuning = getBackendTuning(LOW_MEMORY, 'wasm');
 let sessionPreferredDevice: InferenceDevice | null = null;
 let preflightPromise: Promise<InferenceDevice> | null = null;
 
+/**
+ * Tell the SW which backend we settled on. This context has no chrome.storage,
+ * so the SW owns the session preference and hands it back via our creation URL.
+ * Fire-and-forget: a failed report only costs a redundant probe next time.
+ */
+function reportInferenceDevice(device: InferenceDevice, reason?: string): void {
+  const msg: InferenceDeviceMsg = reason
+    ? { target: 'sw', type: 'INFERENCE_DEVICE', device, reason }
+    : { target: 'sw', type: 'INFERENCE_DEVICE', device };
+  chrome.runtime.sendMessage(msg).catch(() => {});
+}
+
 async function resolvePreferredDevice(): Promise<InferenceDevice> {
   if (sessionPreferredDevice) return sessionPreferredDevice;
+
+  // Handed in by the SW at createDocument() time — survives offscreen recycle
+  // within the same browser session without needing chrome.storage here.
+  if (preferWasmFromLocation(location.search)) {
+    sessionPreferredDevice = 'wasm';
+    debugLog('[offscreen] preferWasm from creation URL → preferred=wasm');
+    return 'wasm';
+  }
+
   if (!preflightPromise) {
-    preflightPromise = probeWebGpuAdapter().then((probe) => {
-      const preferred: InferenceDevice = probe.adapter ? 'webgpu' : 'wasm';
-      if (!sessionPreferredDevice) sessionPreferredDevice = preferred;
-      debugLog(
-        `[offscreen] WebGPU preflight: supported=${probe.supported} adapter=${probe.adapter} → preferred=${preferred}`,
-      );
-      return sessionPreferredDevice ?? preferred;
-    });
+    preflightPromise = probeWebGpuAdapter()
+      .then((probe) => {
+        const preferred: InferenceDevice = probe.device ? 'webgpu' : 'wasm';
+        if (!sessionPreferredDevice) sessionPreferredDevice = preferred;
+        debugLog(
+          `[offscreen] WebGPU preflight: supported=${probe.supported} adapter=${probe.adapter} ` +
+            `device=${probe.device}${probe.reason ? ` reason=${probe.reason}` : ''} → preferred=${preferred}`,
+        );
+        return sessionPreferredDevice ?? preferred;
+      })
+      .catch((err) => {
+        debugLog('[offscreen] WebGPU preflight failed soft → wasm:', err);
+        if (!sessionPreferredDevice) sessionPreferredDevice = 'wasm';
+        return sessionPreferredDevice ?? 'wasm';
+      });
   }
   return preflightPromise;
+}
+
+function preferWasmGoingForward(reason: string): void {
+  sessionPreferredDevice = 'wasm';
+  preflightPromise = Promise.resolve('wasm');
+  reportInferenceDevice('wasm', reason);
+  debugLog(`[offscreen] preferWasm locked for session (${reason})`);
 }
 
 function onWorkerReady(
@@ -141,6 +180,9 @@ function onWorkerReady(
   device: InferenceDevice,
 ): void {
   sessionPreferredDevice = device;
+  if (device === 'wasm') {
+    reportInferenceDevice('wasm', `${role} READY on wasm`);
+  }
   if (role === 'encoder') {
     workerDevice = device;
     encoderTuning = getBackendTuning(LOW_MEMORY, device);
@@ -243,11 +285,18 @@ function terminateWorkers(): void {
  * Leaving any of these pending froze the panel's progress bar with no error
  * (the pre-fix behaviour). Nulling workerReady makes the next request rebuild
  * a fresh worker instead of reusing a corpse or a forever-rejected promise.
+ *
+ * `keepReadyPromise` is for INIT-timeout → WASM retry: we are still inside the
+ * outstanding `workerReady` promise and must not let a concurrent ensureWorker
+ * start a second init.
  */
-function terminateEncoderWorker(reason = 'Worker terminated'): void {
+function terminateEncoderWorker(
+  reason = 'Worker terminated',
+  opts?: { keepReadyPromise?: boolean },
+): void {
   worker?.terminate();
   worker = null;
-  workerReady = null;
+  if (!opts?.keepReadyPromise) workerReady = null;
   encoderBatchDone = false;
   pendingInit?.reject(new Error(`${reason} (during model load)`));
   pendingInit = null;
@@ -264,11 +313,14 @@ function terminateEncoderWorker(reason = 'Worker terminated'): void {
  * ensureSentimentWorker() rebuilds a fresh worker (and re-INITs from the retained
  * constants) on the next request.
  */
-function terminateSentimentWorker(reason = 'Worker terminated'): void {
+function terminateSentimentWorker(
+  reason = 'Worker terminated',
+  opts?: { keepReadyPromise?: boolean },
+): void {
   clearSentimentTeardownTimer();
   sentimentWorker?.terminate();
   sentimentWorker = null;
-  sentimentWorkerReady = null;
+  if (!opts?.keepReadyPromise) sentimentWorkerReady = null;
   sentimentBatchDone = false;
   sentimentPendingInit?.reject(new Error(`${reason} (during model load)`));
   sentimentPendingInit = null;
@@ -361,35 +413,63 @@ function handleWorkerMsg(e: MessageEvent): void {
 
 // ── worker lifecycle ──────────────────────────────────────────────────────────
 
+/**
+ * Start an encoder worker INIT with a hard deadline. On timeout the worker is
+ * torn down (keeping the outer workerReady promise) so the caller can retry WASM.
+ */
+function startEncoderInit(preferredDevice: InferenceDevice): Promise<InferenceDevice> {
+  const handle = settleWithDeadline<InferenceDevice>({
+    ms: INIT_TIMEOUT_MS,
+    timeoutError: () =>
+      new Error(`Encoder INIT timed out after ${Math.round(INIT_TIMEOUT_MS / 1000)}s`),
+    onTimeout: () => {
+      pendingInit = null;
+      terminateEncoderWorker('Encoder INIT timed out', { keepReadyPromise: true });
+    },
+  });
+  pendingInit = { resolve: handle.resolve, reject: handle.reject };
+
+  worker = new Worker(new URL('../workers/encoder.worker.ts', import.meta.url), {
+    type: 'module',
+  });
+  worker.onmessage = handleWorkerMsg;
+  worker.onerror = (ev) => {
+    terminateEncoderWorker(ev.message ? `Worker crashed: ${ev.message}` : 'Worker crashed');
+  };
+
+  const wasmPaths = chrome.runtime.getURL('wasm/');
+  const modelBasePath = chrome.runtime.getURL('models/');
+  const initMsg: WorkerInitMsg = {
+    type: 'INIT',
+    wasmPaths,
+    modelBasePath,
+    modelId: MODEL_ID,
+    numThreads: ORT_NUM_THREADS,
+    preferredDevice,
+  };
+  worker.postMessage(initMsg);
+  return handle.promise;
+}
+
 function ensureWorker(): Promise<'webgpu' | 'wasm'> {
   if (workerReady) return workerReady;
 
   workerReady = (async () => {
     const preferredDevice = await resolvePreferredDevice();
 
-    const device = await new Promise<'webgpu' | 'wasm'>((resolve, reject) => {
-      pendingInit = { resolve, reject };
-
-      worker = new Worker(new URL('../workers/encoder.worker.ts', import.meta.url), {
-        type: 'module',
-      });
-      worker.onmessage = handleWorkerMsg;
-      worker.onerror = (ev) => {
-        terminateEncoderWorker(ev.message ? `Worker crashed: ${ev.message}` : 'Worker crashed');
-      };
-
-      const wasmPaths = chrome.runtime.getURL('wasm/');
-      const modelBasePath = chrome.runtime.getURL('models/');
-      const initMsg: WorkerInitMsg = {
-        type: 'INIT',
-        wasmPaths,
-        modelBasePath,
-        modelId: MODEL_ID,
-        numThreads: ORT_NUM_THREADS,
-        preferredDevice,
-      };
-      worker.postMessage(initMsg);
-    });
+    let device: InferenceDevice;
+    try {
+      device = await startEncoderInit(preferredDevice);
+    } catch (err) {
+      // Wedged / failed WebGPU INIT → lock WASM for the session and retry once.
+      if (preferredDevice === 'webgpu') {
+        preferWasmGoingForward('encoder INIT failed/timeout');
+        debugLog('[offscreen] encoder INIT failed on WebGPU — retrying WASM:', err);
+        device = await startEncoderInit('wasm');
+      } else {
+        throw err;
+      }
+    }
 
     // WebGPU-only warmup: pay shader/ORT compile before the first user batch.
     // Soft-fail: if warmup errors after READY, still return the device (deadlines
@@ -527,36 +607,67 @@ function handleSentimentWorkerMsg(e: MessageEvent): void {
 
 // ── sentiment worker lifecycle ────────────────────────────────────────────────
 
+function startSentimentInit(preferredDevice: InferenceDevice): Promise<InferenceDevice> {
+  const handle = settleWithDeadline<InferenceDevice>({
+    ms: INIT_TIMEOUT_MS,
+    timeoutError: () =>
+      new Error(`FinBERT INIT timed out after ${Math.round(INIT_TIMEOUT_MS / 1000)}s`),
+    onTimeout: () => {
+      sentimentPendingInit = null;
+      terminateSentimentWorker('FinBERT INIT timed out', { keepReadyPromise: true });
+    },
+  });
+  sentimentPendingInit = { resolve: handle.resolve, reject: handle.reject };
+
+  sentimentWorker = new Worker(new URL('../workers/sentiment.worker.ts', import.meta.url), {
+    type: 'module',
+  });
+  sentimentWorker.onmessage = handleSentimentWorkerMsg;
+  sentimentWorker.onerror = (ev) => {
+    terminateSentimentWorker(ev.message ? `Worker crashed: ${ev.message}` : 'Worker crashed');
+  };
+
+  const wasmPaths = chrome.runtime.getURL('wasm/');
+  const modelBasePath = chrome.runtime.getURL('models/');
+  sentimentWorker.postMessage({
+    type: 'INIT',
+    wasmPaths,
+    modelBasePath,
+    modelId: FINBERT_MODEL_ID,
+    numThreads: ORT_NUM_THREADS,
+    preferredDevice,
+  } satisfies WorkerInitMsg);
+  return handle.promise;
+}
+
 function ensureSentimentWorker(): Promise<'webgpu' | 'wasm'> {
   if (sentimentWorkerReady) return sentimentWorkerReady;
 
   sentimentWorkerReady = (async () => {
     const preferredDevice = await resolvePreferredDevice();
 
-    const device = await new Promise<'webgpu' | 'wasm'>((resolve, reject) => {
-      sentimentPendingInit = { resolve, reject };
-
-      sentimentWorker = new Worker(new URL('../workers/sentiment.worker.ts', import.meta.url), {
-        type: 'module',
-      });
-      sentimentWorker.onmessage = handleSentimentWorkerMsg;
-      sentimentWorker.onerror = (ev) => {
-        terminateSentimentWorker(
-          ev.message ? `Worker crashed: ${ev.message}` : 'Worker crashed',
-        );
-      };
-
-      const wasmPaths = chrome.runtime.getURL('wasm/');
-      const modelBasePath = chrome.runtime.getURL('models/');
-      sentimentWorker.postMessage({
-        type: 'INIT',
-        wasmPaths,
-        modelBasePath,
-        modelId: FINBERT_MODEL_ID,
-        numThreads: ORT_NUM_THREADS,
-        preferredDevice,
-      } satisfies WorkerInitMsg);
-    });
+    let device: InferenceDevice;
+    try {
+      // If FinBERT will take WebGPU, drop the encoder's GPU residency first so
+      // both never share VRAM during FinBERT pipeline create.
+      if (
+        preferredDevice === 'webgpu' &&
+        workerDevice === 'webgpu' &&
+        worker !== null
+      ) {
+        debugLog('[offscreen] yielding encoder WebGPU to FinBERT');
+        terminateEncoderWorker('Yielding GPU to FinBERT');
+      }
+      device = await startSentimentInit(preferredDevice);
+    } catch (err) {
+      if (preferredDevice === 'webgpu') {
+        preferWasmGoingForward('sentiment INIT failed/timeout');
+        debugLog('[offscreen] FinBERT INIT failed on WebGPU — retrying WASM:', err);
+        device = await startSentimentInit('wasm');
+      } else {
+        throw err;
+      }
+    }
 
     if (device === 'webgpu') {
       try {
