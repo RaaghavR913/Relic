@@ -149,12 +149,13 @@ if (maps.length > 0) {
 // This makes the failure class unshippable: any code-hosting CDN host, or any
 // absolute URL ending in .js/.mjs/.wasm, in an emitted script fails the build.
 const REMOTE_CODE_HOSTS =
-  /cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com|raw\.githubusercontent\.com|cdn\.skypack\.dev|esm\.sh/;
+  /cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com|raw\.githubusercontent\.com|cdn\.skypack\.dev|esm\.sh|huggingface\.co/;
 // Matching every URL ending in ".js" is too noisy — doc links to projects
-// *named* something.js (github.com/…/transformers.js, huggingface.co/docs/
-// transformers.js) live in library error messages. Restrict to unambiguous
-// code fetches (.min.js/.mjs/.wasm); plain-.js script CDNs are covered by the
-// host denylist above.
+// *named* something.js (github.com/…/transformers.js) live in library error
+// messages. Restrict to unambiguous code fetches (.min.js/.mjs/.wasm); plain-.js
+// script CDNs are covered by the host denylist above. huggingface.co is also
+// denylisted: weights are bundled and stripRemoteCodeLoadersPlugin rewrites the
+// Hub host to huggingface.invalid — a surviving Hub string fails the build.
 const REMOTE_CODE_FILE = /https?:\/\/[^\s"'`)]+\.(?:min\.js|mjs|wasm)\b/;
 const modelsPrefix = path.join(DIST, 'models') + path.sep;
 walk(DIST, (f) => {
