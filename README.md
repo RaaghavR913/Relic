@@ -1,6 +1,6 @@
 # Relic
 
-On-device SEC filing analysis for Chrome. Relic runs entirely on your machine — summaries, sentiment, language flags, and year-over-year redlines never leave your device.
+On-device SEC filing analysis for Chrome and Brave. Relic runs entirely on your machine — summaries, sentiment, language flags, and year-over-year redlines never leave your device.
 
 Open any filing on [EDGAR](https://www.sec.gov/edgar) and Relic activates in the side panel. Language flags are underlined directly on the filing page as you read.
 
@@ -67,10 +67,14 @@ service worker ──► message router, EDGAR queue, offscreen document lifecyc
 offscreen document ──► ONNX encoder/sentiment Web Workers (FinBERT + mxbai-embed)
 ```
 
-**Generation tiers.** At startup, Relic probes Chrome's built-in AI APIs (Summarizer, Prompt API / Gemini Nano) and classifies the device as `builtin` or `extractive`:
+**Generation tiers.** At startup, Relic probes the built-in AI APIs (Summarizer, Prompt API / Gemini Nano) and classifies the device as `builtin` or `extractive`:
 
-- **builtin** — Chrome Summarizer + Prompt API for summaries, analyst notes, and change narratives.
+- **builtin** — Summarizer + Prompt API for summaries, analyst notes, and change narratives.
 - **extractive** — embedding-centrality sentence selection for summaries; all other analysis (sentiment, flags, redline) is identical.
+
+The tier is decided purely by each API's own `availability()` call, so a browser that
+lacks the built-in AI APIs degrades to `extractive` automatically — see
+[Browser support](#browser-support).
 
 **Highlighting.** On-page overlays use the [CSS Custom Highlight API](https://developer.mozilla.org/en-US/docs/Web/API/CSS_Custom_Highlight_API) — language-flag underlines, redline additions, and jump-to-source citations each get their own layer. No `<span>` injection, so XBRL interactive viewers stay intact.
 
@@ -103,11 +107,44 @@ tests/                # Vitest unit tests (positionMap, redline, sentiment, …)
 public/icons/         # Extension icons
 ```
 
+## Browser support
+
+Relic is a Manifest V3 extension built on the Chromium side-panel and offscreen-document
+APIs, so it runs on Chromium browsers that implement `chrome.sidePanel`.
+
+| Browser | Status | Notes |
+|---------|--------|-------|
+| **Google Chrome** 116+ | Fully supported | Only browser that can reach the `builtin` tier |
+| **Brave** (Chromium 116+) | Supported, `extractive` tier | Everything works except built-in AI — see below |
+| **Opera / Opera GX** | Not supported | No `chrome.sidePanel`; Opera uses its own `sidebar_action` API, so Relic has no UI surface there |
+
+Chrome and Brave are the two browsers this project actually tests against. The Opera row is
+based on Opera's published extension API docs, not on a test run — treat it as "expected not
+to work" rather than a measured result.
+
+**Brave.** Measured on Brave 1.92 (Chromium 150); the `minimum_chrome_version: 116` floor in
+the manifest applies to Brave builds on Chromium 116+ too, but older Brave builds are
+untested. The extension loads, the service worker
+runs, and `sidePanel`, `offscreen`, `scripting`, `storage.session`, `runtime.getContexts`,
+and `permissions.request` are all present. The side panel is cross-origin isolated
+(`SharedArrayBuffer` available, so threaded ONNX Runtime WASM works), and WebGPU returns a
+working adapter and device.
+
+The one gap is Chrome's built-in AI: `LanguageModel` and `Summarizer` are absent in Brave,
+and even with the Chromium feature flags forced on, `availability()` reports `unavailable` —
+Gemini Nano is never provisioned. Brave therefore runs Relic in the `extractive` tier
+permanently. Extractive summaries, FinBERT sentiment, language flags, and redlines are
+identical to Chrome; generative analyst notes and change narratives are unavailable.
+
+Brave installs extensions from the Chrome Web Store, so the published listing covers it with
+no separate package.
+
 ## Prerequisites
 
 - **Node.js** 18+
-- **Google Chrome** with Manifest V3 extension support
-- For the `builtin` tier: Chrome with built-in AI APIs enabled (Summarizer / Prompt API)
+- **Chrome 116+ or Brave** (Chromium 116+) with Manifest V3 extension support
+- For the `builtin` tier: **Chrome** with built-in AI APIs enabled (Summarizer / Prompt API).
+  Brave and other Chromium browsers without Gemini Nano run the `extractive` tier.
 
 ## Development setup
 
@@ -133,6 +170,20 @@ npm run dev
 2. Click **Load unpacked** and select the `dist/` folder.
 3. Pin Relic and open the side panel from the toolbar icon.
 4. Navigate to any `https://*.sec.gov` filing page.
+
+### Load in Brave
+
+Identical to Chrome — same `dist/`, no separate build.
+
+1. Open `brave://extensions` and enable **Developer mode**.
+2. Click **Load unpacked** and select the `dist/` folder.
+3. Pin Relic and open the side panel from the toolbar icon.
+4. Navigate to any `https://*.sec.gov` filing page.
+
+Relic opens in Brave's side panel alongside Brave's own sidebar. The Summary tab will show
+extractive summaries rather than generative ones, and the Analyst tab's built-in-AI
+indicator reports the `extractive` tier — expected on Brave, see
+[Browser support](#browser-support).
 
 ## Scripts
 

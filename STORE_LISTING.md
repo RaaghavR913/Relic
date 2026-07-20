@@ -101,6 +101,9 @@ GOOD TO KNOW
 • Some devices with Chrome's built-in AI (Gemini Nano) get richer natural-language
   summaries and notes; on other devices Relic uses a fast on-device extractive
   method instead. Everything else — sentiment, flags, and redlines — is identical.
+• Relic also runs on Brave and other Chromium browsers with side-panel support.
+  Those browsers do not ship Chrome's built-in AI, so they always use the
+  extractive summary method described above.
 • Relic summarizes and analyzes filings for informational and research purposes
   only. It is not investment advice and does not tell you to buy, sell, or hold.
 ```

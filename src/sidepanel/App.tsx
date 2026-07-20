@@ -123,9 +123,11 @@ function analyzeFailCopy(response: AnalyzePageResponse | undefined): string {
       case 'unsupported_url':
         return "This page can't be analyzed — browser pages and the Chrome Web Store aren't supported.";
       case 'needs_file_access':
-        return 'This is a local file. To analyze PDFs opened from your computer, open chrome://extensions, find Relic → Details, and turn on "Allow access to file URLs" — then reload the PDF and try again.';
+        // Browser-neutral: the extensions page is chrome://extensions in Chrome but
+        // brave://extensions in Brave, so name the page rather than a fixed URL.
+        return 'This is a local file. To analyze PDFs opened from your computer, open your browser\'s extensions page, find Relic → Details, and turn on "Allow access to file URLs" — then reload the PDF and try again.';
       case 'no_permission':
-        return 'Chrome needs a fresh grant — click the Relic toolbar icon while on the page you want to analyze, then try again.';
+        return 'The browser needs a fresh grant — click the Relic toolbar icon while on the page you want to analyze, then try again.';
       case 'no_tab':
         return "Couldn't find the current tab — switch to the page you want to analyze and try again.";
       case 'needs_optional_permission':
