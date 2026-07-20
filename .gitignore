@@ -8,3 +8,6 @@ models/
 coverage/
 *.log
 .DS_Store
+
+# Packaged store uploads — rebuild from dist/ instead of committing 100MB+ zips
+*.zip
