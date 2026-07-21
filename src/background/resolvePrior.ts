@@ -11,6 +11,8 @@
 // closure over fetchEdgarText + the shared RateLimitedQueue.
 // ============================================================
 
+import { toIsoDate } from '@/lib/date';
+
 export interface PriorFilingLocator {
   cik: string;            // zero-padded 10-digit
   accessionNo: string;    // dashed, e.g. 0000320193-22-000108
@@ -115,18 +117,27 @@ function selectPrior(
 
   if (sameForm.length === 0) return undefined;
 
-  if (periodOfReport) {
-    const target = periodOfReport.slice(0, 10);
+  // Normalize before comparing. These are compared as ISO strings, so a
+  // non-ISO period (inline XBRL renders display text like "September 30, 2023")
+  // would otherwise compare lexicographically against "2025-09-27" and match
+  // EVERYTHING — silently returning the newest filing, or the current filing
+  // itself when viewing the latest one. Treat an unparseable period as unknown.
+  const target = toIsoDate(periodOfReport);
+
+  if (target) {
     // Most recent entry strictly earlier than the current period.
-    const prior = sameForm.find((r) => r.reportDate && r.reportDate.slice(0, 10) < target);
+    const prior = sameForm.find((r) => {
+      const rd = toIsoDate(r.reportDate);
+      return rd !== undefined && rd < target;
+    });
     if (prior) return prior;
     // Current filing present in the list → take the one right after it.
-    const idx = sameForm.findIndex((r) => r.reportDate.slice(0, 10) === target);
+    const idx = sameForm.findIndex((r) => toIsoDate(r.reportDate) === target);
     if (idx >= 0 && idx + 1 < sameForm.length) return sameForm[idx + 1];
     return undefined;
   }
 
-  // No period info: index 0 is the latest (assumed current), index 1 is prior.
+  // No usable period info: index 0 is the latest (assumed current), index 1 is prior.
   return sameForm[1];
 }
 

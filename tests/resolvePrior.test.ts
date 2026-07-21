@@ -380,3 +380,46 @@ describe('fetchEdgarText', () => {
     expect(calls).toBe(1);
   });
 });
+
+// ── regression: non-ISO periodOfReport ──────────────────────────────────────
+//
+// Inline XBRL renders dei:DocumentPeriodEndDate as DISPLAY text — the real Apple
+// FY2023 10-K yields "September 30, 2023", not "2023-09-30". selectPrior compared
+// periodOfReport.slice(0,10) against ISO reportDates, so the target became
+// "September " and EVERY ISO date compared less than it (digits sort before 'S').
+// .find() therefore returned index 0 — the NEWEST filing — and when the user was
+// viewing the newest filing it returned that same filing, redlining it against
+// itself. Observed live against the real EDGAR submissions feed.
+describe('resolvePriorFiling — non-ISO periodOfReport (regression)', () => {
+  it('normalizes a human-readable period and still picks the earlier filing', async () => {
+    const fetchText = async () => fixtureJson();
+    const prior = await resolvePriorFiling('320193', '10-K', 'September 30, 2023', { fetchText });
+    expect(prior).not.toBeNull();
+    // FY2022, not FY2023 (itself) and not some later filing.
+    expect(prior!.reportDate).toBe('2022-09-24');
+    expect(prior!.accessionNo).toBe('0000320193-22-000108');
+  });
+
+  it('never returns the filing being viewed', async () => {
+    const fetchText = async () => fixtureJson();
+    for (const period of ['September 30, 2023', '2023-09-30']) {
+      const prior = await resolvePriorFiling('320193', '10-K', period, { fetchText });
+      expect(prior!.reportDate).not.toBe('2023-09-30');
+      expect(prior!.accessionNo).not.toBe('0000320193-23-000106');
+    }
+  });
+
+  it('matches the ISO result exactly for the equivalent human date', async () => {
+    const fetchText = async () => fixtureJson();
+    const human = await resolvePriorFiling('320193', '10-K', 'September 30, 2023', { fetchText });
+    const iso = await resolvePriorFiling('320193', '10-K', '2023-09-30', { fetchText });
+    expect(human!.accessionNo).toBe(iso!.accessionNo);
+  });
+
+  it('falls back to index 1 when the period is truly unparseable', async () => {
+    const fetchText = async () => fixtureJson();
+    const prior = await resolvePriorFiling('320193', '10-K', 'not a date', { fetchText });
+    // Unknown period → assume index 0 is current, index 1 is prior.
+    expect(prior!.reportDate).toBe('2022-09-24');
+  });
+});

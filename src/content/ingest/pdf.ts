@@ -26,6 +26,7 @@ import type {
   Segment,
 } from '../../types/index.js';
 import { cyrb53 } from '../../lib/hash.js';
+import { toIsoDate } from '../../lib/date.js';
 import { detectFilingTypeWithConfidence } from './detect.js';
 import { segmentSections } from './segment.js';
 import { assessSegmentationConfidence } from '../segment.js';
@@ -197,13 +198,6 @@ function cleanCompany(raw: string): string | undefined {
   // Guard against capturing a whole run-on line: keep it name-length.
   if (s.length < 2 || s.length > 80) return undefined;
   return s;
-}
-
-/** "April 26, 2026" → "2026-04-26"; returns undefined if unparseable. */
-function toIsoDate(human: string): string | undefined {
-  const t = Date.parse(human);
-  if (Number.isNaN(t)) return undefined;
-  return new Date(t).toISOString().slice(0, 10);
 }
 
 // ── ingestion ─────────────────────────────────────────────────────────────

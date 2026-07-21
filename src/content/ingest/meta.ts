@@ -4,13 +4,16 @@
  */
 
 import { queryXbrlFact } from './detect.js';
+import { toIsoDate } from '@/lib/date';
 
 export interface CompanyMeta {
   companyName?: string;
   ticker?: string;
   cik?: string;
   accessionNo?: string;
+  /** Date-only ISO (YYYY-MM-DD). Normalized — inline XBRL renders display text. */
   periodOfReport?: string;
+  /** Date-only ISO (YYYY-MM-DD). */
   filedAt?: string;
 }
 
@@ -52,13 +55,18 @@ export function extractCompanyMeta(doc: Document, url?: string): CompanyMeta {
     queryXbrlFact(doc, 'dei:EntityCentralIndexKey') ??
     queryXbrlFact(doc, 'dei:entitycentralindexkey');
 
-  const periodOfReport =
+  // Inline XBRL renders these facts as DISPLAY text ("September 30, 2023"), not
+  // the ISO value. Everything downstream (prior-filing selection, XBRL period
+  // matching) compares them as ISO, so normalize here at the single source.
+  const periodOfReport = toIsoDate(
     queryXbrlFact(doc, 'dei:DocumentPeriodEndDate') ??
-    queryXbrlFact(doc, 'dei:documentperiodenddate');
+      queryXbrlFact(doc, 'dei:documentperiodenddate'),
+  );
 
-  const filedAt =
+  const filedAt = toIsoDate(
     queryXbrlFact(doc, 'dei:DocumentEffectiveDate') ??
-    queryXbrlFact(doc, 'dei:documenteffectivedate');
+      queryXbrlFact(doc, 'dei:documenteffectivedate'),
+  );
 
   const { cik: cikUrl, accessionNo } = parseEdgarUrl(url ?? '');
   const cik = cikUrl ?? (cikXbrl ? normalizeCik(cikXbrl) : undefined);
