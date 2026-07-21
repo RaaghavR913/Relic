@@ -83,12 +83,37 @@ async function probeWebGPU(): Promise<Capabilities['webgpu']> {
   return { supported: probe.supported, adapter: probe.device };
 }
 
+/**
+ * Hard cap on a single availability() call.
+ *
+ * availability() is documented as cheap, but it is not guaranteed to settle:
+ * when the on-device model component is missing or mid-provision it can hang
+ * indefinitely (observed in Chrome for Testing 151, both with and without the
+ * built-in-AI flags). That matters because the side panel renders nothing until
+ * getCapabilities() resolves — an unbounded await here freezes the whole UI on
+ * "Detecting on-device capabilities…" with no error and no recovery.
+ *
+ * Treat a stalled probe exactly like an unavailable API: fall to the extractive
+ * tier, which is the same fail-soft contract probeWebGpuAdapter() already uses.
+ */
+export const BUILTIN_PROBE_TIMEOUT_MS = 3_000;
+
+/** Sentinel so a timeout is distinguishable from a genuine 'unavailable'. */
+const PROBE_TIMEOUT = Symbol('builtin-probe-timeout');
+
 async function probeBuiltin(name: 'Summarizer' | 'LanguageModel'): Promise<AvailabilityState> {
   const api = getGlobal<{ availability?: (opts?: unknown) => Promise<string> }>(name);
   if (!api || typeof api.availability !== 'function') return 'unsupported';
   const langOpts = name === 'Summarizer' ? SUMMARIZER_LANGUAGE : LANGUAGE_MODEL_LANGUAGE;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const state = await api.availability(langOpts);
+    const state = await Promise.race([
+      api.availability(langOpts),
+      new Promise<typeof PROBE_TIMEOUT>((resolve) => {
+        timer = setTimeout(() => resolve(PROBE_TIMEOUT), BUILTIN_PROBE_TIMEOUT_MS);
+      }),
+    ]);
+    if (state === PROBE_TIMEOUT) return 'unavailable';
     switch (state) {
       // Current standardized values (Chrome 138+, MDN):
       case 'available':
@@ -108,6 +133,8 @@ async function probeBuiltin(name: 'Summarizer' | 'LanguageModel'): Promise<Avail
     }
   } catch {
     return 'unavailable';
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
 }
 
