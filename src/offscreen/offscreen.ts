@@ -44,6 +44,12 @@ import { settleWithDeadline } from './deadline';
 import { getBackendTuning } from './backendTuning';
 import { probeWebGpuAdapter } from './webgpuPreflight';
 import { preferWasmFromLocation } from './inferencePref';
+import {
+  initTimeoutForTier,
+  isLowEndDevice,
+  preferredDeviceForTier,
+  readDeviceMemoryGb,
+} from './deviceTier';
 import type { InferenceDevice } from '@/workers/backendOrder';
 import type { DocumentModel, Section, SentenceSentiment, SectionDiff } from '@/types';
 import { filterNonTableSentences } from './sentenceFilter';
@@ -82,15 +88,16 @@ const FINBERT_MODEL_ID = 'Xenova/finbert';
 const IDLE_TIMEOUT_MS = 5 * 60 * 1_000; // 5 minutes
 
 /**
- * Low-memory profile. navigator.deviceMemory is capped at 8 by Chrome and
- * absent on some platforms (absent ⇒ assume 8 / don't degrade). At ≤ 4 GB the
- * int8 models still fit, but peak WASM arena use must stay small: halve the
- * batch sizes, run a single embed lane (two in-flight batches double the
- * scratch buffers), and cap ORT at 2 threads so the machine stays responsive.
+ * Device tier from navigator.deviceMemory (Chrome caps at 8; absent ⇒ assume
+ * 8 / don't force low-end). Low-end (≤ 4 GB):
+ *   • skip WebGPU entirely — prefer WASM even if an adapter exists
+ *   • smaller batches / fewer ORT threads so peak arena stays small
+ * High-end: try WebGPU first with a longer INIT budget.
  */
-const DEVICE_MEMORY_GB =
-  (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8;
-const LOW_MEMORY = DEVICE_MEMORY_GB <= 4;
+const DEVICE_MEMORY_GB = readDeviceMemoryGb(
+  navigator as Navigator & { deviceMemory?: number },
+);
+const LOW_MEMORY = isLowEndDevice(DEVICE_MEMORY_GB);
 
 /**
  * Per-batch inference deadlines. A worker that silently wedges (WebGPU
@@ -101,8 +108,8 @@ const LOW_MEMORY = DEVICE_MEMORY_GB <= 4;
  */
 const COLD_BATCH_TIMEOUT_MS = 60_000;
 const WARM_BATCH_TIMEOUT_MS = 30_000;
-/** Hard cap on worker INIT (pipeline create). Wedged WebGPU EP create must not hang forever. */
-const INIT_TIMEOUT_MS = 20_000;
+/** Tiered INIT cap: high-end 60s (WebGPU compile), low-end 20s (WASM-only). */
+const INIT_TIMEOUT_MS = initTimeoutForTier(LOW_MEMORY);
 
 /**
  * ORT WASM thread count. Multi-threaded ORT needs cross-origin isolation
@@ -142,16 +149,36 @@ async function resolvePreferredDevice(): Promise<InferenceDevice> {
 
   // Handed in by the SW at createDocument() time — survives offscreen recycle
   // within the same browser session without needing chrome.storage here.
-  if (preferWasmFromLocation(location.search)) {
+  const preferWasmSession = preferWasmFromLocation(location.search);
+  if (preferWasmSession) {
     sessionPreferredDevice = 'wasm';
     debugLog('[offscreen] preferWasm from creation URL → preferred=wasm');
     return 'wasm';
   }
 
+  // Low-end: never fight WebGPU — WASM is the product default for ≤4 GB RAM.
+  if (LOW_MEMORY) {
+    const preferred = preferredDeviceForTier({
+      lowEnd: true,
+      preferWasmSession: false,
+      webgpuDeviceAvailable: false,
+    });
+    sessionPreferredDevice = preferred;
+    preflightPromise = Promise.resolve(preferred);
+    debugLog(
+      `[offscreen] low-end tier (deviceMemory=${DEVICE_MEMORY_GB}GB) → preferred=${preferred} (skip WebGPU)`,
+    );
+    return preferred;
+  }
+
   if (!preflightPromise) {
     preflightPromise = probeWebGpuAdapter()
       .then((probe) => {
-        const preferred: InferenceDevice = probe.device ? 'webgpu' : 'wasm';
+        const preferred = preferredDeviceForTier({
+          lowEnd: false,
+          preferWasmSession: false,
+          webgpuDeviceAvailable: probe.device,
+        });
         if (!sessionPreferredDevice) sessionPreferredDevice = preferred;
         debugLog(
           `[offscreen] WebGPU preflight: supported=${probe.supported} adapter=${probe.adapter} ` +
@@ -161,8 +188,13 @@ async function resolvePreferredDevice(): Promise<InferenceDevice> {
       })
       .catch((err) => {
         debugLog('[offscreen] WebGPU preflight failed soft → wasm:', err);
-        if (!sessionPreferredDevice) sessionPreferredDevice = 'wasm';
-        return sessionPreferredDevice ?? 'wasm';
+        const preferred = preferredDeviceForTier({
+          lowEnd: false,
+          preferWasmSession: false,
+          webgpuDeviceAvailable: false,
+        });
+        if (!sessionPreferredDevice) sessionPreferredDevice = preferred;
+        return sessionPreferredDevice ?? preferred;
       });
   }
   return preflightPromise;
@@ -1274,7 +1306,7 @@ debugLog('[Relic offscreen] ready — device will be selected on first embed req
 // (used when benchmarking the WASM path / verifying low-end tuning).
 debugLog(
   `[Relic offscreen] crossOriginIsolated=${self.crossOriginIsolated}, ORT threads=${ORT_NUM_THREADS}, ` +
-    `deviceMemory=${DEVICE_MEMORY_GB}GB (lowMemory=${LOW_MEMORY}), ` +
+    `deviceMemory=${DEVICE_MEMORY_GB}GB (lowEnd=${LOW_MEMORY}, initTimeout=${INIT_TIMEOUT_MS / 1000}s), ` +
     `default tuning EMBED ${encoderTuning.embedBatch}×${encoderTuning.embedConcurrency}, ` +
     `CLASSIFY ${sentimentTuning.classifyBatch}×${sentimentTuning.classifyConcurrency} (WASM until READY)`,
 );

@@ -132,7 +132,7 @@ async function ensureOffscreen(): Promise<void> {
       url: offscreenUrlWithPref(chrome.runtime.getURL(OFFSCREEN_URL), preferWasm),
       reasons: [chrome.offscreen.Reason.WORKERS],
       justification:
-        'Runs encoder Web Workers (ONNX Runtime) for on-device embeddings — no network calls other than one-time model download.',
+        'Runs encoder Web Workers (ONNX Runtime) for on-device embeddings using bundled model weights — no runtime network fetches.',
     })
     .finally(() => {
       _offscreenCreating = null;

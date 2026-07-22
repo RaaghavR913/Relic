@@ -153,6 +153,10 @@ so `LanguageModel.availability()` returns `downloadable`.
       `no_gpu` / `no_adapter`) and `preferred=wasm` **without** a long WebGPU INIT
       attempt. After a WASM fallback (or preferWasm lock), idle-unload + recreate
       of the offscreen doc still prefers WASM for that browser session.
+- [ ] **Device tier:** machines with `navigator.deviceMemory ≤ 4` skip WebGPU even
+      when an adapter exists — offscreen logs `low-end tier … preferred=wasm (skip WebGPU)`
+      and uses the 20s INIT budget. Higher-RAM machines probe WebGPU, prefer it when
+      `device=true`, and use a 60s INIT budget before falling back to WASM.
 
 ---
 
