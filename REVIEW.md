@@ -1,5 +1,12 @@
 # Relic — Independent Pre-Release Review
 
+> **⚠️ SUPERSEDED — historical record (kept for provenance).** This review is pinned to
+> the v0.2.0 era. As of **v3.1.6**: the codebase is at 536 passing tests (7 skipped),
+> `npm run typecheck` is **clean** (the `qaSynthesize.test.ts` error noted in §8 is gone —
+> that Q&A feature was removed entirely), and the open items here (H1 non-SEC hosts, M1 20-F
+> no-op, M2 LM-dictionary overclaim) are all **resolved**. Do not act on the §8 "DO NOT
+> enable tsc" addendum — it no longer applies. See `relic-context.md` for current state.
+
 **Reviewer:** automated independent verification pass (read-only).
 **Date:** 2026-06-09
 **Scope:** Phase-1 launch (7 items) + Phase-2 follow-ups (7 items), against `PREAMBLE.md` invariants.

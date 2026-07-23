@@ -9,7 +9,7 @@ vs `extractive`).
 ```bash
 npm install
 npm run build          # outputs dist/
-npm test               # 512 tests should pass (7 skipped)
+npm test               # 536 tests should pass (7 skipped)
 ```
 
 1. Open `chrome://extensions`, enable **Developer mode**.
@@ -35,9 +35,9 @@ Then reopen the panel.
 
 - [ ] A **Welcome to Relic** screen appears (not the tabs).
 - [ ] **Private by design** lists the on-device guarantees.
-- [ ] **What downloads to your device** lists exactly two encoder models —
-      `mxbai-embed-xsmall` and `FinBERT` — with sizes. **Gemini Nano is NOT listed
-      as something Relic downloads.**
+- [ ] An **Included models** section lists exactly two bundled models — the
+      **Encoder** (embeddings) and **FinBERT** — each described by role. **Gemini
+      Nano is NOT listed as something Relic downloads.**
 - [ ] **Generation mode** shows a tier badge:
   - On Chrome with built-in AI → **Built-in AI** + a **Gemini Nano** status row
     (`Ready` / `Needs download` / `Downloading…`). If downloadable, the copy says
