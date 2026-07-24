@@ -18,10 +18,13 @@
   stockanalysis.com, fool.com, benzinga.com, sec.report, finviz.com.
 - **On-demand (one-time permission grant):** Yahoo Finance, Macrotrends, BAM SEC,
   CNBC, Reuters — often blocked by consent banners / paywalls.
-- **Any other site:** click the toolbar icon to analyze; usually Summary +
-  language flags only.
-- **Not supported:** PDFs, the Chrome Web Store, and browser pages
-  (`chrome://`, `file://`, `about:`).
+- **Any other site:** click the toolbar icon to analyze; non-filing financial
+  pages (press releases, transcripts, news) get the general-financial middle
+  tier — sectioned Summary, on-device investor read, sentiment, and language
+  flags (Redline stays EDGAR-only).
+- **Not supported:** the Chrome Web Store and browser pages
+  (`chrome://`, `file://`, `about:`). Local PDFs need the "Allow access to
+  file URLs" toggle.
 
 ---
 
@@ -78,17 +81,26 @@ non-filing pages.
 
 ### The content sub-gate (applies to ALL non-SEC sites)
 Every off-SEC page (Groups A, B, C, and "everything else") starts as a generic
-financial page. It only unlocks the **full** investor features if it **parses as
-a real filing**:
+financial page. It unlocks the **full** investor features if it **parses as
+a real filing**; otherwise it gets the **general-financial middle tier**:
 
 - ✅ **Full features** — a recognized form (10-K, 10-Q, 8-K, 20-F, S-1, DEF 14A)
   was detected **and** the document split into multiple sections.
-- 🔸 **Demoted to Summary + flags** — the type is unknown, OR a form name was only
-  *mentioned* (e.g. a press release referencing "Form 10-K") and the page didn't
-  segment into sections, OR section boundaries looked unreliable.
-- 🔸 **EDGAR exhibits** (EX-21, EX-23, certifications) also drop to Summary-only.
+- 🔹 **General financial page (middle tier)** — the type is unknown, OR a form
+  name was only *mentioned* (e.g. a press release referencing "Form 10-K") and
+  the page didn't segment into filing sections. The page still gets:
+  **Analyst** (on-device deterministic read always; full LM stages when Gemini
+  Nano is *already downloaded* — a non-filing never triggers the model
+  download), **Sentiment** on demand, a **sectioned Summary** (sections rebuilt
+  from the page's own headings when filing segmentation fails), and language
+  flags. Redline stays hidden (needs an EDGAR filing). An info banner frames it
+  honestly as "not an SEC filing". Non-form **PDFs** get the same tier (minus
+  heading sections — PDFs stay one section).
+- 🔸 **EDGAR exhibits** (EX-21, EX-23, certifications) still drop to Summary-only,
+  as do EDGAR pages whose section boundaries looked unreliable.
 
-When demoted, language-flag underlines are off by default but can be turned on manually in Settings or via **show them anyway** in the side panel.
+On general financial pages, language-flag underlines are off by default but can
+be turned on manually in Settings or via **show them anyway** in the side panel.
 
 ---
 
@@ -97,8 +109,8 @@ When demoted, language-flag underlines are off by default but can be turned on m
 | Tab | What it does | Engine (all on-device) | Extra gating |
 |-----|--------------|------------------------|--------------|
 | **Summary** | Plain-English key points per section | Chrome Summarizer API → extractive fallback | Works on any readable page |
-| **Analyst** | Investment thesis: takeaways, bull/bear, scores, narrative check | Chrome Prompt API → deterministic fallback | Needs a filing-like page |
-| **Sentiment** | Sentence-level positive/negative/neutral scores in the side panel | FinBERT (on-device) | Needs a filing-like page |
+| **Analyst** | Investment thesis: takeaways, bull/bear, scores, narrative check | Chrome Prompt API → deterministic fallback | Filing-like page, or a general financial page (deterministic; LM only when Nano is already downloaded) |
+| **Sentiment** | Sentence-level positive/negative/neutral scores in the side panel | FinBERT (on-device) | Filing-like or general financial page |
 | **Redline (YoY)** | Diff vs. last year's comparable filing | EDGAR fetch + on-device diff | **EDGAR-only** + form-gated |
 
 ### Two limits on "Redline" worth calling out

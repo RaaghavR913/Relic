@@ -10,7 +10,7 @@
 // Deterministic — no model calls. PRIVACY: pure text processing, on-device.
 // ============================================================
 
-import type { DocumentModel, Section } from '@/types';
+import type { DocumentModel, FilingType, Section } from '@/types';
 import { filterNonTableSentences } from '@/lib/sentenceFilter';
 
 export type Dimension =
@@ -24,10 +24,27 @@ export type Dimension =
   | 'management';
 
 // Sections most likely to contain investor-relevant prose, by id prefix.
+// Section ids are form-namespaced (20f_, s1_, proxy_, 6k_, 8-K's item_N_NN_),
+// so the form-specific prefixes below can only match their own form's sections.
+// INVARIANT: the first 9 entries are the 10-K/10-Q set — append only, never
+// insert, so Tier-1 ranks are provably unchanged.
 const PRIORITY_SECTION_PREFIXES = [
   'item_7_mdna', 'part_ii_item_7', 'item_2_mdna',
   'item_1a_risk', 'part_i_item_1a', 'part_ii_item_1a',
   'item_8', 'item_1_business', 'part_i_item_1',
+  // 20-F — operating & financial review (MD&A + 5.x subitems), risks, financials, business.
+  '20f_item_5', '20f_item_3d_risk_factors', '20f_item_3_key_information',
+  '20f_item_8', '20f_item_4b_business', '20f_item_4_company_information',
+  // S-1 — MD&A, risks, business, and the offering-economics sections.
+  's1_mdna', 's1_risk_factors', 's1_business',
+  's1_use_of_proceeds', 's1_dilution', 's1_capitalization', 's1_prospectus_summary',
+  // DEF 14A — CD&A and compensation before governance boilerplate.
+  'proxy_cd_a', 'proxy_exec_compensation', 'proxy_summary_comp_table',
+  'proxy_pay_vs_performance', 'proxy_summary', 'proxy_governance',
+  // 6-K — earnings-release narrative first, then the catch-all 6k_ bucket.
+  '6k_results', '6k_financial_highlights', '6k_mdna', '6k_liquidity', '6k_outlook', '6k_',
+  // 8-K — most investor-relevant items (8.01 already matches 'item_8' above).
+  'item_2_02_', 'item_1_01_', 'item_5_02_', 'item_7_01_',
 ];
 
 // Exported so the semantic reranker (semanticRerank.ts) can test candidate
@@ -48,6 +65,70 @@ export const KEYWORDS: Record<Exclude<Dimension, 'overview'>, RegExp> = {
   management:
     /\b(we believe|we expect|we anticipate|we intend|we remain|we continue to|our strategy|outlook|guidance|momentum|demand|confident|well.positioned|on track|record (?:revenue|quarter|year))\b/i,
 };
+
+// ── form-supplemental keywords ────────────────────────────────────────────────
+// The base KEYWORDS are income-statement centric; some forms use vocabulary the
+// base regexes never match (proxy compensation, offering economics, IFRS
+// phrasing). Supplements are merged per-form by keywordsFor(). No entry exists
+// for 10-K / 10-Q, so those forms get the base KEYWORDS object itself —
+// referentially identical, provably unchanged.
+
+type Dim = Exclude<Dimension, 'overview'>;
+
+// IFRS / foreign-issuer phrasing shared by 20-F and 6-K.
+const IFRS_SUPPLEMENT: Partial<Record<Dim, RegExp>> = {
+  revenue: /\b(turnover|revenue from contracts with customers)\b/i,
+  margins: /\b(operating profit|profit before tax|profit for the (?:year|period)|finance costs?|finance income)\b/i,
+  cashflow: /\b(cash generated from operations|net cash (?:inflow|outflow))\b/i,
+};
+
+const FORM_KEYWORDS: Partial<Record<FilingType, Partial<Record<Dim, RegExp>>>> = {
+  'DEF 14A': {
+    management:
+      /\b(base salar\w*|annual incentive|long.term incentive|performance(?:.based)? (?:stock|share) units?|psus?|rsus?|equity awards?|say.on.pay|peer group|compensation committee|pay ratio)\b/i,
+    shares:
+      /\b(equity compensation plans?|burn rate|overhang|shares? (?:available|reserved) for (?:future )?issuance|equity awards?|psus?|rsus?)\b/i,
+    risk:
+      /\b(clawback|pledg\w*|hedging polic\w*|related.person transactions?|golden parachutes?|change.in.control|severance|audit fees)\b/i,
+  },
+  'S-1': {
+    shares:
+      /\b(use of proceeds|net proceeds|dilution|lock.up|underwriters?|dual.class|super.?voting)\b/i,
+    risk:
+      /\b(going concern|accumulated deficit|lock.up|dual.class|no (?:prior )?public market|limited operating history|emerging growth company)\b/i,
+    cashflow:
+      /\b(use of proceeds|net proceeds|accumulated deficit|additional (?:capital|financing|funding))\b/i,
+  },
+  '20-F': IFRS_SUPPLEMENT,
+  '6-K': IFRS_SUPPLEMENT,
+  '8-K': {
+    management:
+      /\b(definitive agreements?|merger agreements?|preliminary (?:results|financial)|appoint\w*|named as|guidance)\b/i,
+    risk:
+      /\b(resign\w*|terminat\w*|impairment charges?|delisting|non.reliance|material weakness|bankruptcy|receivership)\b/i,
+  },
+};
+
+// Merged per-form keyword sets, built once and cached so keywordsFor() returns
+// a stable object per form (and the base KEYWORDS object itself when no
+// supplement exists — the Tier-1 identity guarantee).
+const MERGED_KEYWORDS = new Map<FilingType, Record<Dim, RegExp>>();
+
+/** Keyword set for a form: base KEYWORDS merged with any form supplement. */
+export function keywordsFor(filingType?: FilingType): Record<Dim, RegExp> {
+  const supp = filingType !== undefined ? FORM_KEYWORDS[filingType] : undefined;
+  if (!supp || filingType === undefined) return KEYWORDS;
+  let merged = MERGED_KEYWORDS.get(filingType);
+  if (!merged) {
+    merged = { ...KEYWORDS };
+    for (const [dim, re] of Object.entries(supp) as Array<[Dim, RegExp]>) {
+      // Both sides are top-level \b(...)\b alternations, so source-level OR is safe.
+      merged[dim] = new RegExp(`${KEYWORDS[dim].source}|${re.source}`, 'i');
+    }
+    MERGED_KEYWORDS.set(filingType, merged);
+  }
+  return merged;
+}
 
 // Sentences worth keeping must carry signal: a figure, a percentage, or a $ amount
 // earns a bonus; bare boilerplate scores low and falls out of the budget.
@@ -76,9 +157,13 @@ interface SentenceSpan {
 }
 
 /** Dimensions whose keyword set a sentence matches (used to label insights). */
-export function sentenceDimensions(text: string): Array<Exclude<Dimension, 'overview'>> {
+export function sentenceDimensions(
+  text: string,
+  filingType?: FilingType,
+): Array<Exclude<Dimension, 'overview'>> {
+  const kw = keywordsFor(filingType);
   return (Object.keys(KEYWORDS) as Array<Exclude<Dimension, 'overview'>>).filter((d) =>
-    KEYWORDS[d].test(text),
+    kw[d].test(text),
   );
 }
 
@@ -159,7 +244,8 @@ export function scoreSentences(
   doc: DocumentModel,
   dims: ReadonlyArray<Exclude<Dimension, 'overview'>>,
 ): ScoredSentence[] {
-  const regexes = dims.map((d) => KEYWORDS[d]);
+  const kw = keywordsFor(doc.filingType);
+  const regexes = dims.map((d) => kw[d]);
   const scored: ScoredSentence[] = [];
   let order = 0;
 

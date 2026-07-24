@@ -171,6 +171,7 @@ const ITEMS_8K: Record<string, ItemDef> = {
 // S-1 section title patterns (no canonical item numbers)
 const SECTIONS_S1: Array<{ pattern: RegExp; def: ItemDef }> = [
   { pattern: /PROSPECTUS SUMMARY/i,             def: { id: 's1_prospectus_summary',     label: 'Prospectus Summary',              order: 10 } },
+  { pattern: /THE OFFERING/i,                   def: { id: 's1_the_offering',            label: 'The Offering',                    order: 15 } },
   { pattern: /RISK FACTORS/i,                   def: { id: 's1_risk_factors',            label: 'Risk Factors',                    order: 20 } },
   { pattern: /SPECIAL NOTE.{0,30}FORWARD.{0,30}LOOKING/i, def: { id: 's1_forward_looking', label: 'Special Note on Forward-Looking Statements', order: 25 } },
   { pattern: /USE OF PROCEEDS/i,                def: { id: 's1_use_of_proceeds',         label: 'Use of Proceeds',                 order: 30 } },
@@ -178,6 +179,7 @@ const SECTIONS_S1: Array<{ pattern: RegExp; def: ItemDef }> = [
   { pattern: /CAPITALIZATION/i,                 def: { id: 's1_capitalization',          label: 'Capitalization',                  order: 50 } },
   { pattern: /DILUTION/i,                       def: { id: 's1_dilution',                label: 'Dilution',                        order: 60 } },
   { pattern: /SELECTED (?:FINANCIAL|CONSOLIDATED) DATA/i, def: { id: 's1_selected_data', label: 'Selected Financial Data',        order: 70 } },
+  { pattern: /SUMMARY (?:CONSOLIDATED |COMBINED )?FINANCIAL(?: AND OTHER)? DATA/i, def: { id: 's1_summary_financial_data', label: 'Summary Financial Data', order: 72 } },
   { pattern: /MANAGEMENT.{0,10}S?\s+DISCUSSION AND ANALYSIS/i, def: { id: 's1_mdna',    label: "Management's Discussion and Analysis", order: 80 } },
   { pattern: /BUSINESS/i,                       def: { id: 's1_business',                label: 'Business',                        order: 90 } },
   { pattern: /MANAGEMENT/i,                     def: { id: 's1_management',              label: 'Management',                      order: 100 } },
@@ -186,7 +188,9 @@ const SECTIONS_S1: Array<{ pattern: RegExp; def: ItemDef }> = [
   { pattern: /CERTAIN RELATIONSHIPS/i,          def: { id: 's1_related_transactions',    label: 'Certain Relationships and Related Party Transactions', order: 130 } },
   { pattern: /DESCRIPTION OF (?:OUR )?CAPITAL STOCK/i, def: { id: 's1_capital_stock',   label: 'Description of Capital Stock',    order: 140 } },
   { pattern: /SHARES ELIGIBLE FOR FUTURE SALE/i, def: { id: 's1_future_sales',          label: 'Shares Eligible for Future Sale', order: 150 } },
+  { pattern: /MATERIAL U\.?S\.? FEDERAL INCOME TAX/i, def: { id: 's1_tax',              label: 'Material U.S. Federal Income Tax Considerations', order: 155 } },
   { pattern: /UNDERWRITING/i,                   def: { id: 's1_underwriting',            label: 'Underwriting',                    order: 160 } },
+  { pattern: /PLAN OF DISTRIBUTION/i,           def: { id: 's1_plan_of_distribution',    label: 'Plan of Distribution',            order: 165 } },
   { pattern: /LEGAL MATTERS/i,                  def: { id: 's1_legal_matters',           label: 'Legal Matters',                   order: 170 } },
   { pattern: /EXPERTS/i,                        def: { id: 's1_experts',                 label: 'Experts',                         order: 180 } },
   { pattern: /FINANCIAL STATEMENTS/i,           def: { id: 's1_financial_statements',    label: 'Financial Statements',            order: 190 } },
@@ -197,14 +201,21 @@ const SECTIONS_S1: Array<{ pattern: RegExp; def: ItemDef }> = [
 // <=1-hit whole-document fallback in segmentByTitlePatterns keeps an unusual 6-K
 // (e.g. an AGM notice) from being chopped into a single misleading section.
 const SECTIONS_6K: Array<{ pattern: RegExp; def: ItemDef }> = [
+  { pattern: /CHIEF EXECUTIVE.{0,30}(?:REVIEW|STATEMENT|REPORT)/i, def: { id: '6k_ceo_review', label: 'Chief Executive Review', order: 5 } },
   { pattern: /FINANCIAL HIGHLIGHTS/i,           def: { id: '6k_financial_highlights', label: 'Financial Highlights',           order: 10 } },
+  // Many 6-Ks attach a full interim MD&A — capture it under its own id so the
+  // analyst relevance ranking can prioritize it like the domestic MD&A.
+  { pattern: /MANAGEMENT.{0,10}S?\s+DISCUSSION AND ANALYSIS/i, def: { id: '6k_mdna',  label: "Management's Discussion and Analysis", order: 15 } },
   { pattern: /RESULTS OF OPERATIONS|OPERATING (?:AND FINANCIAL )?RESULTS|FINANCIAL REVIEW/i, def: { id: '6k_results', label: 'Results of Operations', order: 20 } },
+  { pattern: /TRADING UPDATE/i,                 def: { id: '6k_trading_update',       label: 'Trading Update',                 order: 25 } },
   { pattern: /(?:BUSINESS|OPERATING) REVIEW/i,  def: { id: '6k_business_review',      label: 'Business Review',                order: 30 } },
+  { pattern: /SEGMENT(?:AL)? (?:RESULTS|PERFORMANCE|REVIEW)/i, def: { id: '6k_segments', label: 'Segment Results',             order: 35 } },
   { pattern: /LIQUIDITY|CAPITAL RESOURCES/i,    def: { id: '6k_liquidity',            label: 'Liquidity and Capital Resources', order: 40 } },
   { pattern: /OUTLOOK|GUIDANCE|PROSPECTS/i,     def: { id: '6k_outlook',              label: 'Outlook',                        order: 50 } },
   { pattern: /RECENT DEVELOPMENTS/i,            def: { id: '6k_recent_developments',  label: 'Recent Developments',            order: 60 } },
   { pattern: /DIVIDENDS?|CAPITAL RETURN/i,      def: { id: '6k_dividend',             label: 'Dividend',                       order: 70 } },
   { pattern: /RISK FACTORS/i,                   def: { id: '6k_risk_factors',         label: 'Risk Factors',                   order: 80 } },
+  { pattern: /INTERIM[^\n]{0,30}FINANCIAL STATEMENTS/i, def: { id: '6k_interim_financials', label: 'Interim Financial Statements', order: 90 } },
 ];
 
 // DEF 14A (proxy statement) section patterns
@@ -214,13 +225,24 @@ const SECTIONS_DEF14A: Array<{ pattern: RegExp; def: ItemDef }> = [
   { pattern: /PROPOSAL\s+1[.:]?\s+ELECTION/i,   def: { id: 'proxy_prop1_election',      label: 'Proposal 1: Election of Directors', order: 20 } },
   { pattern: /PROPOSAL\s+2[.:]?\s+RATIF/i,      def: { id: 'proxy_prop2_auditors',      label: 'Proposal 2: Ratification of Auditors', order: 30 } },
   { pattern: /PROPOSAL\s+3[.:]?\s+(?:ADVISORY|SAY.ON.PAY)/i, def: { id: 'proxy_prop3_say_on_pay', label: 'Proposal 3: Say-on-Pay', order: 40 } },
+  // Proposals 4/5 have no fixed subject, so anchor on a proposal-style verb to
+  // avoid binding a late "vote FOR Proposal 4" reference in the voting section.
+  { pattern: /PROPOSAL\s+(?:NO\.\s*)?4\b\s*[.:—–-]?\s*(?:TO|APPROV|RATIF|AMEND|ADVISORY|ADOPT|ELECT|AUTHORIZ|INCREAS)/i, def: { id: 'proxy_prop4', label: 'Proposal 4', order: 42 } },
+  { pattern: /PROPOSAL\s+(?:NO\.\s*)?5\b\s*[.:—–-]?\s*(?:TO|APPROV|RATIF|AMEND|ADVISORY|ADOPT|ELECT|AUTHORIZ|INCREAS)/i, def: { id: 'proxy_prop5', label: 'Proposal 5', order: 44 } },
   { pattern: /BOARD OF DIRECTORS/i,             def: { id: 'proxy_board',               label: 'Board of Directors',              order: 50 } },
   { pattern: /CORPORATE GOVERNANCE/i,           def: { id: 'proxy_governance',          label: 'Corporate Governance',            order: 60 } },
   { pattern: /AUDIT COMMITTEE/i,                def: { id: 'proxy_audit_committee',     label: 'Audit Committee',                 order: 70 } },
   { pattern: /EXECUTIVE COMPENSATION/i,         def: { id: 'proxy_exec_compensation',   label: 'Executive Compensation',          order: 80 } },
+  { pattern: /COMPENSATION COMMITTEE/i,         def: { id: 'proxy_comp_committee',      label: 'Compensation Committee',          order: 84 } },
   { pattern: /COMPENSATION DISCUSSION/i,        def: { id: 'proxy_cd_a',                label: 'Compensation Discussion & Analysis', order: 85 } },
+  { pattern: /SUMMARY COMPENSATION TABLE/i,     def: { id: 'proxy_summary_comp_table',  label: 'Summary Compensation Table',      order: 86 } },
+  { pattern: /PAY[ -]VERSUS[ -]PERFORMANCE/i,   def: { id: 'proxy_pay_vs_performance',  label: 'Pay Versus Performance',          order: 87 } },
+  { pattern: /(?:CEO )?PAY RATIO/i,             def: { id: 'proxy_pay_ratio',           label: 'Pay Ratio',                       order: 88 } },
+  { pattern: /DIRECTOR COMPENSATION/i,          def: { id: 'proxy_director_comp',       label: 'Director Compensation',           order: 89 } },
   { pattern: /SECURITY OWNERSHIP/i,             def: { id: 'proxy_security_ownership',  label: 'Security Ownership',              order: 90 } },
+  { pattern: /EQUITY COMPENSATION PLAN INFORMATION/i, def: { id: 'proxy_equity_plan_info', label: 'Equity Compensation Plan Information', order: 91 } },
   { pattern: /CERTAIN RELATIONSHIPS/i,          def: { id: 'proxy_related_transactions', label: 'Certain Relationships',          order: 100 } },
+  { pattern: /DELINQUENT SECTION 16/i,          def: { id: 'proxy_delinquent_16',       label: 'Delinquent Section 16(a) Reports', order: 105 } },
   { pattern: /ADDITIONAL INFORMATION/i,         def: { id: 'proxy_additional_info',     label: 'Additional Information',          order: 110 } },
   { pattern: /STOCKHOLDER PROPOSAL/i,           def: { id: 'proxy_stockholder_proposals', label: 'Stockholder Proposals',        order: 120 } },
 ];

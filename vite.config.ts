@@ -45,8 +45,21 @@ function copyWasmPlugin(isProd: boolean): Plugin {
     __dirname,
     'node_modules/@huggingface/transformers/node_modules/onnxruntime-web/dist',
   );
-  // Match every backend glue (.mjs) + binary (.wasm) the loader can request.
-  const ORT_ASSET_RE = /^ort-wasm-simd-threaded.*\.(mjs|wasm)$/;
+  // Allowlist — ONLY the two backend pairs Relic actually loads at runtime:
+  //   • ort-wasm-simd-threaded.{mjs,wasm}          — CPU / WASM path
+  //   • ort-wasm-simd-threaded.asyncify.{mjs,wasm} — WebGPU path (transformers.js
+  //     imports ORT's `webgpu` build, which bridges async GPU work via Asyncify)
+  //
+  // onnxruntime-web ALSO ships .jsep and .jspi pairs, but no built worker chunk
+  // imports their glue. Verified empirically: with both pairs deleted, the encoder
+  // and FinBERT workers still reached `webgpu: ok` against a live adapter, fetching
+  // only asyncify.wasm, and the WASM path was unaffected. Copying them shipped
+  // ~41 MB of dead weight in the CWS upload.
+  //
+  // Narrowing the glob means a dependency rename could silently drop a pair we DO
+  // need (copied > 0, so the count guard below would not fire), so verify-dist.mjs
+  // asserts both surviving pairs are present in dist/ — keep the two in sync.
+  const ORT_ASSET_RE = /^ort-wasm-simd-threaded(\.asyncify)?\.(mjs|wasm)$/;
 
   return {
     name: 'copy-ort-wasm',

@@ -25,6 +25,7 @@ import {
   selectRelevantText,
   packSentencesByBudget,
   KEYWORDS,
+  keywordsFor,
   type Dimension,
   type ScoredSentence,
 } from './relevance';
@@ -124,7 +125,10 @@ export class SemanticExcerptSelector {
     );
     if (queryVectors.length === 0) return selectRelevantText(doc, dims, maxChars);
 
-    const relevant = pool.filter(({ sentence }) => dims.some((d) => KEYWORDS[d].test(sentence.text)));
+    // Form-merged keyword set: sentences that entered the pool via a form
+    // supplement (e.g. proxy comp terms) must survive this filter too.
+    const kw = keywordsFor(doc.filingType);
+    const relevant = pool.filter(({ sentence }) => dims.some((d) => kw[d].test(sentence.text)));
     if (relevant.length === 0) return '';
 
     const blended: ScoredSentence[] = relevant.map(({ sentence, vector }) => {

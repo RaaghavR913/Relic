@@ -2,7 +2,7 @@
 // Relic — WebGPU backend-selection smoke (Chrome headless + shipped dist assets)
 // ------------------------------------------------------------
 // Node cannot reliably exercise ORT's WebGPU EP. This script:
-//   1. Verifies the jsep (WebGPU) ORT glue+binary pair ships in dist/wasm/
+//   1. Verifies the asyncify (WebGPU) ORT glue+binary pair ships in dist/wasm/
 //   2. Serves dist/ + a harness that INITs production workers with preferredDevice:'webgpu'
 //   3. Asserts READY.device / attempts (webgpu: ok when adapter present; wasm: ok otherwise)
 //
@@ -240,13 +240,17 @@ function runChrome(chromePath, url) {
 async function main() {
   console.log('Relic WebGPU smoke\n');
 
-  const jsepMjs = path.join(WASM_DIR, 'ort-wasm-simd-threaded.jsep.mjs');
-  const jsepWasm = path.join(WASM_DIR, 'ort-wasm-simd-threaded.jsep.wasm');
-  if (!fs.existsSync(jsepMjs) || !fs.existsSync(jsepWasm)) {
-    fail('missing WebGPU ORT pair (ort-wasm-simd-threaded.jsep.{mjs,wasm}) in dist/wasm/');
+  // The WebGPU path loads the ASYNCIFY pair, not jsep: transformers.js imports ORT's
+  // `webgpu` build, which bridges async GPU work via Asyncify. (This check previously
+  // asserted jsep — a stale assumption. Verified by tracing a live-adapter run: only
+  // asyncify.wasm is fetched on device:webgpu, and jsep/jspi are no longer shipped.)
+  const webgpuMjs = path.join(WASM_DIR, 'ort-wasm-simd-threaded.asyncify.mjs');
+  const webgpuWasm = path.join(WASM_DIR, 'ort-wasm-simd-threaded.asyncify.wasm');
+  if (!fs.existsSync(webgpuMjs) || !fs.existsSync(webgpuWasm)) {
+    fail('missing WebGPU ORT pair (ort-wasm-simd-threaded.asyncify.{mjs,wasm}) in dist/wasm/');
     return;
   }
-  ok('dist/wasm ships jsep (WebGPU) glue+binary');
+  ok('dist/wasm ships asyncify (WebGPU) glue+binary');
 
   const encoderWorker = findWorker('encoder');
   const sentimentWorker = findWorker('sentiment');
@@ -261,7 +265,7 @@ async function main() {
 
   const chrome = findChrome();
   if (!chrome) {
-    console.log('⚠ Chrome/Chromium not found — static jsep check only (skip runtime).');
+    console.log('⚠ Chrome/Chromium not found — static asset check only (skip runtime).');
     console.log('  Set CHROME_PATH to run the full WebGPU smoke.');
     ok('static WebGPU asset check passed (runtime skipped)');
     return;

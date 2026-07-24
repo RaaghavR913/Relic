@@ -54,6 +54,15 @@ export interface DocumentModel {
    * (left undefined for readable data/report pages).
    */
   segmentationConfidence?: 'high' | 'low';
+  /**
+   * Present ('headings') ONLY when an off-SEC financial page failed form
+   * segmentation and its sections were rebuilt from DOM headings instead
+   * (report_* ids). The marker keeps isLowConfidenceGeneric honest: heading
+   * sections make sections.length > 1, which must NOT flip a press release
+   * that merely mentions "Form 10-K" into a trusted filing. Never set for
+   * EDGAR categories; absent on persisted pre-existing models.
+   */
+  sectionSource?: 'headings';
   periodOfReport?: string; // ISO date
   filedAt?: string;        // ISO date
   sections: Section[];
@@ -79,6 +88,12 @@ export interface XbrlFact {
   unit: XbrlUnit;
   /** Current-period value, already scale/sign-normalized. */
   currentValue: number;
+  /**
+   * ISO-4217 currency of a monetary fact, ONLY when it is not USD (e.g. 'EUR'
+   * on an IFRS 20-F). Absent for USD and non-monetary facts, so pre-existing
+   * us-gaap extraction output is byte-identical.
+   */
+  currencyCode?: string;
   /** Prior comparable-period value, when present inline. */
   priorValue?: number;
   /** Year-over-year change as a fraction (0.12 = +12%); omitted when not computable. */
@@ -216,6 +231,10 @@ export type AnalysisDocumentType =
   | '10-K'
   | '10-Q'
   | '8-K'
+  | '20-F'
+  | '6-K'
+  | 'S-1'
+  | 'Proxy Statement'
   | 'Earnings Call'
   | 'Investor Presentation'
   | 'Income Statement'

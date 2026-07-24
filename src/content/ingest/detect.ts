@@ -129,6 +129,7 @@ export function isLowConfidenceGeneric(model: {
   filingType: FilingType;
   sections: ReadonlyArray<unknown>;
   segmentationConfidence?: 'high' | 'low';
+  sectionSource?: 'headings';
 }): boolean {
   // A filing whose sections look mis-bounded is low-confidence regardless of host:
   // segmentation can fail on an authoritative EDGAR page too, and presenting
@@ -147,9 +148,40 @@ export function isLowConfidenceGeneric(model: {
     return false;
   }
   if (model.filingType === 'DATA_REPORT') return false;
+  // Heading-rebuilt sections (report_* ids from the ir_or_financial fallback)
+  // are NOT form items: a press release that merely mentions "Form 10-K" now
+  // carries several heading sections, and must still read as a non-filing.
+  if (model.sectionSource === 'headings') return true;
   if (model.filingType === 'UNKNOWN') return true;
   // Recognized a form but it didn't actually segment into items → misdetection.
   return model.sections.length <= 1;
+}
+
+/**
+ * True for the "general financial page" middle tier: an off-SEC page (or a PDF)
+ * that did NOT parse as a real filing, but is still analyzable text — an IR
+ * press release, an earnings transcript, financial news, a market-data page.
+ * These keep the honest non-filing framing (isLowConfidenceGeneric stays true:
+ * overlay opt-in, generic header label) but get the on-device investor read and
+ * sentiment instead of Summary-only.
+ *
+ * Deliberately FALSE for every EDGAR category — a mis-segmented EDGAR filing
+ * (segmentationConfidence 'low'), an exhibit, or an index page keeps its
+ * existing dedicated handling.
+ */
+export function isGeneralFinancialDoc(model: {
+  source: { host: 'edgar' | 'ir'; category?: PageCategory };
+  filingType: FilingType;
+  sections: ReadonlyArray<unknown>;
+  segmentationConfidence?: 'high' | 'low';
+  sectionSource?: 'headings';
+} | null): boolean {
+  if (!model) return false;
+  if (!isLowConfidenceGeneric(model)) return false;
+  const category = model.source.category;
+  if (category === 'ir_or_financial' || category === 'pdf') return true;
+  // Back-compat: pre-category persisted models only carried host.
+  return category === undefined && model.source.host === 'ir';
 }
 
 /**

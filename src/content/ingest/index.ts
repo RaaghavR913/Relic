@@ -56,14 +56,32 @@ export function ingestDocument(opts: IngestOptions = {}): IngestResult {
   });
   const filingType: FilingType = detection.type;
 
-  const sections = segmentSections(text, { filingType, tableRanges });
+  let sections = segmentSections(text, { filingType, tableRanges });
 
   const filingTypeConfidence: NonNullable<DocumentModel['filingTypeConfidence']> =
     detection.confidence;
   // Did the segmenter bound the sections sensibly? A mis-bound filing (e.g. an
   // empty Risk-Factors section swallowed by a neighbour) must surface the
-  // low-confidence UI even on an authoritative EDGAR page.
+  // low-confidence UI even on an authoritative EDGAR page. Assessed on the FORM
+  // segmentation, before any heading fallback below, so its semantics are
+  // unchanged by the substitution.
   const segmentationConfidence = assessSegmentationConfidence(sections, filingType);
+
+  // Off-SEC financial pages (IR press releases, transcripts, news) rarely carry
+  // filing item headers, so form segmentation collapses to one document_body
+  // blob. Rebuild sections from DOM headings — the same extractor sec.gov data
+  // pages already use — so the Summary tab gets real per-section coverage. The
+  // sectionSource marker keeps isLowConfidenceGeneric treating the page as a
+  // non-filing (heading sections must not masquerade as form items). EDGAR
+  // categories never take this branch.
+  let sectionSource: DocumentModel['sectionSource'];
+  if (category === 'ir_or_financial' && sections.length <= 1) {
+    const headingSections = segmentByHeadings(picked.root, positionMap, tableRanges);
+    if (headingSections.length > 1) {
+      sections = headingSections;
+      sectionSource = 'headings';
+    }
+  }
 
   const meta = extractCompanyMeta(picked.document, url);
 
@@ -89,6 +107,7 @@ export function ingestDocument(opts: IngestOptions = {}): IngestResult {
     filingType,
     filingTypeConfidence,
     segmentationConfidence,
+    ...(sectionSource ? { sectionSource } : {}),
     ...(meta.periodOfReport ? { periodOfReport: meta.periodOfReport } : {}),
     ...(meta.filedAt ? { filedAt: meta.filedAt } : {}),
     sections,

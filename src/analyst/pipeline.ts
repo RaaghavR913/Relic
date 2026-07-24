@@ -49,7 +49,7 @@ import { uniquifyInsightTitles } from './insightTitle';
 import {
   buildHints,
   deterministicAnalysis,
-  mapDocumentType,
+  documentTypeFor,
   whatChangedFromRedline,
   type AuxSignals,
 } from './deterministic';
@@ -380,7 +380,9 @@ export async function generateFilingAnalysis(
   const snapRaw = await ask('snapshot', overview, snapshotSchema, hints);
   if (snapRaw && typeof snapRaw === 'object') {
     const o = snapRaw as Record<string, unknown>;
-    analysis.documentType = coerce(o['documentType'], DOC_TYPES, mapDocumentType(doc.filingType));
+    // Fallback label when the LM's enum choice is invalid: never a false form
+    // claim — documentTypeFor labels general financial pages 'Other'.
+    analysis.documentType = coerce(o['documentType'], DOC_TYPES, documentTypeFor(doc));
     analysis.overallRead = coerce(o['overallRead'], READS, 'Neutral');
     analysis.confidence = coerce(o['confidence'], CONFIDENCES, 'Low');
     analysis.oneSentenceSummary =

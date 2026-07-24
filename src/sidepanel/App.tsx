@@ -22,7 +22,7 @@ import type {
   AnalyzePageResponse,
   PdfUnextractableMsg,
 } from '@/messages/types';
-import { isLowConfidenceGeneric, isEdgarExhibit } from '@/content/ingest/detect';
+import { isLowConfidenceGeneric, isGeneralFinancialDoc, isEdgarExhibit } from '@/content/ingest/detect';
 import { classifyInjectability } from '@/background/inject';
 import { loadFilingFromSession, normalizePageUrl } from '@/shared/filingSession';
 import { setFlags as setFlagOverlayPref } from './overlayPrefs';
@@ -100,12 +100,18 @@ function hidesInvestorTabs(doc: DocumentModel | null): boolean {
     isDataReport(doc) ||
     isFilingIndex(doc) ||
     isEdgarExhibit(doc) ||
-    (doc !== null && isLowConfidenceGeneric(doc))
+    // General financial pages (IR releases, transcripts, news, non-form PDFs)
+    // are the middle tier: low-confidence as a FILING, but still analyzable
+    // financial text — they keep Analyst + Sentiment (deterministic-first).
+    (doc !== null && isLowConfidenceGeneric(doc) && !isGeneralFinancialDoc(doc))
   );
 }
 
 function tabsForDoc(doc: DocumentModel | null): Array<{ id: TabId; label: string }> {
   if (hidesInvestorTabs(doc)) return TABS.filter((t) => !REPORT_DISABLED_TABS.has(t.id));
+  // General financial pages: everything except the Redline (needs an EDGAR
+  // prior filing resolved by CIK, which a non-filing page can't have).
+  if (doc !== null && isGeneralFinancialDoc(doc)) return TABS.filter((t) => t.id !== 'changes');
   // A confidently-detected PDF filing keeps Analyst / Summary / Sentiment (all
   // text-based), but the year-over-year Redline needs a live DOM + an EDGAR prior
   // filing (resolved by CIK) — neither is available from a PDF, so hide it.
@@ -720,12 +726,32 @@ export default function App() {
                 {isPdfDoc(currentDoc) && (
                   <Banner tone="info" icon="ℹ" className="px-4 py-3 text-[11px]">
                     <span className="font-semibold">Analyzing a PDF.</span>
-                    {' Summary, language flags, and sentiment are available. On-page highlights and the year-over-year redline aren’t available for PDFs — they need the filing’s live web page or its EDGAR source.'}
+                    {' Investor analysis, summary, language flags, and sentiment are available. On-page highlights and the year-over-year redline aren’t available for PDFs — they need the filing’s live web page or its EDGAR source.'}
+                  </Banner>
+                )}
+                {/* Middle tier: a general financial page (IR release, transcript,
+                    financial news). Honest non-filing framing, but the on-device
+                    investor read and sentiment ARE available — calmer info tone. */}
+                {isGeneralFinancialDoc(currentDoc) && !isPdfDoc(currentDoc) && (
+                  <Banner tone="info" icon="ℹ" className="px-4 py-3 text-[11px]">
+                    <span className="font-semibold">Not an SEC filing</span>
+                    {' — showing a general financial read of this page. The investor analysis below is an on-device interpretation of the page’s text; the year-over-year redline needs an EDGAR filing. On-page highlights are off, '}
+                    <span className="whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => setFlagOverlayPref(true)}
+                        className="inline font-medium text-sky-300 underline decoration-sky-400/50 underline-offset-2 transition hover:text-sky-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+                      >
+                        show them anyway
+                      </button>
+                      .
+                    </span>
                   </Banner>
                 )}
                 {/* Low-confidence banner is meaningless for a PDF (no on-page
-                    highlights to reveal), so the PDF banner above replaces it. */}
-                {isLowConfidenceGeneric(currentDoc) && !isPdfDoc(currentDoc) && (
+                    highlights to reveal), so the PDF banner above replaces it;
+                    general financial pages get the calmer middle-tier banner. */}
+                {isLowConfidenceGeneric(currentDoc) && !isGeneralFinancialDoc(currentDoc) && !isPdfDoc(currentDoc) && (
                   <Banner tone="warn" className="px-4 py-3 text-[11px]">
                     <span className="font-semibold">This page doesn&rsquo;t look like an SEC filing</span>
                     {' — investor analysis, sentiment, and redline are unavailable. Summary and language flags still apply; on-page highlights are off, '}
@@ -827,7 +853,12 @@ export default function App() {
                     aria-labelledby="tab-analyst"
                     hidden={activeTab !== 'analyst'}
                   >
-                    <AnalystPanel doc={currentDoc} detectedTier={caps.generationTier} flags={currentFlags} />
+                    <AnalystPanel
+                      doc={currentDoc}
+                      detectedTier={caps.generationTier}
+                      promptReady={caps.promptApi === 'available'}
+                      flags={currentFlags}
+                    />
                   </div>
                 )}
                 <div

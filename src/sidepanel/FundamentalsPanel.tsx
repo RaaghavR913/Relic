@@ -25,14 +25,26 @@ async function highlightEvidence(range: [number, number]): Promise<void> {
 
 // ── formatting ────────────────────────────────────────────────────────────────
 
-function fmtUsd(v: number): string {
+// IFRS filers (20-F/6-K) report in their home currency; XbrlFact.currencyCode
+// carries the ISO code ONLY when it is not USD. Absent code → '$' (unchanged).
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: '$', EUR: '€', GBP: '£', JPY: '¥', CNY: 'CN¥',
+};
+
+function moneyPrefix(currencyCode?: string): string {
+  if (!currencyCode) return '$';
+  return CURRENCY_SYMBOLS[currencyCode] ?? `${currencyCode} `;
+}
+
+function fmtMoney(v: number, currencyCode?: string): string {
+  const cur = moneyPrefix(currencyCode);
   const abs = Math.abs(v);
   const sign = v < 0 ? '-' : '';
-  if (abs >= 1e12) return `${sign}$${(abs / 1e12).toFixed(2)}T`;
-  if (abs >= 1e9) return `${sign}$${(abs / 1e9).toFixed(2)}B`;
-  if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(1)}M`;
-  if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(1)}K`;
-  return `${sign}$${abs.toFixed(2)}`;
+  if (abs >= 1e12) return `${sign}${cur}${(abs / 1e12).toFixed(2)}T`;
+  if (abs >= 1e9) return `${sign}${cur}${(abs / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `${sign}${cur}${(abs / 1e6).toFixed(1)}M`;
+  if (abs >= 1e3) return `${sign}${cur}${(abs / 1e3).toFixed(1)}K`;
+  return `${sign}${cur}${abs.toFixed(2)}`;
 }
 
 function fmtShares(v: number): string {
@@ -43,10 +55,10 @@ function fmtShares(v: number): string {
   return abs.toFixed(0);
 }
 
-function fmtValue(v: number, unit: XbrlUnit): string {
+function fmtValue(v: number, unit: XbrlUnit, currencyCode?: string): string {
   switch (unit) {
-    case 'USD': return fmtUsd(v);
-    case 'USD/shares': return `$${v.toFixed(2)}`;
+    case 'USD': return fmtMoney(v, currencyCode);
+    case 'USD/shares': return `${moneyPrefix(currencyCode)}${v.toFixed(2)}`;
     case 'shares': return fmtShares(v);
     case 'pure': return `${(v * 100).toFixed(1)}%`;
     default: return v.toLocaleString();
@@ -77,10 +89,10 @@ function FactRow({ fact }: { fact: XbrlFact }) {
     <tr className="border-t border-zinc-800/60">
       <td className="py-1.5 pr-2 text-[11px] text-white">{fact.label}</td>
       <td className="py-1.5 px-2 text-right text-[11px] font-medium tabular-nums text-zinc-200">
-        {fmtValue(fact.currentValue, fact.unit)}
+        {fmtValue(fact.currentValue, fact.unit, fact.currencyCode)}
       </td>
       <td className="py-1.5 px-2 text-right text-[11px] tabular-nums text-zinc-500">
-        {fact.priorValue !== undefined ? fmtValue(fact.priorValue, fact.unit) : '—'}
+        {fact.priorValue !== undefined ? fmtValue(fact.priorValue, fact.unit, fact.currencyCode) : '—'}
       </td>
       <td className={`py-1.5 pl-2 text-right text-[11px] font-medium tabular-nums ${deltaColor(fact.yoyPct)}`}>
         {fact.yoyPct !== undefined ? fmtPct(fact.yoyPct) : '—'}

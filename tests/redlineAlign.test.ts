@@ -113,8 +113,17 @@ describe('20-F redline focus coverage (M1)', () => {
     'ITEM 4. INFORMATION ON THE COMPANY',
     'We are a global provider of enterprise software.',
     '',
+    'ITEM 4.B. BUSINESS OVERVIEW',
+    'Our platform serves enterprise customers across three regions.',
+    '',
     'ITEM 5. OPERATING AND FINANCIAL REVIEW AND PROSPECTS',
     'Revenue grew 15% year-over-year driven by cloud services.',
+    '',
+    'ITEM 5.A. OPERATING RESULTS',
+    'Operating profit improved on higher cloud gross margin.',
+    '',
+    'ITEM 5.B. LIQUIDITY AND CAPITAL RESOURCES',
+    'Cash generated from operations funded capital expenditure.',
   ].join('\n');
 
   it('20-F focus IDs resolve against what the 20-F segmenter actually emits', () => {

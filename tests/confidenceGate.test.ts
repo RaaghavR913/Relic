@@ -89,3 +89,61 @@ describe('isEdgarExhibit', () => {
     expect(isEdgarExhibit(model('edgar', 'UNKNOWN', 1))).toBe(false);
   });
 });
+
+// ── middle tier: heading-rebuilt sections + isGeneralFinancialDoc ─────────────
+
+import { isGeneralFinancialDoc } from '../src/content/ingest/detect';
+
+function headingModel(
+  host: 'edgar' | 'ir',
+  filingType: FilingType,
+  sectionCount: number,
+  category?: PageCategory,
+  extra?: { sectionSource?: 'headings'; segmentationConfidence?: 'high' | 'low' },
+) {
+  return { ...model(host, filingType, sectionCount, category), ...extra };
+}
+
+describe('isLowConfidenceGeneric — heading-rebuilt sections', () => {
+  it('stays true when sections came from the heading fallback, even with a claimed form', () => {
+    // A press release mentioning "Form 10-K" now carries several report_* heading
+    // sections — the marker must keep it demoted (the pre-marker check would have
+    // flipped false on sections.length > 1).
+    expect(
+      isLowConfidenceGeneric(headingModel('ir', '10-K', 6, 'ir_or_financial', { sectionSource: 'headings' })),
+    ).toBe(true);
+    expect(
+      isLowConfidenceGeneric(headingModel('ir', 'UNKNOWN', 6, 'ir_or_financial', { sectionSource: 'headings' })),
+    ).toBe(true);
+  });
+});
+
+describe('isGeneralFinancialDoc (middle tier)', () => {
+  it('is true for off-SEC non-filing pages and non-form PDFs', () => {
+    expect(isGeneralFinancialDoc(model('ir', 'UNKNOWN', 1, 'ir_or_financial'))).toBe(true);
+    expect(isGeneralFinancialDoc(headingModel('ir', '10-K', 6, 'ir_or_financial', { sectionSource: 'headings' }))).toBe(true);
+    expect(isGeneralFinancialDoc(model('ir', 'UNKNOWN', 1, 'pdf'))).toBe(true);
+  });
+
+  it('back-compat: a pre-category persisted ir model qualifies', () => {
+    expect(isGeneralFinancialDoc(model('ir', 'UNKNOWN', 1))).toBe(true);
+  });
+
+  it('is false for every EDGAR category — existing handling is untouched', () => {
+    expect(isGeneralFinancialDoc(model('edgar', 'UNKNOWN', 1, 'edgar_filing'))).toBe(false); // exhibit
+    expect(isGeneralFinancialDoc(model('edgar', 'UNKNOWN', 1, 'edgar_index'))).toBe(false);
+    expect(isGeneralFinancialDoc(model('edgar', 'DATA_REPORT', 5, 'sec_data_report'))).toBe(false);
+    // A mis-segmented EDGAR filing is low-confidence but NOT a general financial page.
+    expect(
+      isGeneralFinancialDoc(headingModel('edgar', '10-K', 8, 'edgar_filing', { segmentationConfidence: 'low' })),
+    ).toBe(false);
+  });
+
+  it('is false for an off-SEC page that parsed as a real filing', () => {
+    expect(isGeneralFinancialDoc(model('ir', '10-K', 23, 'ir_or_financial'))).toBe(false);
+  });
+
+  it('is false for null (no document)', () => {
+    expect(isGeneralFinancialDoc(null)).toBe(false);
+  });
+});

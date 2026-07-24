@@ -107,6 +107,22 @@ if (!fs.existsSync(wasmDir)) {
     const glue = w.replace(/\.wasm$/, '.mjs');
     if (!files.includes(glue)) fail(`ORT binary ${w} is missing its ${glue} glue (runtime import 404)`);
   }
+
+  // The build copies an ALLOWLIST of ORT variants (copyWasmPlugin in vite.config.ts)
+  // rather than every ort-wasm-* file, so a dependency rename could drop a pair we
+  // actually need while still copying the other — which would NOT trip the plugin's
+  // "copied nothing" guard. Assert both loaded backends explicitly:
+  //   • ort-wasm-simd-threaded.{mjs,wasm}          — CPU / WASM path
+  //   • ort-wasm-simd-threaded.asyncify.{mjs,wasm} — WebGPU path (Asyncify-bridged)
+  for (const variant of ['', '.asyncify']) {
+    for (const ext of ['mjs', 'wasm']) {
+      const name = `ort-wasm-simd-threaded${variant}.${ext}`;
+      if (!files.includes(name)) {
+        const backend = variant === '.asyncify' ? 'WebGPU' : 'WASM';
+        fail(`required ORT asset missing from dist/wasm/: ${name} (${backend} backend will not load)`);
+      }
+    }
+  }
 }
 
 // ── 5. extension icons are real assets, not 1×1 placeholders ───────────────────

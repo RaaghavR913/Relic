@@ -51,6 +51,9 @@ export const DEFAULT_FOCUS_IDS: readonly string[] = [
   's1_risk_factors',
   's1_mdna',
   's1_business',
+  // Offering economics — the sections that actually move between S-1 amendments.
+  's1_use_of_proceeds',
+  's1_dilution',
   // 20-F (foreign private issuers) — parallels the 10-K/S-1 focus set:
   //   risk factors, the operating & financial review (MD&A equivalent), and the
   //   business description. The 20-F segmenter (segment.ts ITEMS_20F) emits these
@@ -58,15 +61,29 @@ export const DEFAULT_FOCUS_IDS: readonly string[] = [
   '20f_item_3d_risk_factors',       // ↔ item_1a_risk_factors
   '20f_item_5_operating_review',    // ↔ item_7_mdna (Operating and Financial Review)
   '20f_item_4_company_information',  // ↔ business description (Information on the Company)
+  // 20-F subitems: segmentation cuts Item 5's text off at the first subitem
+  // header, so the REAL operating-review prose lives in 5.A/5.B — without these
+  // ids a 20-F MD&A redline only diffed the parent's short intro. Same-form YoY
+  // aligns these by raw id (do NOT add them to ALIAS_GROUPS: collapsing 5.A and
+  // 5.B onto one canonical key would corrupt the priorByCanon map).
+  '20f_item_5a_operating_results',
+  '20f_item_5b_liquidity',
+  '20f_item_4b_business',
   // DEF 14A (proxy)
   'proxy_exec_compensation',
   'proxy_cd_a',
   'proxy_governance',
+  // Compensation subsections split out of Executive Compensation by the proxy
+  // segmenter — keep them in focus so exec-comp coverage survives the split.
+  'proxy_summary_comp_table',
+  'proxy_pay_vs_performance',
+  'proxy_director_comp',
   // 8-K — most frequently filed items
   'item_2_02_results_of_operations',
   'item_5_02_officer_changes',
   'item_1_01_material_agreements',
   'item_8_01_other',
+  'item_7_01_reg_fd',
 ];
 
 /**

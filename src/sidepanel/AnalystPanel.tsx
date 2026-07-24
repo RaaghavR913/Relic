@@ -25,7 +25,7 @@ import { generateFilingAnalysis } from '@/analyst/pipeline';
 import { getCachedAnalysis, putAnalysis, clearAnalysis } from '@/analyst/analysisStore';
 import { getCachedRedline } from '@/redline/redlineStore';
 import { getSentimentCache } from '@/db/sentimentStore';
-import { isLowConfidenceGeneric } from '@/content/ingest/detect';
+import { isLowConfidenceGeneric, isGeneralFinancialDoc } from '@/content/ingest/detect';
 import { detectFiscalCalendarOffset } from '@/lib/fiscalCalendar';
 import { fmtCalendarDate } from '@/lib/date';
 import { FundamentalsPanel } from './FundamentalsPanel';
@@ -319,10 +319,12 @@ type Status = 'idle' | 'running' | 'done' | 'error';
 interface AnalystPanelProps {
   doc: DocumentModel;
   detectedTier: GenerationTier;
+  /** True when Gemini Nano is ALREADY downloaded (promptApi === 'available'). */
+  promptReady: boolean;
   flags: LanguageFlag[];
 }
 
-export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
+export function AnalystPanel({ doc, detectedTier, promptReady, flags }: AnalystPanelProps) {
   const [analysis, setAnalysis] = useState<FilingAnalysis | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [currentStage, setCurrentStage] = useState<AnalysisStage | null>(null);
@@ -334,12 +336,19 @@ export function AnalystPanel({ doc, detectedTier, flags }: AnalystPanelProps) {
   flagsRef.current = flags;
 
   // Non-filings (e.g. a Yahoo quote page) and misdetected pages that didn't
-  // segment into sections aren't worth the full on-device LM pipeline — and we
-  // must not trigger a multi-GB Gemini Nano download for them. Degrade to the
-  // deterministic tier: instant, no download, no hang. The tier also keys the
-  // analysis cache, so it's threaded through every store call below.
+  // segment into sections aren't worth triggering a multi-GB Gemini Nano
+  // download for. Degrade to the deterministic tier: instant, no download, no
+  // hang. EXCEPTION — a general financial page (IR release, transcript, news,
+  // non-form PDF) upgrades to the LM tier when the model is ALREADY downloaded
+  // (promptReady): the middle tier gets real takeaways with zero download risk,
+  // and buildStagePrompt frames the text as a web page, not a filing. The tier
+  // also keys the analysis cache, so it's threaded through every store call below.
   const gatedToDeterministic = isLowConfidenceGeneric(doc) || doc.sections.length <= 1;
-  const analysisTier: GenerationTier = gatedToDeterministic ? 'extractive' : detectedTier;
+  const lmOnGeneralPage =
+    isGeneralFinancialDoc(doc) && promptReady && detectedTier === 'builtin';
+  const analysisTier: GenerationTier = gatedToDeterministic
+    ? (lmOnGeneralPage ? 'builtin' : 'extractive')
+    : detectedTier;
 
   // A load-bearing MD&A / operating-review section that is only a by-reference
   // pointer: the narrative lives elsewhere (exhibit or un-numbered block), so the

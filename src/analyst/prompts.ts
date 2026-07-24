@@ -10,7 +10,8 @@
 // signals; never summarize for its own sake; never give investment advice.
 // ============================================================
 
-import type { AnalysisStage, DocumentModel } from '@/types';
+import type { AnalysisStage, DocumentModel, FilingType } from '@/types';
+import { isGeneralFinancialDoc } from '@/content/ingest/detect';
 
 export const ANALYST_DISCLAIMER =
   'AI analysis, not investment advice — verify against source.';
@@ -46,7 +47,8 @@ export const CONFIDENCES = ['Low', 'Medium', 'High'] as const;
 export const READS = ['Bullish', 'Bearish', 'Mixed', 'Neutral'] as const;
 export const ASSESSMENTS = ['Supported', 'Partially Supported', 'Not Supported', 'Unclear'] as const;
 export const DOC_TYPES = [
-  '10-K', '10-Q', '8-K', 'Earnings Call', 'Investor Presentation',
+  '10-K', '10-Q', '8-K', '20-F', '6-K', 'S-1', 'Proxy Statement',
+  'Earnings Call', 'Investor Presentation',
   'Income Statement', 'Balance Sheet', 'Cash Flow Statement', 'Other',
 ] as const;
 
@@ -159,13 +161,69 @@ export const synthesisSchema: Record<string, unknown> = {
 // ── prompt builders ───────────────────────────────────────────────────────────
 
 function docHeader(doc: DocumentModel): string {
+  // A general financial page's detected form is unreliable (a press release
+  // that mentions "Form 10-K" text-detects as 10-K) — never present it to the
+  // model as a filing type.
+  const typeLine = isGeneralFinancialDoc(doc)
+    ? 'Document: general financial web page'
+    : `Filing type (detected): ${doc.filingType}`;
   const bits = [
     doc.companyName ? `Company: ${doc.companyName}` : null,
     doc.ticker ? `Ticker: ${doc.ticker}` : null,
-    `Filing type (detected): ${doc.filingType}`,
+    typeLine,
     doc.periodOfReport ? `Period: ${doc.periodOfReport}` : null,
   ].filter(Boolean);
   return bits.join(' · ');
+}
+
+/**
+ * Guidance for the middle tier: a page that is analyzable financial text but
+ * NOT an SEC filing (IR press release, earnings transcript/coverage, market
+ * data, non-form PDF). Applied at every stage — the model must never treat the
+ * page, or any form name it mentions, as an official filing.
+ */
+const WEB_PAGE_GUIDANCE =
+  'Form note: this is a general financial web page (press release, earnings coverage, ' +
+  'transcript, or market data), NOT an SEC filing — any filing type it mentions refers to ' +
+  'another document. Analyze only the visible text, attribute claims to the page, and ' +
+  'never present it as an official filing.\n';
+
+/**
+ * Short per-form guidance appended to the prompt head for forms whose content
+ * diverges from the 10-K/10-Q income-statement shape the stage instructions
+ * assume. Returns '' for 10-K / 10-Q (and unrecognized types) so Tier-1 prompts
+ * stay byte-identical — asserted in tests.
+ */
+export function formGuidance(filingType: FilingType, stage: AnalysisStage): string {
+  switch (filingType) {
+    case '8-K':
+      return stage === 'snapshot' || stage === 'takeaways' || stage === 'risks'
+        ? 'Form note: this is an 8-K current report disclosing specific events. ' +
+          'Identify each disclosed event and its materiality to revenue, profitability, ' +
+          'or the balance sheet; do not pad with boilerplate.\n'
+        : '';
+    case '20-F':
+    case '6-K':
+      // Applies to every stage: IFRS terminology and non-USD currency affect all reads.
+      return 'Form note: foreign private issuer filing, likely IFRS. ' +
+        '"Profit for the year/period" means net income and "finance costs" means interest expense; ' +
+        'figures may be in a non-USD currency — never assume $. ' +
+        'Treat the Operating and Financial Review as the MD&A.\n';
+    case 'S-1':
+      return stage === 'takeaways' || stage === 'shares' || stage === 'risks'
+        ? 'Form note: this is an S-1 IPO registration statement. ' +
+          'Focus on business model durability, path to profitability, use of proceeds, ' +
+          'dilution, lock-up expirations, and dual-class control.\n'
+        : '';
+    case 'DEF 14A':
+      return stage === 'takeaways' || stage === 'risks' || stage === 'narrative'
+        ? 'Form note: this is a proxy statement. ' +
+          'Focus on pay-for-performance alignment, incentive metrics, equity-plan dilution, ' +
+          'and governance red flags; income-statement content is not expected here.\n'
+        : '';
+    default:
+      return '';
+  }
 }
 
 /**
@@ -178,7 +236,12 @@ export function buildStagePrompt(
   excerpts: string,
   hints?: string,
 ): string {
-  const head = `TASK: ${stage}\n${docHeader(doc)}\n`;
+  // The web-page note supersedes per-form guidance: a general financial page's
+  // detected filingType is unreliable, so its form guidance would mislead.
+  const guidance = isGeneralFinancialDoc(doc)
+    ? WEB_PAGE_GUIDANCE
+    : formGuidance(doc.filingType, stage);
+  const head = `TASK: ${stage}\n${docHeader(doc)}\n${guidance}`;
   const hintBlock = hints ? `\nOn-device signal hints (deterministic, trustworthy):\n${hints}\n` : '';
 
   switch (stage) {

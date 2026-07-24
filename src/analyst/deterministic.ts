@@ -28,6 +28,7 @@ import type {
   XbrlFundamentals,
 } from '@/types';
 import type { RedlineEntry } from '@/redline/redlineStore';
+import { isGeneralFinancialDoc } from '@/content/ingest/detect';
 import { finalizeInsight } from './evidence';
 import { computeLexiconTone, type ToneSignal } from './lexiconTone';
 import {
@@ -48,17 +49,25 @@ export function mapDocumentType(filingType: FilingType): AnalysisDocumentType {
     case '10-K': return '10-K';
     case '10-Q': return '10-Q';
     case '8-K': return '8-K';
-    // 20-F is an annual report; closest investor-facing bucket is 10-K-like.
-    case '20-F': return '10-K';
-    // 6-K is the foreign-issuer interim report; map to the domestic interim analog.
-    case '6-K': return '10-Q';
-    case 'S-1':
-    case 'DEF 14A':
+    case '20-F': return '20-F';
+    case '6-K': return '6-K';
+    case 'S-1': return 'S-1';
+    case 'DEF 14A': return 'Proxy Statement';
     case 'DATA_REPORT':
     case 'UNKNOWN':
     default:
       return 'Other';
   }
+}
+
+/**
+ * Document type for an analysis of `doc`. A general financial page's detected
+ * filingType can be a text-heuristic false positive (a press release that
+ * mentions "Form 10-K"), so it is always labeled 'Other' — never presented as
+ * the filing it references. Every real filing keeps mapDocumentType's label.
+ */
+export function documentTypeFor(doc: DocumentModel): AnalysisDocumentType {
+  return isGeneralFinancialDoc(doc) ? 'Other' : mapDocumentType(doc.filingType);
 }
 
 // ── what changed (redline ground truth) ──────────────────────────────────────
@@ -117,15 +126,29 @@ export interface AuxSignals {
   tone?: ToneSignal | null;
 }
 
-/** Compact "$383.3B" style formatting for USD figures in hint/summary text. */
-function fmtUsdCompact(v: number): string {
+/**
+ * Compact "$383.3B" style formatting for monetary figures in hint/summary text.
+ * `currencyCode` is set on XbrlFact ONLY for non-USD monetary facts (IFRS
+ * filers); absent → '$' exactly as before.
+ */
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: '$', EUR: '€', GBP: '£', JPY: '¥', CNY: 'CN¥',
+};
+
+function moneyPrefix(currencyCode?: string): string {
+  if (!currencyCode) return '$';
+  return CURRENCY_SYMBOLS[currencyCode] ?? `${currencyCode} `;
+}
+
+function fmtMoneyCompact(v: number, currencyCode?: string): string {
+  const cur = moneyPrefix(currencyCode);
   const abs = Math.abs(v);
   const sign = v < 0 ? '-' : '';
-  if (abs >= 1e12) return `${sign}$${(abs / 1e12).toFixed(2)}T`;
-  if (abs >= 1e9) return `${sign}$${(abs / 1e9).toFixed(2)}B`;
-  if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(1)}M`;
-  if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(1)}K`;
-  return `${sign}$${abs.toFixed(2)}`;
+  if (abs >= 1e12) return `${sign}${cur}${(abs / 1e12).toFixed(2)}T`;
+  if (abs >= 1e9) return `${sign}${cur}${(abs / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `${sign}${cur}${(abs / 1e6).toFixed(1)}M`;
+  if (abs >= 1e3) return `${sign}${cur}${(abs / 1e3).toFixed(1)}K`;
+  return `${sign}${cur}${abs.toFixed(2)}`;
 }
 
 /**
@@ -142,7 +165,9 @@ function xbrlHeadline(xbrl: XbrlFundamentals | undefined): string {
   for (const label of ['Revenue', 'Net income', 'Diluted EPS'] as const) {
     const f = by(label);
     if (!f) continue;
-    const value = f.unit === 'USD/shares' ? `$${f.currentValue.toFixed(2)}` : fmtUsdCompact(f.currentValue);
+    const value = f.unit === 'USD/shares'
+      ? `${moneyPrefix(f.currencyCode)}${f.currentValue.toFixed(2)}`
+      : fmtMoneyCompact(f.currentValue, f.currencyCode);
     const yoy = f.yoyPct !== undefined ? ` (${f.yoyPct >= 0 ? '+' : ''}${(f.yoyPct * 100).toFixed(1)}% YoY)` : '';
     parts.push(`${label} ${value}${yoy}`);
   }
@@ -212,6 +237,10 @@ const QUESTION_BY_TYPE: Partial<Record<AnalysisDocumentType, string>> = {
   '10-K': 'Did the year strengthen or weaken the long-term thesis — and what changed vs the prior year?',
   '10-Q': 'Is the quarter\'s trajectory (growth, margins, cash) accelerating or slowing?',
   '8-K': 'Is the disclosed event material to revenue, profitability, or the balance sheet?',
+  '20-F': 'Did the year strengthen or weaken the long-term thesis — and what changed vs the prior year?',
+  '6-K': 'Is the interim trajectory (growth, margins, cash) accelerating or slowing?',
+  'S-1': 'Do the fundamentals support the offering — and how much dilution and lock-up risk comes with it?',
+  'Proxy Statement': 'Is executive pay aligned with performance, and do the proposals shift dilution or governance risk?',
   'Other': 'What in this document is material to the company\'s financial trajectory?',
 };
 
@@ -432,7 +461,7 @@ function buildTakeaways(doc: DocumentModel, aux: AuxSignals, limit: number): Fil
     const key = s.text.slice(0, 80).toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    const dim = sentenceDimensions(s.text)[0] ?? 'revenue';
+    const dim = sentenceDimensions(s.text, doc.filingType)[0] ?? 'revenue';
     const ins = insightFromSentence(doc, s, dim, aux);
     if (ins) out.push(ins);
     if (out.length >= limit) break;
@@ -474,7 +503,9 @@ function buildRiskSignals(doc: DocumentModel, aux: AuxSignals, limit: number): F
 /** One honest, signal-grounded sentence summarizing the on-device read. */
 function deterministicOneLiner(doc: DocumentModel, aux: AuxSignals, read: OverallRead): string {
   const company = doc.companyName ?? 'The company';
-  const dt = mapDocumentType(doc.filingType);
+  const dtRaw = documentTypeFor(doc);
+  // "Acme's Other" reads broken — phrase the generic bucket as prose.
+  const dt = dtRaw === 'Other' ? 'financial document' : dtRaw;
   const bits: string[] = [];
   const headline = xbrlHeadline(doc.xbrl);
   if (headline) bits.push(headline);
@@ -511,7 +542,7 @@ export function deterministicAnalysis(
   const tone = aux.tone ?? computeLexiconTone(doc, aux.flags ?? []);
   const auxT: AuxSignals = { ...aux, tone };
 
-  const documentType = mapDocumentType(doc.filingType);
+  const documentType = documentTypeFor(doc);
   const overallRead = overallReadFromSentiment(auxT.sentiments, tone);
   const whatChanged = whatChangedFromRedline(doc, auxT.redline);
 
@@ -542,7 +573,7 @@ export function deterministicAnalysis(
     oneSentenceSummary: deterministicOneLiner(doc, aux, overallRead),
     investorSnapshot: {
       mainFinancialTheme: 'On-device read from sentiment, language flags, and prior-filing changes',
-      timeHorizon: documentType === '10-K' ? 'Long-term' : 'Medium-term',
+      timeHorizon: documentType === '10-K' || documentType === '20-F' ? 'Long-term' : 'Medium-term',
       mostImportantInvestorQuestion:
         QUESTION_BY_TYPE[documentType] ?? QUESTION_BY_TYPE['Other']!,
     },

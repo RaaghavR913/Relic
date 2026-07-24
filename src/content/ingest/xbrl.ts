@@ -34,6 +34,9 @@ interface ConceptRow {
 }
 
 const CONCEPTS: readonly ConceptRow[] = [
+  // ifrs-full:* concepts (foreign private issuers — 20-F, some 6-K) are listed
+  // AFTER the us-gaap ones in every row: first-concept-with-facts wins, so a
+  // domestic us-gaap filing resolves exactly as before.
   { label: 'Revenue', unit: 'USD', concepts: [
     'us-gaap:RevenueFromContractWithCustomerExcludingAssessedTax',
     'us-gaap:RevenueFromContractWithCustomerIncludingAssessedTax',
@@ -42,6 +45,8 @@ const CONCEPTS: readonly ConceptRow[] = [
     // Banks / broker-dealers report a "total revenue net of interest expense" top
     // line; the commercial concepts above are absent from their filings.
     'us-gaap:RevenuesNetOfInterestExpense',
+    'ifrs-full:Revenue',
+    'ifrs-full:RevenueFromContractsWithCustomers',
   ] },
   // ── financial-sector line items ──────────────────────────────────────────────
   // Populate only for banks, insurers, and REITs — the concepts are absent from
@@ -57,17 +62,34 @@ const CONCEPTS: readonly ConceptRow[] = [
     'us-gaap:RealEstateRevenueNet',
     'us-gaap:OperatingLeaseLeaseIncome',
   ] },
-  { label: 'Gross profit', unit: 'USD', concepts: ['us-gaap:GrossProfit'] },
-  { label: 'Operating income', unit: 'USD', concepts: ['us-gaap:OperatingIncomeLoss'] },
-  { label: 'Net income', unit: 'USD', concepts: ['us-gaap:NetIncomeLoss'] },
-  { label: 'Diluted EPS', unit: 'USD/shares', concepts: ['us-gaap:EarningsPerShareDiluted'] },
-  { label: 'Basic EPS', unit: 'USD/shares', concepts: ['us-gaap:EarningsPerShareBasic'] },
-  { label: 'Operating cash flow', unit: 'USD', concepts: ['us-gaap:NetCashProvidedByUsedInOperatingActivities'] },
-  { label: 'Total assets', unit: 'USD', concepts: ['us-gaap:Assets'] },
-  { label: 'Total liabilities', unit: 'USD', concepts: ['us-gaap:Liabilities'] },
+  { label: 'Gross profit', unit: 'USD', concepts: ['us-gaap:GrossProfit', 'ifrs-full:GrossProfit'] },
+  { label: 'Operating income', unit: 'USD', concepts: [
+    'us-gaap:OperatingIncomeLoss',
+    'ifrs-full:ProfitLossFromOperatingActivities',
+  ] },
+  { label: 'Net income', unit: 'USD', concepts: [
+    'us-gaap:NetIncomeLoss',
+    'ifrs-full:ProfitLossAttributableToOwnersOfParent',
+    'ifrs-full:ProfitLoss',
+  ] },
+  { label: 'Diluted EPS', unit: 'USD/shares', concepts: [
+    'us-gaap:EarningsPerShareDiluted',
+    'ifrs-full:DilutedEarningsLossPerShare',
+  ] },
+  { label: 'Basic EPS', unit: 'USD/shares', concepts: [
+    'us-gaap:EarningsPerShareBasic',
+    'ifrs-full:BasicEarningsLossPerShare',
+  ] },
+  { label: 'Operating cash flow', unit: 'USD', concepts: [
+    'us-gaap:NetCashProvidedByUsedInOperatingActivities',
+    'ifrs-full:CashFlowsFromUsedInOperatingActivities',
+  ] },
+  { label: 'Total assets', unit: 'USD', concepts: ['us-gaap:Assets', 'ifrs-full:Assets'] },
+  { label: 'Total liabilities', unit: 'USD', concepts: ['us-gaap:Liabilities', 'ifrs-full:Liabilities'] },
   { label: 'Cash & equivalents', unit: 'USD', concepts: [
     'us-gaap:CashAndCashEquivalentsAtCarryingValue',
     'us-gaap:CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents',
+    'ifrs-full:CashAndCashEquivalents',
   ] },
   { label: 'Diluted shares', unit: 'shares', concepts: ['us-gaap:WeightedAverageNumberOfDilutedSharesOutstanding'] },
   { label: 'Shares outstanding', unit: 'shares', concepts: ['dei:EntityCommonStockSharesOutstanding'] },
@@ -122,14 +144,17 @@ function resolveContext(el: Element): XbrlContext {
   return { periodEnd, durationDays, dimensional };
 }
 
-/** Map a <…:unit> element to a friendly unit; USD/shares (divide) → per-share. */
-function resolveUnit(el: Element, fallback: XbrlUnit): XbrlUnit {
-  if (firstByTag(el, 'divide') !== null) return 'USD/shares';
-  const measure = firstByTag(el, 'measure')?.textContent?.trim().toLowerCase() ?? '';
-  if (measure.includes('usd')) return 'USD';
-  if (measure.includes('shares')) return 'shares';
-  if (measure.includes('pure')) return 'pure';
-  return fallback;
+/**
+ * ISO-4217 currency of a <…:unit> element — 'USD', 'EUR', … — or null for a
+ * non-monetary unit (shares, pure). For a divide unit (per-share) the FIRST
+ * measure in document order is the numerator, which is the currency.
+ * Foreign private issuers (20-F/6-K) report in their home currency, so the
+ * curated 'USD' row unit cannot be trusted blindly for IFRS facts.
+ */
+function currencyOf(el: Element): string | null {
+  const measure = firstByTag(el, 'measure')?.textContent?.trim() ?? '';
+  const m = /iso4217:([A-Za-z]{3})/.exec(measure);
+  return m ? m[1]!.toUpperCase() : null;
 }
 
 // ── value parsing ─────────────────────────────────────────────────────────────
@@ -157,6 +182,8 @@ interface RawFact {
   value: number;
   periodEnd: string | null;
   durationDays: number;
+  /** ISO-4217 code from the fact's unitref, or null when unresolvable/non-monetary. */
+  currency: string | null;
   node: Element;
 }
 
@@ -205,6 +232,17 @@ export function extractXbrlFacts(
     return ctx;
   };
 
+  // unitref → ISO currency (null for shares/pure/unresolvable units).
+  const currencyCache = new Map<string, string | null>();
+  const getCurrency = (unitRef: string | null): string | null => {
+    if (!unitRef) return null;
+    if (currencyCache.has(unitRef)) return currencyCache.get(unitRef)!;
+    const el = scope.getElementById(unitRef);
+    const code = el ? currencyOf(el) : null;
+    currencyCache.set(unitRef, code);
+    return code;
+  };
+
   // Group raw facts by concept, consolidated (non-dimensional) contexts only.
   const byConcept = new Map<string, RawFact[]>();
   for (const el of factEls) {
@@ -221,7 +259,14 @@ export function extractXbrlFacts(
     );
     if (value === null) continue;
     const arr = byConcept.get(concept);
-    const raw: RawFact = { concept, value, periodEnd: ctx.periodEnd, durationDays: ctx.durationDays, node: el };
+    const raw: RawFact = {
+      concept,
+      value,
+      periodEnd: ctx.periodEnd,
+      durationDays: ctx.durationDays,
+      currency: getCurrency(el.getAttribute('unitref')),
+      node: el,
+    };
     if (arr) arr.push(raw);
     else byConcept.set(concept, [raw]);
   }
@@ -243,11 +288,16 @@ export function extractXbrlFacts(
     // Current = the period matching periodOfReport when present, else the latest.
     let currentEnd = ends[0]!;
     if (periodOfReport && bestByEnd.has(periodOfReport)) currentEnd = periodOfReport;
-    const priorEnds = ends.filter((e) => Date.parse(e) < Date.parse(currentEnd));
+    const current = bestByEnd.get(currentEnd)!;
+    // A YoY delta across different reporting currencies is meaningless (e.g. a
+    // filer that redenominated) — only pair a prior in the SAME currency.
+    const priorEnds = ends.filter(
+      (e) => Date.parse(e) < Date.parse(currentEnd) && bestByEnd.get(e)!.currency === current.currency,
+    );
     const priorEnd = priorEnds[0];
     const priorFact = priorEnd ? bestByEnd.get(priorEnd) : undefined;
     return {
-      current: bestByEnd.get(currentEnd)!,
+      current,
       ...(priorFact ? { prior: priorFact } : {}),
     };
   };
@@ -285,11 +335,17 @@ export function extractXbrlFacts(
     const current = picked.current.value;
     const prior = picked.prior?.value;
     const range = rangeFor(picked.current.node);
+    // Flag the currency ONLY when a monetary fact is verifiably non-USD, so
+    // us-gaap extraction output stays byte-identical (absent → '$' display).
+    const isMonetary = row.unit === 'USD' || row.unit === 'USD/shares';
+    const cur = picked.current.currency;
+    const currencyCode = isMonetary && cur !== null && cur !== 'USD' ? cur : undefined;
     facts.push({
       concept,
       label: row.label,
       unit: row.unit,
       currentValue: current,
+      ...(currencyCode !== undefined ? { currencyCode } : {}),
       ...(prior !== undefined ? { priorValue: prior } : {}),
       ...(prior !== undefined && prior !== 0 ? { yoyPct: (current - prior) / Math.abs(prior) } : {}),
       ...(range ? { range } : {}),

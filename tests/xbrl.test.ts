@@ -241,3 +241,92 @@ describe('extractXbrlFacts — financial-sector concepts', () => {
     expect(f.facts.find((x) => x.label === 'Rental revenue')).toBeUndefined();
   });
 });
+
+// ── IFRS (foreign private issuer) + currency handling ─────────────────────────
+
+// An IFRS 20-F facsimile reporting in EUR: ifrs-full concepts only, a eur unit,
+// and a per-share divide unit whose numerator is EUR.
+const IFRS_RESOURCES = `
+  <ix:header>
+    <ix:hidden>
+      <ix:nonNumeric name="dei:DocumentType" contextRef="ifrs_2023">20-F</ix:nonNumeric>
+    </ix:hidden>
+    <ix:resources>
+      <xbrli:context id="ifrs_2023">
+        <xbrli:period><xbrli:startDate>2023-01-01</xbrli:startDate><xbrli:endDate>2023-12-31</xbrli:endDate></xbrli:period>
+      </xbrli:context>
+      <xbrli:context id="ifrs_2022">
+        <xbrli:period><xbrli:startDate>2022-01-01</xbrli:startDate><xbrli:endDate>2022-12-31</xbrli:endDate></xbrli:period>
+      </xbrli:context>
+      <xbrli:unit id="eur"><xbrli:measure>iso4217:EUR</xbrli:measure></xbrli:unit>
+      <xbrli:unit id="gbp"><xbrli:measure>iso4217:GBP</xbrli:measure></xbrli:unit>
+      <xbrli:unit id="eps_eur"><xbrli:divide><xbrli:unitNumerator><xbrli:measure>iso4217:EUR</xbrli:measure></xbrli:unitNumerator><xbrli:unitDenominator><xbrli:measure>xbrli:shares</xbrli:measure></xbrli:unitDenominator></xbrli:divide></xbrli:unit>
+    </ix:resources>
+  </ix:header>
+`;
+
+const IFRS_FACTS = `
+  <p>Revenue
+    <ix:nonFraction name="ifrs-full:Revenue" contextRef="ifrs_2023" unitRef="eur" scale="6">30,000</ix:nonFraction>
+    <ix:nonFraction name="ifrs-full:Revenue" contextRef="ifrs_2022" unitRef="eur" scale="6">25,000</ix:nonFraction>
+  </p>
+  <p>Gross profit
+    <ix:nonFraction name="ifrs-full:GrossProfit" contextRef="ifrs_2023" unitRef="eur" scale="6">21,000</ix:nonFraction>
+  </p>
+  <p>Profit for the year
+    <ix:nonFraction name="ifrs-full:ProfitLoss" contextRef="ifrs_2023" unitRef="eur" scale="6">6,000</ix:nonFraction>
+    <ix:nonFraction name="ifrs-full:ProfitLoss" contextRef="ifrs_2022" unitRef="eur" scale="6">5,000</ix:nonFraction>
+  </p>
+  <p>Diluted EPS
+    <ix:nonFraction name="ifrs-full:DilutedEarningsLossPerShare" contextRef="ifrs_2023" unitRef="eps_eur" decimals="2">4.92</ix:nonFraction>
+  </p>
+`;
+
+describe('extractXbrlFacts — IFRS concepts + currency (20-F)', () => {
+  const doc = () => docFrom(`<!doctype html><html><body>${IFRS_RESOURCES}${IFRS_FACTS}</body></html>`);
+
+  it('populates the curated rows from ifrs-full concepts', () => {
+    const f = extractXbrlFacts(doc(), null, '2023-12-31')!;
+    expect(f).not.toBeNull();
+    expect(f.facts.find((x) => x.label === 'Revenue')?.currentValue).toBe(30_000_000_000);
+    expect(f.facts.find((x) => x.label === 'Gross profit')?.currentValue).toBe(21_000_000_000);
+    expect(f.facts.find((x) => x.label === 'Net income')?.currentValue).toBe(6_000_000_000);
+    expect(f.facts.find((x) => x.label === 'Diluted EPS')?.currentValue).toBeCloseTo(4.92, 5);
+  });
+
+  it('flags non-USD monetary facts with their ISO currency (incl. per-share divide units)', () => {
+    const f = extractXbrlFacts(doc(), null, '2023-12-31')!;
+    expect(f.facts.find((x) => x.label === 'Revenue')?.currencyCode).toBe('EUR');
+    expect(f.facts.find((x) => x.label === 'Diluted EPS')?.currencyCode).toBe('EUR');
+  });
+
+  it('computes YoY and derives margins within the single reporting currency', () => {
+    const f = extractXbrlFacts(doc(), null, '2023-12-31')!;
+    expect(f.facts.find((x) => x.label === 'Revenue')?.yoyPct).toBeCloseTo(0.2, 5);
+    expect(f.metrics.find((m) => m.label === 'Gross margin')?.current).toBeCloseTo(0.7, 5);
+    expect(f.metrics.find((m) => m.label === 'Net margin')?.current).toBeCloseTo(0.2, 5);
+  });
+
+  it('never pairs a prior period reported in a DIFFERENT currency', () => {
+    const mixed = `
+      <p>Revenue
+        <ix:nonFraction name="ifrs-full:Revenue" contextRef="ifrs_2023" unitRef="eur" scale="6">30,000</ix:nonFraction>
+        <ix:nonFraction name="ifrs-full:Revenue" contextRef="ifrs_2022" unitRef="gbp" scale="6">22,000</ix:nonFraction>
+      </p>
+    `;
+    const f = extractXbrlFacts(
+      docFrom(`<!doctype html><html><body>${IFRS_RESOURCES}${mixed}</body></html>`),
+      null,
+      '2023-12-31',
+    )!;
+    const rev = f.facts.find((x) => x.label === 'Revenue')!;
+    expect(rev.currentValue).toBe(30_000_000_000);
+    expect(rev.priorValue).toBeUndefined();
+    expect(rev.yoyPct).toBeUndefined();
+  });
+
+  it('leaves currencyCode absent on a USD (us-gaap) filing — Tier-1 output unchanged', () => {
+    const f = extractXbrlFacts(docFrom(FILING), null, '2023-09-30')!;
+    for (const fact of f.facts) expect(fact.currencyCode).toBeUndefined();
+  });
+});

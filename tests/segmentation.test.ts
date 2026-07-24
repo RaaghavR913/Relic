@@ -442,3 +442,108 @@ describe('incorporation-by-reference detection (S2)', () => {
     expect(biz.incorporatedByReference).toBeUndefined();
   });
 });
+
+// ── expanded title-pattern coverage (Tier 4/5 forms) ─────────────────────────
+
+describe('S-1 expanded patterns', () => {
+  it('captures The Offering, Summary Financial Data, Tax, and Plan of Distribution', () => {
+    const text = [
+      'PROSPECTUS SUMMARY',
+      'We are a leading provider of cloud services.',
+      '',
+      'THE OFFERING',
+      'Common stock offered by us: 10,000,000 shares.',
+      '',
+      'SUMMARY CONSOLIDATED FINANCIAL DATA',
+      'The tables below present our summary consolidated financial data.',
+      '',
+      'MATERIAL U.S. FEDERAL INCOME TAX CONSIDERATIONS',
+      'The following summary describes material tax consequences.',
+      '',
+      'PLAN OF DISTRIBUTION',
+      'The shares are being offered directly, without underwriters.',
+    ].join('\n');
+    const ids = segmentSections(text, 'S-1', []).map((s) => s.id);
+    expect(ids).toContain('s1_the_offering');
+    expect(ids).toContain('s1_summary_financial_data');
+    expect(ids).toContain('s1_tax');
+    expect(ids).toContain('s1_plan_of_distribution');
+  });
+});
+
+describe('DEF 14A expanded patterns', () => {
+  it('splits the compensation subsections investors actually compare YoY', () => {
+    const text = [
+      'COMPENSATION DISCUSSION AND ANALYSIS',
+      'Our compensation philosophy is pay-for-performance.',
+      '',
+      'SUMMARY COMPENSATION TABLE',
+      'The table sets forth compensation for our named executive officers.',
+      '',
+      'PAY VERSUS PERFORMANCE',
+      'As required by Item 402(v), we present the relationship of pay to TSR.',
+      '',
+      'CEO PAY RATIO',
+      'The ratio of CEO pay to median employee pay was 250:1.',
+      '',
+      'DIRECTOR COMPENSATION',
+      'Non-employee directors receive an annual cash retainer.',
+      '',
+      'EQUITY COMPENSATION PLAN INFORMATION',
+      'Shares available for future issuance under the 2020 Plan.',
+    ].join('\n');
+    const ids = segmentSections(text, 'DEF 14A', []).map((s) => s.id);
+    expect(ids).toContain('proxy_cd_a');
+    expect(ids).toContain('proxy_summary_comp_table');
+    expect(ids).toContain('proxy_pay_vs_performance');
+    expect(ids).toContain('proxy_pay_ratio');
+    expect(ids).toContain('proxy_director_comp');
+    expect(ids).toContain('proxy_equity_plan_info');
+  });
+
+  it('binds Proposal 4/5 only on a subject-anchored heading, not a voting reference', () => {
+    const text = [
+      'PROXY SUMMARY',
+      'This summary highlights information contained elsewhere.',
+      '',
+      'PROPOSAL 4: APPROVAL OF THE AMENDED 2020 EQUITY INCENTIVE PLAN',
+      'The board recommends approval of the amended plan.',
+      '',
+      'CORPORATE GOVERNANCE',
+      'The Board recommends a vote FOR Proposal 4.',
+    ].join('\n');
+    const sections = segmentSections(text, 'DEF 14A', []);
+    const prop4 = sections.find((s) => s.id === 'proxy_prop4');
+    expect(prop4).toBeDefined();
+    // Bound to the real heading — its content is the proposal body, not the
+    // trailing "vote FOR Proposal 4" recommendation line in Governance.
+    expect(prop4!.text).toContain('recommends approval of the amended plan');
+  });
+});
+
+describe('6-K expanded patterns', () => {
+  it('captures an attached interim MD&A and the release-style headings', () => {
+    const text = [
+      "CHIEF EXECUTIVE OFFICER'S REVIEW",
+      'We delivered a resilient first half.',
+      '',
+      "MANAGEMENT'S DISCUSSION AND ANALYSIS OF FINANCIAL CONDITION",
+      'Revenue for the period increased 8% on constant-currency growth.',
+      '',
+      'TRADING UPDATE',
+      'Trading in the third quarter remained in line with expectations.',
+      '',
+      'SEGMENTAL RESULTS',
+      'The pharmaceuticals segment grew ahead of the group average.',
+      '',
+      'INTERIM CONDENSED CONSOLIDATED FINANCIAL STATEMENTS',
+      'The unaudited interim statements follow.',
+    ].join('\n');
+    const ids = segmentSections(text, '6-K', []).map((s) => s.id);
+    expect(ids).toContain('6k_ceo_review');
+    expect(ids).toContain('6k_mdna');
+    expect(ids).toContain('6k_trading_update');
+    expect(ids).toContain('6k_segments');
+    expect(ids).toContain('6k_interim_financials');
+  });
+});
