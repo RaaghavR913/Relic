@@ -9,7 +9,7 @@ vs `extractive`).
 ```bash
 npm install
 npm run build          # outputs dist/
-npm test               # 536 tests should pass (7 skipped)
+npm test               # 580 tests should pass (7 skipped)
 ```
 
 1. Open `chrome://extensions`, enable **Developer mode**.
