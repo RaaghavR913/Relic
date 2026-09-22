@@ -2,9 +2,10 @@
 // Relic — export data model + shared helpers
 // ------------------------------------------------------------
 // The artifacts gathered from the on-device caches (by ./collect.ts) and the
-// pure helpers shared by the PDF renderer (./pdf.ts): data presence, filename,
-// label tone, summary flattening, and the sentiment aggregate/consensus. No
-// chrome.* and no rendering here, so this stays trivially unit-testable.
+// pure helpers shared by the PDF renderer (./pdf.ts) and the metadata stamper
+// (./metadata.ts): data presence, filename, text folding, label tone, summary
+// flattening, and the sentiment aggregate/consensus. No chrome.* and no
+// rendering here, so this stays trivially unit-testable.
 // ============================================================
 
 import type {
@@ -55,6 +56,34 @@ export function reportFilename(d: FilingExportData, ext = 'pdf'): string {
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
   return `${safe || 'Relic-report'}.${ext}`;
+}
+
+// ── text ───────────────────────────────────────────────────────────────────
+
+/**
+ * Fold the unicode punctuation filings use into CP1252-safe equivalents and
+ * collapse whitespace runs.
+ *
+ * The whitespace collapse matters for prose fields (evidence quotes, summaries,
+ * extractive anchors) that slice verbatim from the filing: SEC tables extract to
+ * text as one cell per line, often with blank lines between. The browser folds
+ * that to single spaces when the panels render it in a `<p>`, but jsPDF's
+ * `splitTextToSize` honours embedded newlines, so the raw runs would otherwise
+ * spew one short cell per line down the page. Callers that want multiple lines
+ * (e.g. section summaries) split before calling in, so no intentional break is
+ * lost here.
+ */
+export function clean(s: string): string {
+  return (s ?? '')
+    .replace(/[‘’‚′]/g, "'")
+    .replace(/[“”„″]/g, '"')
+    .replace(/[–—]/g, '-')
+    .replace(/•/g, '-')
+    .replace(/…/g, '...')
+    .replace(/ /g, ' ')
+    .replace(/[‐‑]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 // ── dates ────────────────────────────────────────────────────────────────────
