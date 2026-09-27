@@ -33,7 +33,6 @@ I chose on-device processing over a cloud API because for financial research, "n
 ## What's next
 
 - Support for Firefox and Safari (Relic currently runs only on Chromium browsers)
-- A B2B pilot with small investment firms and hedge funds
 
 ## Built with AI assistance
 
