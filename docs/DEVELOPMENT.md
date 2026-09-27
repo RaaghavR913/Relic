@@ -1,0 +1,234 @@
+# Relic — Developer guide
+
+On-device SEC filing analysis for Chrome and Brave. Relic runs entirely on your machine — summaries, sentiment, language flags, and year-over-year redlines never leave your device.
+
+Open any filing on [EDGAR](https://www.sec.gov/edgar) and Relic activates in the side panel. Language flags are underlined directly on the filing page as you read.
+
+## Features
+
+| Tab | What it does |
+|-----|--------------|
+| **Analyst** | Investor-focused document analysis: snapshot read (Bullish/Bearish/Mixed/Neutral) with 1–5 scores, top takeaways, what changed vs the prior filing, revenue/margin/cash-flow/share impact, risk signals, management narrative check, bull vs bear case, and a watch list — generated stage-by-stage on-device with evidence verified against the source text |
+| **Summary** | Plain-English section summaries, with analyst-style notes when Chrome's built-in AI is available |
+| **Sentiment** | Sentence-level FinBERT tone scores in the side panel (positive / negative / neutral breakdown per section) |
+| **Redline** | Year-over-year redline for comparable prior filings (risk factors, MD&A, and more) |
+
+Language flags (hedging, uncertainty, litigious, and negative wording) are underlined on the filing page automatically. Additional UI: section navigator, first-run onboarding, jump-to-source highlighting for insights, and a Settings toggle for on-page flags.
+
+## Privacy
+
+Relic is built around a zero-egress guarantee:
+
+- **No telemetry, no cloud APIs** — analysis runs locally in the extension.
+- **No runtime model downloads** — ONNX weights ship inside the build; workers set `allowRemoteModels = false`.
+- **Only `*.sec.gov` network access** — used to fetch prior-year filings for redline comparison, routed through a rate-limited queue (≤8 req/s, exponential backoff, 30-minute cache).
+
+Your filing text and derived analysis never leave the device.
+
+See [PRIVACY.md](../PRIVACY.md) for the full privacy policy.
+
+## Chrome Web Store submission notes
+
+Permission rationale, for reviewers:
+
+- **`host_permissions: https://*.sec.gov/*`** — the only host the extension fetches from
+  (prior-year filings for redline). The content script also auto-runs here.
+- **`activeTab` + `scripting`** — power the on-demand "Analyze this page" action: a toolbar
+  click grants `activeTab` on the current page, and the content script is injected into it.
+  No broad host permission is requested for non-SEC pages; analysis is opt-in per page.
+- **`offscreen`** — runs the ONNX Web Workers (DOM-less inference) off the service worker.
+- **`storage` / `sidePanel`** — session-scoped model/flag cache and the side-panel UI.
+- **`optional_host_permissions`** (annualreports, stockanalysis, finviz, yahoo finance, etc.) —
+  not granted at install. Relic requests one of these via `chrome.permissions.request()` only
+  when the user explicitly chooses to analyze that specific non-SEC financial site.
+
+No `web_accessible_resources` are declared: the bundled ML assets (quantized ONNX weights + ORT
+WASM) load only inside the offscreen document and its workers, which are extension pages, so they
+reach the assets via `chrome.runtime.getURL(...)` without being web-accessible.
+
+The CSP (`script-src 'self' 'wasm-unsafe-eval'; connect-src 'self' https://*.sec.gov`) blocks
+all egress except SEC, reinforcing the zero-egress guarantee at the platform level.
+
+## How it works
+
+```
+EDGAR page
+    │
+    ▼
+content script ──► ingest + positionMap + CSS Custom Highlight overlays
+    │
+    ▼
+side panel (React) ──► Analyst · Summary · Sentiment · Redline tabs
+    │
+    ▼
+service worker ──► message router, EDGAR queue, offscreen document lifecycle
+    │
+    ▼
+offscreen document ──► ONNX encoder/sentiment Web Workers (FinBERT + mxbai-embed)
+```
+
+**Generation tiers.** At startup, Relic probes the built-in AI APIs (Summarizer, Prompt API / Gemini Nano) and classifies the device as `builtin` or `extractive`:
+
+- **builtin** — Summarizer + Prompt API for summaries, analyst notes, and change narratives.
+- **extractive** — embedding-centrality sentence selection for summaries; all other analysis (sentiment, flags, redline) is identical.
+
+The tier is decided purely by each API's own `availability()` call, so a browser that
+lacks the built-in AI APIs degrades to `extractive` automatically — see
+[Browser support](#browser-support).
+
+**Highlighting.** On-page overlays use the [CSS Custom Highlight API](https://developer.mozilla.org/en-US/docs/Web/API/CSS_Custom_Highlight_API) — language-flag underlines, redline additions, and jump-to-source citations each get their own layer. No `<span>` injection, so XBRL interactive viewers stay intact.
+
+**Coordinates.** A `positionMap` abstraction maps normalized document text to DOM ranges with O(log n) lookup. All highlighting and scroll-to-source flows go through it.
+
+## Project structure
+
+```
+src/
+├── background/       # MV3 service worker — routing, EDGAR queue, offscreen lifecycle
+├── content/          # Content script — ingestion, positionMap, highlight overlays
+│   ├── ingest/       # DOM walk, section detection, metadata extraction
+│   └── highlight/    # Flag, redline, and citation highlight layers
+├── sidepanel/        # React side panel — tabs and onboarding
+├── offscreen/        # Offscreen document — embedding/sentiment worker host
+├── workers/          # FinBERT sentiment + mxbai embedding Web Workers (ONNX)
+├── analyst/          # Investor analysis pipeline — staged Prompt API calls, evidence guards
+├── summarizer/       # Two-tier section summarization + IndexedDB cache
+├── redline/          # Prior-filing resolution, section alignment, diff engine
+├── flagging/         # Curated phrase and word-list language flag detection
+├── db/               # IndexedDB stores (summaries, sentiment)
+├── runtime/          # Capability detection (builtin vs extractive tier)
+├── messages/         # Typed chrome.runtime message contracts
+└── types/            # Canonical data model (DocumentModel, Section, etc.)
+
+scripts/
+└── fetch-models.mjs  # Download ONNX weights into models/ (build-time only)
+
+tests/                # Vitest unit tests (positionMap, redline, sentiment, …)
+public/icons/         # Extension icons
+```
+
+## Browser support
+
+Relic is a Manifest V3 extension built on the Chromium side-panel and offscreen-document
+APIs, so it runs on Chromium browsers that implement `chrome.sidePanel`.
+
+| Browser | Status | Notes |
+|---------|--------|-------|
+| **Google Chrome** 116+ | Fully supported | Only browser that can reach the `builtin` tier |
+| **Brave** (Chromium 116+) | Supported, `extractive` tier | Everything works except built-in AI — see below |
+| **Opera / Opera GX** | Not supported | No `chrome.sidePanel`; Opera uses its own `sidebar_action` API, so Relic has no UI surface there |
+
+Chrome and Brave are the two browsers this project actually tests against. The Opera row is
+based on Opera's published extension API docs, not on a test run — treat it as "expected not
+to work" rather than a measured result.
+
+**Brave.** Measured on Brave 1.92 (Chromium 150); the `minimum_chrome_version: 116` floor in
+the manifest applies to Brave builds on Chromium 116+ too, but older Brave builds are
+untested. The extension loads, the service worker
+runs, and `sidePanel`, `offscreen`, `scripting`, `storage.session`, `runtime.getContexts`,
+and `permissions.request` are all present. The side panel is cross-origin isolated
+(`SharedArrayBuffer` available, so threaded ONNX Runtime WASM works), and WebGPU returns a
+working adapter and device.
+
+The one gap is Chrome's built-in AI: `LanguageModel` and `Summarizer` are absent in Brave,
+and even with the Chromium feature flags forced on, `availability()` reports `unavailable` —
+Gemini Nano is never provisioned. Brave therefore runs Relic in the `extractive` tier
+permanently. Extractive summaries, FinBERT sentiment, language flags, and redlines are
+identical to Chrome; generative analyst notes and change narratives are unavailable.
+
+Brave installs extensions from the Chrome Web Store, so the published listing covers it with
+no separate package.
+
+## Prerequisites
+
+- **Node.js** 18+
+- **Chrome 116+ or Brave** (Chromium 116+) with Manifest V3 extension support
+- For the `builtin` tier: **Chrome** with built-in AI APIs enabled (Summarizer / Prompt API).
+  Brave and other Chromium browsers without Gemini Nano run the `extractive` tier.
+
+## Development setup
+
+```bash
+# Install dependencies
+npm install
+
+# Download on-device model weights (~134 MB, build-time only)
+npm run fetch-models
+
+# Production build → dist/
+npm run build
+
+# Watch mode during development
+npm run dev
+```
+
+`models/`, `dist/`, and `node_modules/` are gitignored. Regenerate them locally after cloning.
+
+### Load in Chrome
+
+1. Open `chrome://extensions` and enable **Developer mode**.
+2. Click **Load unpacked** and select the `dist/` folder.
+3. Pin Relic and open the side panel from the toolbar icon.
+4. Navigate to any `https://*.sec.gov` filing page.
+
+### Load in Brave
+
+Identical to Chrome — same `dist/`, no separate build.
+
+1. Open `brave://extensions` and enable **Developer mode**.
+2. Click **Load unpacked** and select the `dist/` folder.
+3. Pin Relic and open the side panel from the toolbar icon.
+4. Navigate to any `https://*.sec.gov` filing page.
+
+Relic opens in Brave's side panel alongside Brave's own sidebar. The Summary tab will show
+extractive summaries rather than generative ones, and the Analyst tab's built-in-AI
+indicator reports the `extractive` tier — expected on Brave, see
+[Browser support](#browser-support).
+
+## Scripts
+
+| Command | Description |
+|---------|-------------|
+| `npm run build` | Production build to `dist/` |
+| `npm run dev` | Watch build for development |
+| `npm run fetch-models` | Download FinBERT + mxbai-embed ONNX weights |
+| `npm run typecheck` | TypeScript check (`tsc --noEmit`) |
+| `npm test` | Run Vitest unit tests |
+| `npm run test:watch` | Vitest in watch mode |
+| `npm run test:coverage` | Vitest with coverage report |
+
+## Testing
+
+```bash
+npm test
+```
+
+Tests cover core modules: `positionMap`, section segmentation, redline alignment/diff, sentiment scoring, flag detection, EDGAR queue, and more. See `tests/` and [`MANUAL_TEST.md`](../MANUAL_TEST.md) for the full side-panel manual test script.
+
+## Models
+
+Relic bundles two quantized ONNX models (int8, ~134 MB total):
+
+| Model | Role |
+|-------|------|
+| `Xenova/finbert` | Sentence-level financial sentiment |
+| `mixedbread-ai/mxbai-embed-xsmall-v1` | Sentence embeddings for extractive summaries and the redline semantic pass |
+
+Weights are fetched at build time via `npm run fetch-models` and loaded from `chrome.runtime.getURL('models/…')` at runtime — no Hugging Face requests in the shipped extension.
+
+## Tech stack
+
+- **Extension:** Chrome Manifest V3, service worker, offscreen document, side panel
+- **UI:** React 19, Tailwind CSS 4, Framer Motion
+- **ML:** ONNX Runtime Web, `@huggingface/transformers`, Chrome built-in AI APIs
+- **Build:** Vite, `vite-plugin-web-extension`, TypeScript 6
+- **Test:** Vitest, jsdom
+
+## License
+
+Relic's source code — including the language-flagging word lists — is released
+under the [MIT License](../LICENSE).
+
+The MIT grant covers code and data authored in this repository only. Bundled
+third-party components — the on-device ML models and the test fixtures — remain
+under their own terms. See [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).

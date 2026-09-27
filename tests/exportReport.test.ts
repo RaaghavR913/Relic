@@ -127,7 +127,7 @@ function fullData(over: Partial<FilingExportData> = {}): FilingExportData {
   return {
     doc: d,
     generatedAt: 1_700_000_000_000,
-    appVersion: '3.1.6',
+    appVersion: '3.1.7',
     analysis: analysis(),
     summaries: [{ section: d.sections[1]!, entry: summaryEntry('item_1a_risk', 'Risk factors remain cyclical.') }],
     sentiment,

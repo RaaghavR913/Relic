@@ -12,9 +12,9 @@
  * per-type CSS Custom Highlight layers, mount a hover tooltip, persist flags to
  * storage, and handle overlay toggle messages from the side panel.
  *
- * Phase 2.2: LM dictionary is loaded lazily (dynamic import). Pre-warm starts at
- * module load time so JSON chunks are in-flight during the DOM walk; run() awaits
- * completion before flagging to guarantee full LM coverage on every page.
+ * Word lists load lazily (dynamic import). Pre-warm starts at module load time
+ * so the JSON is in-flight during the DOM walk; run() awaits completion before
+ * flagging so every page sees the full phrase-plus-word lexicon.
  */
 
 import { ingestDocument } from './ingest';
@@ -33,7 +33,7 @@ import { FlagOverlayManager } from './highlight/flagOverlay';
 import { flagAllSections } from '@/flagging/flagLanguage';
 import { awaitLexiconReady } from '@/flagging/lexiconLoader';
 
-// Kick off LM dictionary load immediately so it races against the DOM walk.
+// Kick off word-list load immediately so it races against the DOM walk.
 const _lmPrewarm = awaitLexiconReady();
 import type {
   ContentHighlightMsg,
@@ -228,7 +228,7 @@ async function runPdfFlow(): Promise<RelicDevApi> {
       `(${model.sections.length} sections, ${positionMap.text.length} chars)`,
   );
 
-  // Await full LM dictionary (pre-warm started at module load), then flag.
+  // Await the word lists (pre-warm started at module load), then flag.
   await _lmPrewarm;
   const allFlags = flagAllSections(model.sections, positionMap);
   _allFlags = allFlags;
@@ -323,11 +323,11 @@ async function run(): Promise<RelicDevApi> {
     _positionMap         = positionMap;
     _highlightController = controller;
 
-    // Phase 2.2: await full LM dictionary before flagging (pre-warm was started at
-    // module load time, so this is usually a no-op by the time we reach here).
+    // Await the word lists before flagging (pre-warm was started at module load
+    // time, so this is usually a no-op by the time we reach here).
     await _lmPrewarm;
 
-    // Flag language — regex pass over all sections with full LM coverage.
+    // Flag language — regex pass over all sections with the full lexicon.
     const allFlags = flagAllSections(model.sections, positionMap);
     _allFlags = allFlags;
     // Hide forward-looking / safe-harbor boilerplate flags by default (low signal).

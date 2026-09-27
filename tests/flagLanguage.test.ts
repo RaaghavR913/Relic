@@ -406,11 +406,11 @@ describe('(p) safe-harbor / forward-looking boilerplate marking', () => {
   });
 });
 
-// ── (l.pre) Base-only coverage benchmark (runs before LM is loaded) ──────────
+// ── (l.pre) Base-only coverage benchmark (runs before word lists load) ───────
 //
 // This suite deliberately runs BEFORE any awaitLexiconReady() call so it
-// measures the curated-118-entry baseline on the same Risk Factors passage
-// used in (o). The count is emitted to stdout for the PR deliverable.
+// measures the curated phrase baseline on the same Risk Factors passage
+// used in (o). The count is emitted to stdout.
 
 const RISK_FACTORS_TEXT_FOR_BENCHMARK = [
   'We may abandon certain development projects if required capital is unavailable.',
@@ -431,7 +431,7 @@ const RISK_FACTORS_TEXT_FOR_BENCHMARK = [
   'Restructuring charges and impairment losses were recognized in the current year.',
 ].join(' ');
 
-describe('(l.pre) base-only flag count (118 curated entries, before LM load)', () => {
+describe('(l.pre) base-only flag count (curated phrases, before word lists load)', () => {
   const pm = mockPositionMap();
 
   it('counts base-only flags on the benchmark passage and asserts curated set is working', () => {
@@ -507,8 +507,7 @@ describe('(m) word expansion: individual litigious words', () => {
   });
 
   it('flags "litigation" (litigious)', () => {
-    // NB: "sanction" (singular) is no longer litigious-tagged in the current LM
-    // Master Dictionary; "litigation" is a stable high-frequency litigious term.
+    // "litigation" is a stable high-frequency term in the curated litigious list.
     const section = makeSection('legal', 'The Company is subject to ongoing litigation in multiple jurisdictions.');
     expect(flagSection(section, pm).some((f) => f.type === 'litigious' && /litigation/i.test(f.term))).toBe(true);
   });
@@ -536,15 +535,14 @@ describe('(n) word expansion: individual uncertainty words', () => {
 //
 // Simulates a Risk Factors passage typical of a large 10-K.  We count flags
 // in two states:
-//   (1) base-only  — lexiconLoader cache before LM load (would require module
-//       reset; instead we confirm the base subset catches the known phrases)
-//   (2) base+LM   — after awaitLexiconReady() resolves
+//   (1) phrases only — lexiconLoader cache before the word lists load
+//   (2) phrases plus words — after awaitLexiconReady() resolves
 //
 // By the time these tests run, awaitLexiconReady() will have already been called
 // in the (l)/(m)/(n) suites above, so (2) is guaranteed.  We assert that:
 //   • ≥ 20 flags are produced from the combined passage (baseline sanity)
-//   • specific LM-only words ARE flagged (coverage improvement)
-//   • the total exceeds what the 30-entry curated subset alone would produce
+//   • single words that are not in the phrase list ARE flagged
+//   • the total exceeds what the phrase list alone would produce
 
 describe('(o) coverage benchmark — representative Risk Factors passage', () => {
   const pm = mockPositionMap();
@@ -585,11 +583,11 @@ describe('(o) coverage benchmark — representative Risk Factors passage', () =>
     expect(flags.length).toBeGreaterThanOrEqual(20);
   });
 
-  it('flags LM-only words that are absent from the 30-entry curated negative list', () => {
+  it('flags single words that are absent from the curated phrase list', () => {
     const section = makeSection('item_1a_risk_factors', RISK_FACTORS_TEXT);
     const flags = flagSection(section, pm);
     const terms = flags.map((f) => f.term.toLowerCase());
-    // Each of these words is from LM expansion (not in the curated 30-entry subset).
+    // Each of these words is in the word lists, not the phrase list.
     expect(terms.some((t) => /^bankruptcy$/.test(t))).toBe(true);
     expect(terms.some((t) => /^fraud$/.test(t))).toBe(true);
     expect(terms.some((t) => /^negligence$/.test(t))).toBe(true);

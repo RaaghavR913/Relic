@@ -99,8 +99,8 @@ function compileEntry(entry: LexiconEntry): CompiledEntry {
 }
 
 // ── module-level cache ─────────────────────────────────────────────────────────
-// Filled immediately from the curated base on first call; expanded in-place when
-// the LM layer loads. The cache maps FlagType → compiled entries (sorted by term
+// Filled immediately from the curated phrases on first call; expanded in-place when
+// the word lists load. The cache maps FlagType → compiled entries (sorted by term
 // length descending so longer phrases shadow shorter substrings during iteration).
 
 let _cache: Record<FlagType, CompiledEntry[]> | null = null;
@@ -177,7 +177,7 @@ export function loadCompiledLexicons(
   if (!_cache) _cache = buildBaseCache();
   if (!overrides) return _cache;
 
-  // With overrides: merge on top of whatever is currently in cache (base or base+LM).
+  // With overrides: merge on top of whatever is currently in cache (phrases, or phrases plus words).
   const result = {} as Record<FlagType, CompiledEntry[]>;
   for (const type of Object.keys(_cache) as FlagType[]) {
     const extra = overrides[type] ?? [];
