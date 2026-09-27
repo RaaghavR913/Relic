@@ -28,7 +28,6 @@ I chose on-device processing over a cloud API because for financial research, "n
 
 - **Model selection**: small quantized models (FinBERT for sentiment and mxbai-embed-xsmall for embeddings, about 134 MB total) ship inside the extension, so nothing is downloaded at runtime.
 - **Capability tiering**: Relic checks whether Gemini Nano is available. It runs generative analysis where Nano exists and extractive analysis where it doesn't. Model inference uses WebGPU when the device supports it.
-- **No investment advice**: Relic makes no buy, sell or short calls. The prompts forbid them, and a filter removes any that slip through. A tool that only surfaces evidence earns a different kind of trust than one that makes recommendations.
 
 ## What's next
 
