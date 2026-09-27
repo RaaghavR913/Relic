@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "source": "Relic curated financial-phrase lexicon — litigious (original, MIT)",
-  "description": "Litigation, legal proceedings, and regulatory enforcement language in SEC filings. Structured for merge with user-supplied custom dictionaries (Pro).",
+  "source": "Relic curated financial-phrase lexicon — litigious. Noncommercial use only, not covered by the MIT license; see THIRD_PARTY_NOTICES.md",
+  "description": "Litigation, legal proceedings, and regulatory enforcement language in SEC filings. Structured for merge with user-supplied custom dictionaries.",
   "entries": [
     { "term": "litigation",                "note": "Active or pending lawsuit or legal dispute — elevated liability risk",            "caseSensitive": false },
     { "term": "lawsuit",                   "note": "Active or pending legal action against or involving the company",                 "caseSensitive": false },

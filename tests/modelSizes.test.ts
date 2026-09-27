@@ -20,7 +20,11 @@ import {
 
 const ROOT = process.cwd();
 
-describe('MODEL_FILE_SIZES', () => {
+// models/ is gitignored and populated by `npm run fetch-models`; a fresh clone
+// has no weights to compare against. Once any are fetched, every entry is checked.
+const modelsFetched = fs.existsSync(path.resolve(ROOT, 'models'));
+
+describe.skipIf(!modelsFetched)('MODEL_FILE_SIZES', () => {
   it('matches the bundled files on disk byte-for-byte', () => {
     for (const [modelId, files] of Object.entries(MODEL_FILE_SIZES)) {
       for (const [file, size] of Object.entries(files)) {

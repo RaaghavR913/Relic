@@ -1,8 +1,8 @@
 // ============================================================
 // Relic — Lexicon loader + regex compiler
 // ------------------------------------------------------------
-// Two-layer lexicon — both layers are original, MIT-licensed lists authored for
-// this repo (no third-party dictionary dependency):
+// Two-layer lexicon, loaded from local JSON with no runtime dictionary dependency.
+// The lists are noncommercial-use data, not MIT; see THIRD_PARTY_NOTICES.md.
 //   Layer 1 (phrases) — 118-entry curated multi-word phrases with analyst notes.
 //                       Imported statically; compiled once on first call.
 //   Layer 2 (words)   — single-word financial-language vocabulary across the four
@@ -17,7 +17,7 @@
 //   awaitLexiconReady()     – async; resolves once the word layer is merged. Callers
 //                             that need full coverage must await this first.
 //
-// Extension point (Pro): callers may supply extra entries per type via
+// Extension point: callers may supply extra entries per type via
 // LexiconOverrides; those entries are merged before compilation and bypass cache.
 // ============================================================
 

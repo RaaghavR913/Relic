@@ -1,7 +1,7 @@
 {
   "version": "1.1.0",
-  "source": "Relic financial-language word list — negative (original, MIT)",
-  "description": "Single-word negative-signal vocabulary for SEC filings — distress, losses, defaults, and deterioration. Independently curated for Relic; complements the multi-word phrase lexicon. Words are >=4 chars, deduped against the phrase layer, and pruned of high-noise generic tokens.",
+  "source": "Relic financial-language word list — negative. Noncommercial use only, not covered by the MIT license; see THIRD_PARTY_NOTICES.md",
+  "description": "Single-word negative-signal vocabulary for SEC filings — distress, losses, defaults, and deterioration. Complements the multi-word phrase lexicon. Words are >=4 chars, deduped against the phrase layer, and pruned of high-noise generic tokens.",
   "words": [
     "abandon",
     "abandoned",

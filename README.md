@@ -50,4 +50,4 @@ Architecture, build setup, browser support, permissions and testing are covered 
 
 ## License
 
-MIT. See [LICENSE](LICENSE). The bundled ML models keep their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+The source code is MIT; see [LICENSE](LICENSE). The language-flagging word lists are for noncommercial use only, and the bundled ML models keep their own licenses; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
-  "source": "Relic curated financial-phrase lexicon — weak modal (original, MIT)",
-  "description": "Weak modal verbs, hedging adverbs, and scoping qualifiers indicating tentative or conditional assertions. Structured for merge with user-supplied custom dictionaries (Pro).",
+  "source": "Relic curated financial-phrase lexicon — weak modal. Noncommercial use only, not covered by the MIT license; see THIRD_PARTY_NOTICES.md",
+  "description": "Weak modal verbs, hedging adverbs, and scoping qualifiers indicating tentative or conditional assertions. Structured for merge with user-supplied custom dictionaries.",
   "entries": [
     { "term": "could be",               "note": "Weak modal — tentative assertion subject to conditions",                    "caseSensitive": false },
     { "term": "could result",           "note": "Weak modal — conditional outcome not guaranteed",                          "caseSensitive": false },

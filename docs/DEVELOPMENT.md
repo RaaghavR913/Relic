@@ -27,9 +27,9 @@ Your filing text and derived analysis never leave the device.
 
 See [PRIVACY.md](../PRIVACY.md) for the full privacy policy.
 
-## Chrome Web Store submission notes
+## Permissions
 
-Permission rationale, for reviewers:
+Why Relic requests each permission in the published Chrome Web Store build:
 
 - **`host_permissions: https://*.sec.gov/*`** — the only host the extension fetches from
   (prior-year filings for redline). The content script also auto-runs here.
@@ -226,9 +226,8 @@ Weights are fetched at build time via `npm run fetch-models` and loaded from `ch
 
 ## License
 
-Relic's source code — including the language-flagging word lists — is released
-under the [MIT License](../LICENSE).
+Relic's source code is released under the [MIT License](../LICENSE).
 
-The MIT grant covers code and data authored in this repository only. Bundled
-third-party components — the on-device ML models and the test fixtures — remain
-under their own terms. See [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
+The MIT grant covers code only. The language-flagging word lists are for
+noncommercial use only, and the on-device ML models and test fixtures remain under
+their own terms. See [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md).
